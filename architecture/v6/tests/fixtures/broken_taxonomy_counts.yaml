@@ -1,0 +1,17 @@
+# Broken taxonomy arithmetic and counts
+metadata:
+  version: "6.0.0"
+  name: "Broken Taxonomy"
+  description: "Test canonical spec fixture"
+  schema_version: "1.0.0"
+  status: "AUTHORITATIVE"
+  date: "2026-08-17"
+
+subsystems:
+  taxonomy:
+    core_count: 15
+    professional_count: 7
+    adapter_count: 4
+    research_count: 3
+    total_count: 29
+  definitions: []

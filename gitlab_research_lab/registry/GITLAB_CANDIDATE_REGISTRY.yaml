@@ -1,0 +1,142 @@
+version: "1.0.0"
+registry_metadata:
+  target_software: "GitLab Community Edition"
+  target_version_pinned: "17.3.0"
+  total_candidates: 10
+  confirmed_novel: 1
+
+candidates:
+  - candidate_id: "GL-CAND-2026-001"
+    title: "GraphQL ProjectExport Mutation Authorization Asymmetry"
+    vulnerability_class: "CWE-285"
+    affected_subsystems:
+      - "GraphQL Resolvers"
+      - "ProjectPolicy"
+      - "ProjectExportWorker"
+    reproduction_status: "VERIFIED_POSITIVE"
+    prior_art_clearance:
+      novelty_tier: "CONFIRMED-NOVEL"
+      ancestor_cve: null
+      databases_queried:
+        - "NVD"
+        - "CVE.org"
+        - "CISA KEV"
+        - "GHSA"
+        - "OSV"
+        - "gitlab-org/cves"
+        - "HackerOne Disclosures"
+      prior_art_matches_count: 0
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+    estimated_severity: "HIGH"
+    bounty_tier_estimate: "$3,000 - $7,500"
+
+  - candidate_id: "GL-CAND-2026-002"
+    title: "CI_JOB_TOKEN Cross-Project Allowlist Boundary Check"
+    vulnerability_class: "CWE-863"
+    affected_subsystems:
+      - "CI/CD Token Guard"
+      - "Package Registry"
+    reproduction_status: "BLOCKED_BY_NEGATIVE_CONTROL"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+      ancestor_cve: "CVE-2023-2825"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-003"
+    title: "ProjectGroupLink Clamping Invariant During Transfer"
+    vulnerability_class: "CWE-272"
+    affected_subsystems:
+      - "Project Transfer Service"
+      - "Namespace Policy"
+    reproduction_status: "VERIFIED_NEGATIVE"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N"
+    estimated_severity: "LOW"
+
+  - candidate_id: "GL-CAND-2026-004"
+    title: "TOCTOU Race Condition on Project Archival vs Branch Push"
+    vulnerability_class: "CWE-367"
+    affected_subsystems:
+      - "ProjectPolicy (:archived prevent)"
+      - "Gitaly Hook"
+    reproduction_status: "BLOCKED_BY_PREVENT_RULE"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-005"
+    title: "Gitlab::HTTP SSRF Localhost DNS Rebinding Differential"
+    vulnerability_class: "CWE-918"
+    affected_subsystems:
+      - "Gitlab::HTTP UrlBlocker"
+      - "Webhooks"
+    reproduction_status: "BLOCKED_BY_URL_BLOCKER"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-006"
+    title: "CI Runner Cache Key Confusion Across Protected Branches"
+    vulnerability_class: "CWE-345"
+    affected_subsystems:
+      - "CI/CD Cache Engine"
+      - "Protected Branch Policy"
+    reproduction_status: "BLOCKED_BY_NEGATIVE_CONTROL"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-007"
+    title: "OAuth2 Scoped Token Privilege Escalation via User Impersonation"
+    vulnerability_class: "CWE-287"
+    affected_subsystems:
+      - "OAuth Guard"
+      - "User Impersonation API"
+    reproduction_status: "BLOCKED_BY_POLICY"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-008"
+    title: "Deploy Token Scope Bleeding to Subgroup Package Registries"
+    vulnerability_class: "CWE-732"
+    affected_subsystems:
+      - "DeployToken Model"
+      - "Package Policy"
+    reproduction_status: "BLOCKED_BY_NEGATIVE_CONTROL"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-009"
+    title: "Asynchronous Sidekiq Delayed Deserialization Context Corruption"
+    vulnerability_class: "CWE-863"
+    affected_subsystems:
+      - "Sidekiq Worker Middleware"
+      - "Project Authorization Worker"
+    reproduction_status: "BLOCKED_BY_SAFE_DESERIALIZER"
+    prior_art_clearance:
+      novelty_tier: "KNOWN"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N"
+    estimated_severity: "NONE"
+
+  - candidate_id: "GL-CAND-2026-010"
+    title: "Confidential Note Redaction Omission in GraphQL Issue BatchLoader"
+    vulnerability_class: "CWE-200"
+    affected_subsystems:
+      - "GraphQL Issue Resolvers"
+      - "BatchLoader Cache"
+    reproduction_status: "VERIFIED_POSITIVE"
+    prior_art_clearance:
+      novelty_tier: "VARIANT"
+      ancestor_cve: "CVE-2023-2825"
+    cvss_v31_vector: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:M/I:N/A:N"
+    estimated_severity: "MEDIUM"
+    bounty_tier_estimate: "$1,000 - $2,500"

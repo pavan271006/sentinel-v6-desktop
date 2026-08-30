@@ -1,0 +1,12 @@
+[package]
+name = "ucma-causal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ucma-core.workspace = true
+ucma-response.workspace = true
+ucma-sql-ir.workspace = true

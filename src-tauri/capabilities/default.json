@@ -1,0 +1,8 @@
+{
+  "identifier": "default",
+  "description": "Default capability for Sentinel V6 desktop application",
+  "windows": ["*"],
+  "permissions": [
+    "core:default"
+  ]
+}

@@ -1,0 +1,464 @@
+=== SUBSYSTEMS ===
+[SUB-01] ProxyEngine (Tier: Core, Crate: sentinel-proxy)
+  Provided Traits: ['ProxyEngine']
+  Consumed Traits: ['HttpParser', 'ScopeEngine', 'EventBus', 'ObservationStore']
+  Emitted Events: ['ObservationCreated']
+  Storage: ['transactions', 'proxy_intercept_rules', 'blobs']
+[SUB-02] HTTPParser (Tier: Core, Crate: sentinel-parser)
+  Provided Traits: ['HttpParser']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: []
+[SUB-03] ObservationStore (Tier: Core, Crate: sentinel-store)
+  Provided Traits: ['ObservationStore']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: ['all_sqlite_tables', 'blob_store', 'tantivy_indices']
+[SUB-04] ScopeEngine (Tier: Core, Crate: sentinel-scope)
+  Provided Traits: ['ScopeEngine']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: ['scopes']
+[SUB-05] EventBus (Tier: Core, Crate: sentinel-bus)
+  Provided Traits: ['EventBus']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: []
+[SUB-06] TaskScheduler (Tier: Core, Crate: sentinel-scheduler)
+  Provided Traits: ['TaskScheduler']
+  Consumed Traits: ['EventBus']
+  Emitted Events: ['TaskStatus']
+  Storage: ['task_checkpoints']
+[SUB-07] ScanOrchestrator (Tier: Core, Crate: sentinel-scanner)
+  Provided Traits: ['ScanOrchestrator']
+  Consumed Traits: ['TaskScheduler', 'FuzzerEngine', 'CoverageEngine', 'ScopeEngine', 'EventBus']
+  Emitted Events: ['ScanProgress']
+  Storage: ['scan_configs', 'endpoints']
+[SUB-08] FuzzerEngine (Tier: Core, Crate: sentinel-fuzzer)
+  Provided Traits: ['FuzzerEngine']
+  Consumed Traits: ['HttpParser']
+  Emitted Events: []
+  Storage: []
+[SUB-09] VerificationEngine (Tier: Core, Crate: sentinel-verify)
+  Provided Traits: ['VerificationEngine']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: ['FindingCreated', 'CandidateVerified']
+  Storage: ['candidates', 'verifications', 'evidence', 'findings']
+[SUB-10] ContextEngine (Tier: Core, Crate: sentinel-context)
+  Provided Traits: ['ContextEngine']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: ['ContextDetected']
+  Storage: ['graph_nodes']
+[SUB-11] CoverageEngine (Tier: Core, Crate: sentinel-coverage)
+  Provided Traits: ['CoverageEngine']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: ['CoverageUpdate']
+  Storage: ['endpoints', 'parameters']
+[SUB-12] IdentityManager (Tier: Core, Crate: sentinel-identity)
+  Provided Traits: ['IdentityManager']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: []
+  Storage: ['identities', 'credentials', 'sessions']
+[SUB-13] KnowledgeEngine (Tier: Core, Crate: sentinel-knowledge)
+  Provided Traits: ['KnowledgeEngine']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: []
+  Storage: ['graph_nodes', 'graph_edges', 'attack_paths']
+[SUB-14] ReportEngine (Tier: Core, Crate: sentinel-report)
+  Provided Traits: ['ReportEngine']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: []
+  Storage: ['findings', 'verifications', 'evidence', 'reports']
+[SUB-15] BrowserService (Tier: Professional, Crate: sentinel-browser)
+  Provided Traits: ['BrowserService']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: ['screenshots', 'blobs']
+[SUB-16] OASTServer (Tier: Professional, Crate: sentinel-oast)
+  Provided Traits: ['OastServer']
+  Consumed Traits: ['ScopeEngine']
+  Emitted Events: []
+  Storage: ['oast_tokens', 'oast_interactions']
+[SUB-17] AuthorizationEngine (Tier: Professional, Crate: sentinel-authz)
+  Provided Traits: ['AuthorizationEngine']
+  Consumed Traits: ['IdentityManager']
+  Emitted Events: []
+  Storage: ['identities', 'endpoints']
+[SUB-18] AIEngine (Tier: Professional, Crate: sentinel-ai)
+  Provided Traits: ['AiEngine']
+  Consumed Traits: ['AiPolicyEngine']
+  Emitted Events: []
+  Storage: []
+[SUB-19] AIPolicyEngine (Tier: Professional, Crate: sentinel-ai-policy)
+  Provided Traits: ['AiPolicyEngine']
+  Consumed Traits: ['ScopeEngine']
+  Emitted Events: []
+  Storage: []
+[SUB-20] PluginRuntime (Tier: Professional, Crate: sentinel-plugin)
+  Provided Traits: ['PluginRuntime']
+  Consumed Traits: ['ScopeEngine']
+  Emitted Events: []
+  Storage: []
+[SUB-21] ResearchPackManager (Tier: Professional, Crate: sentinel-pack)
+  Provided Traits: ['ResearchPackManager']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: []
+[SUB-22] SubfinderAdapter (Tier: Adapter, Crate: sentinel-adapter-subfinder)
+  Provided Traits: ['ExternalToolAdapter']
+  Consumed Traits: ['ScopeEngine']
+  Emitted Events: []
+  Storage: ['subdomain_assets', 'graph_nodes']
+[SUB-23] CloudFoxAdapter (Tier: Adapter, Crate: sentinel-adapter-cloudfox)
+  Provided Traits: ['ExternalToolAdapter']
+  Consumed Traits: ['ScopeEngine']
+  Emitted Events: []
+  Storage: ['cloud_assets', 'graph_nodes']
+[SUB-24] SemgrepAdapter (Tier: Adapter, Crate: sentinel-adapter-semgrep)
+  Provided Traits: ['ExternalToolAdapter']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: ['sast_findings']
+[SUB-25] OpenApiParser (Tier: Adapter, Crate: sentinel-adapter-openapi)
+  Provided Traits: ['ExternalToolAdapter']
+  Consumed Traits: []
+  Emitted Events: []
+  Storage: ['api_proutes', 'endpoints', 'parameters']
+[SUB-26] SmtSolverEngine (Tier: Research, Crate: sentinel-research-smt)
+  Provided Traits: ['SmtSolverEngine']
+  Consumed Traits: ['VerificationEngine']
+  Emitted Events: []
+  Storage: ['symbolic_proofs']
+[SUB-27] RlStateEngine (Tier: Research, Crate: sentinel-research-rl)
+  Provided Traits: ['RlStateEngine']
+  Consumed Traits: ['BrowserService']
+  Emitted Events: []
+  Storage: ['app_state_machine']
+[SUB-28] CryptoAnalysisEngine (Tier: Research, Crate: sentinel-research-crypto)
+  Provided Traits: ['CryptoAnalysisEngine']
+  Consumed Traits: ['ObservationStore']
+  Emitted Events: []
+  Storage: ['crypto_weaknesses']
+
+=== TRAITS & METHODS ===
+
+--- Trait: ProxyEngine (Subsystem: SUB-01) ---
+  fn start(config: ProxyConfig) -> Result<(), SentinelError>
+  fn stop() -> Result<(), SentinelError>
+  fn register_interceptor(interceptor: Box<dyn ProxyInterceptor>) -> ()
+  fn set_intercept_rules(rules: Vec<InterceptRule>) -> Result<(), SentinelError>
+
+--- Trait: HttpParser (Subsystem: SUB-02) ---
+  fn parse_request(raw: &[u8]) -> Result<ParsedRequest, SentinelError>
+  fn parse_response(raw: &[u8]) -> Result<ParsedResponse, SentinelError>
+  fn serialize_request(request: &ParsedRequest) -> Result<Vec<u8>, SentinelError>
+  fn serialize_response(response: &ParsedResponse) -> Result<Vec<u8>, SentinelError>
+
+--- Trait: ObservationStore (Subsystem: SUB-03) ---
+  fn insert(obs: Observation) -> Result<(), SentinelError>
+  fn insert_batch(obs_list: Vec<Observation>) -> Result<(), SentinelError>
+  fn get(id: Uuid) -> Result<Option<Observation>, SentinelError>
+  fn query_sql(sql: &str, limit: u32, offset: u32) -> Result<Vec<Observation>, SentinelError>
+  fn search_fts(query: &str, limit: u32, offset: u32) -> Result<Vec<Observation>, SentinelError>
+  fn rebuild_index() -> Result<(), SentinelError>
+
+--- Trait: ScopeEngine (Subsystem: SUB-04) ---
+  fn is_in_scope(uri: &str) -> ScopeDecision
+  fn is_ip_in_scope(ip: &str) -> ScopeDecision
+  fn update_scope(scope: Scope) -> Result<(), SentinelError>
+
+--- Trait: EventBus (Subsystem: SUB-05) ---
+  fn subscribe_telemetry() -> tokio::sync::broadcast::Receiver<SentinelEvent>
+  fn subscribe_critical() -> tokio::sync::mpsc::Receiver<CriticalEvent>
+  fn publish_telemetry(event: SentinelEvent) -> Result<(), SentinelError>
+  fn publish_critical(event: CriticalEvent) -> Result<(), SentinelError>
+
+--- Trait: TaskScheduler (Subsystem: SUB-06) ---
+  fn submit(task: TaskConfig) -> Result<Uuid, SentinelError>
+  fn pause(task_id: Uuid) -> Result<(), SentinelError>
+  fn resume(task_id: Uuid) -> Result<(), SentinelError>
+  fn cancel(task_id: Uuid) -> Result<(), SentinelError>
+  fn status(task_id: Uuid) -> Result<TaskLifecycle, SentinelError>
+  fn checkpoint(task_id: Uuid, state: Vec<u8>) -> Result<(), SentinelError>
+  fn restore_checkpoint(task_id: Uuid) -> Result<Option<Vec<u8>>, SentinelError>
+
+--- Trait: ScanOrchestrator (Subsystem: SUB-07) ---
+  fn start_scan(config: ScanConfig) -> Result<Uuid, SentinelError>
+  fn pause_scan(scan_id: Uuid) -> Result<(), SentinelError>
+  fn resume_scan(scan_id: Uuid) -> Result<(), SentinelError>
+  fn cancel_scan(scan_id: Uuid) -> Result<(), SentinelError>
+  fn scan_status(scan_id: Uuid) -> Result<ScanLifecycle, SentinelError>
+
+--- Trait: FuzzerEngine (Subsystem: SUB-08) ---
+  fn fuzz(seed: &Transaction, profile: &FuzzProfile) -> Result<FuzzStream, SentinelError>
+
+--- Trait: VerificationEngine (Subsystem: SUB-09) ---
+  fn verify_candidate(candidate: &Candidate, strategy: VerificationStrategyRef) -> Result<VerificationResult, SentinelError>
+  fn correlate_oast(token: &str) -> Result<Option<OastEvidence>, SentinelError>
+  fn available_strategies() -> Vec<VerificationStrategy>
+
+--- Trait: ContextEngine (Subsystem: SUB-10) ---
+  fn fingerprint(transaction: &Transaction) -> Vec<TechFingerprint>
+  fn classify_parameter(name: &str, value: &str) -> ParameterClass
+
+--- Trait: CoverageEngine (Subsystem: SUB-11) ---
+  fn record_test(endpoint_id: Uuid, param: &str, check_id: &str) -> Result<(), SentinelError>
+  fn get_coverage(scope_id: Uuid) -> Result<CoverageReport, SentinelError>
+  fn untested_endpoints(scope_id: Uuid) -> Result<Vec<Endpoint>, SentinelError>
+
+--- Trait: IdentityManager (Subsystem: SUB-12) ---
+  fn add_identity(identity: Identity) -> Result<Uuid, SentinelError>
+  fn add_credential(credential: Credential, secret_bytes: &[u8]) -> Result<Uuid, SentinelError>
+  fn list_identities() -> Result<Vec<Identity>, SentinelError>
+  fn inject_auth(identity_id: Uuid, request: &mut ParsedRequest) -> Result<(), SentinelError>
+  fn refresh_credential(identity_id: Uuid) -> Result<(), SentinelError>
+
+--- Trait: KnowledgeEngine (Subsystem: SUB-13) ---
+  fn add_node(node: GraphNode) -> Result<Uuid, SentinelError>
+  fn add_edge(edge: GraphEdge) -> Result<Uuid, SentinelError>
+  fn query_neighbors(node_id: Uuid) -> Result<Vec<GraphNode>, SentinelError>
+  fn find_path(from: Uuid, to: Uuid, max_depth: u32) -> Result<Vec<Vec<GraphEdge>>, SentinelError>
+  fn resolve_entity(identifier: &str) -> Result<Option<GraphNode>, SentinelError>
+
+--- Trait: ReportEngine (Subsystem: SUB-14) ---
+  fn generate(config: ReportConfig) -> Result<Vec<u8>, SentinelError>
+
+--- Trait: BrowserService (Subsystem: SUB-15) ---
+  fn navigate(url: &str, timeout_ms: u32) -> Result<NavigationResult, SentinelError>
+  fn execute_script(js: &str, timeout_ms: u32) -> Result<String, SentinelError>
+  fn capture_dom(include_shadow: bool) -> Result<String, SentinelError>
+  fn take_screenshot(full_page: bool) -> Result<Vec<u8>, SentinelError>
+  fn close() -> Result<(), SentinelError>
+
+--- Trait: OastServer (Subsystem: SUB-16) ---
+  fn start(config: OastConfig) -> Result<(), SentinelError>
+  fn stop() -> Result<(), SentinelError>
+  fn generate_token(context: &str) -> Result<String, SentinelError>
+  fn poll_interactions(token: &str) -> Result<Vec<OastInteraction>, SentinelError>
+
+--- Trait: AuthorizationEngine (Subsystem: SUB-17) ---
+  fn build_matrix(identities: Vec<Uuid>, endpoints: Vec<Uuid>) -> Result<AuthzMatrix, SentinelError>
+  fn test_matrix(matrix: &AuthzMatrix) -> Result<Vec<AuthzViolation>, SentinelError>
+
+--- Trait: AiEngine (Subsystem: SUB-18) ---
+  fn analyze(request: AiRequest) -> Result<AiResponse, SentinelError>
+  fn is_available() -> bool
+
+--- Trait: AiPolicyEngine (Subsystem: SUB-19) ---
+  fn validate_input(prompt: &str) -> PolicyResult
+  fn validate_output(response: &str, schema: Option<&str>) -> PolicyResult
+  fn is_destructive(command: &str) -> bool
+  fn requires_approval(command: &str) -> bool
+
+--- Trait: PluginRuntime (Subsystem: SUB-20) ---
+  fn load_wasm(wasm_bytes: &[u8], config: PluginSandboxConfig) -> Result<Uuid, SentinelError>
+  fn load_rhai(script_text: &str) -> Result<Uuid, SentinelError>
+  fn execute(plugin_id: Uuid, input: PluginInput) -> Result<PluginOutput, SentinelError>
+  fn unload(plugin_id: Uuid) -> Result<(), SentinelError>
+
+--- Trait: ResearchPackManager (Subsystem: SUB-21) ---
+  fn load_pack(path: &str) -> Result<PackManifest, SentinelError>
+  fn verify_signature(pack: &PackManifest) -> Result<bool, SentinelError>
+  fn list_checks() -> Result<Vec<SecurityCheck>, SentinelError>
+  fn hot_reload() -> Result<(), SentinelError>
+
+--- Trait: ExternalToolAdapter (Subsystem: SUB-22) ---
+  fn tool_name() -> &str
+  fn is_installed() -> bool
+  fn execute(config: serde_json::Value) -> Result<serde_json::Value, SentinelError>
+
+--- Trait: ExternalToolAdapter (Subsystem: SUB-23) ---
+  fn tool_name() -> &str
+  fn is_installed() -> bool
+  fn execute(config: serde_json::Value) -> Result<serde_json::Value, SentinelError>
+
+--- Trait: ExternalToolAdapter (Subsystem: SUB-24) ---
+  fn tool_name() -> &str
+  fn is_installed() -> bool
+  fn execute(config: serde_json::Value) -> Result<serde_json::Value, SentinelError>
+
+--- Trait: ExternalToolAdapter (Subsystem: SUB-25) ---
+  fn tool_name() -> &str
+  fn is_installed() -> bool
+  fn execute(config: serde_json::Value) -> Result<serde_json::Value, SentinelError>
+
+--- Trait: SmtSolverEngine (Subsystem: SUB-26) ---
+  fn prove_logic_flaw(source_code: &str, invariant: &str) -> Result<SymbolicPath, SentinelError>
+
+--- Trait: RlStateEngine (Subsystem: SUB-27) ---
+  fn explore_state_machine(initial_url: &str) -> Result<Vec<RlRewardModel>, SentinelError>
+
+--- Trait: CryptoAnalysisEngine (Subsystem: SUB-28) ---
+  fn analyze_handshake(pcap_data: &[u8]) -> Result<Option<CryptoWeakness>, SentinelError>
+
+=== EVENTS ===
+
+=== DOMAIN CORE ENTITIES ===
+Entity: Transaction
+  - meta: EntityMetadata
+  - request: MessageRepresentation
+  - response: Option<MessageRepresentation>
+  - timing: std::time::Duration
+  - tls_info: Option<TlsData>
+Entity: Observation
+  - meta: EntityMetadata
+  - source: ObservationSource
+  - data_ref: Uuid
+Entity: Candidate
+  - meta: EntityMetadata
+  - source_observation_id: Uuid
+  - hypothesis: String
+  - status: String
+Entity: VerificationResult
+  - id: Uuid
+  - candidate_id: Uuid
+  - strategy_ref: VerificationStrategyRef
+  - success: bool
+  - confidence: f32
+  - evidence: Vec<Evidence>
+  - executed_at: DateTime<Utc>
+Entity: Evidence
+  - id: Uuid
+  - verification_id: Uuid
+  - variant: EvidenceVariant
+  - created_at: DateTime<Utc>
+Entity: Finding
+  - meta: EntityMetadata
+  - title: String
+  - severity: Severity
+  - verification_id: Uuid
+  - state: FindingLifecycle
+
+=== DOMAIN ENUMS ===
+Enum: HttpMethod -> ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'TRACE', 'CONNECT', 'GRAPHQL']
+Enum: ParamLocation -> ['Query', 'Body', 'Header', 'Path', 'Cookie', 'JsonPath', 'XPath', 'MultipartField', 'GraphQLVariable', 'WebSocketFrame']
+Enum: DataType -> ['String', 'Integer', 'Boolean', 'Float', 'Uuid', 'Json', 'Xml', 'Base64', 'Unknown']
+Enum: Provenance -> ['Manual', 'Scanner', 'Fuzzer', 'Proxy', 'AI', 'Tool']
+Enum: LifecycleState -> ['Active', 'Archived', 'Deleted']
+Enum: TaskLifecycle -> ['Pending', 'Running', 'Paused', 'Completed', 'Failed', 'Cancelled']
+Enum: ScanLifecycle -> ['Initializing', 'Running', 'Pausing', 'Paused', 'Finished', 'Error']
+Enum: Severity -> ['Critical', 'High', 'Medium', 'Low', 'Info']
+Enum: FindingLifecycle -> ['Candidate', 'Verified', 'Confirmed', 'Reported', 'Remediated', 'FalsePositive', 'AcceptedRisk', 'Regression']
+Enum: ObservationSource -> ['Proxy', 'OAST', 'Browser', 'Manual', 'Tool']
+Enum: AccessLevel -> ['Admin', 'User', 'Anonymous', 'TenantA', 'TenantB']
+Enum: ReportFormat -> ['Pdf', 'Markdown', 'Json', 'Html']
+Enum: MutatorType -> ['BitFlip', 'ByteReplace', 'Grammar', 'Wordlist', 'Radamsa', 'Boundary', 'UnicodeNormalization', 'Truncation', 'FormatString', 'AiAssisted']
+Enum: VerificationStrategy -> ['BrowserExecution', 'OASTCorrelation', 'TimingStatistical', 'ResponseDifferential', 'StateVerification', 'AuthorizationReplay', 'ContentVerification', 'MathematicalVerification', 'ErrorClassification', 'CausalMinimization']
+Enum: ParameterClass -> ['ObjectId', 'Url', 'FilePath', 'Email', 'Token', 'Search', 'Numeric', 'Boolean', 'Json', 'Xml', 'Html', 'Enumeration', 'FreeText', 'Unknown']
+Enum: PolicyResultType -> ['Approved', 'Blocked', 'Filtered', 'RequiresHumanApproval']
+
+=== SECURITY INVARIANTS ===
+[SEC-01] Scope Authorization Invariant
+  Statement: No active outbound network packet may be transmitted without an explicit ScopeDecision::Allowed from ScopeEngine. Default is DENY (fail-closed).
+  Enforcement: ProxyEngine (SUB-01), ScanOrchestrator (SUB-07), BrowserService (SUB-15), Adapters (SUB-22..25)
+  Verification: Unit test asserting network connection attempt to out-of-scope URI immediately returns ScopeViolation error without TCP handshake.
+[SEC-02] OAST Token Confidentiality Invariant
+  Statement: Out-of-band interaction tokens must use AES-256-GCM authenticated encryption. No plaintext target identifier may exist in the token string.
+  Enforcement: OASTServer (SUB-16)
+  Verification: Token generation test confirming ciphertext entropy and absence of target hostname in raw token string.
+[SEC-03] Host AI Policy Gate Invariant
+  Statement: AI may never execute network requests autonomously. All AI-generated strings must pass the 5-layer AIPolicyEngine and ScopeEngine.
+  Enforcement: AIPolicyEngine (SUB-19), AIEngine (SUB-18)
+  Verification: Policy test confirming destructive prompt string is intercepted and rejected with PolicyResult::Blocked.
+[SEC-04] WASM Capability Drop Invariant
+  Statement: WASM plugins execute in Wasmtime with default-deny capabilities (network=false, filesystem=false, secrets=false).
+  Enforcement: PluginRuntime (SUB-20)
+  Verification: Sandbox test verifying unpermitted WASM socket open attempt traps with SentinelError::SandboxViolation.
+[SEC-05] Research Module Optionality Invariant
+  Statement: Research engines (SMT, RL, Crypto) are feature-flagged behind sentinel-research. Core platform compiles and passes 100% of tests with default-features = false.
+  Enforcement: Cargo crate feature architecture (SUB-26, SUB-27, SUB-28)
+  Verification: Cargo build and test command running --no-default-features succeeding cleanly.
+[SEC-06] Finding Proof Requirement Invariant
+  Statement: No Candidate may transition to FindingLifecycle::Verified without empirical, differential, or cryptographic Evidence from VerificationEngine.
+  Enforcement: VerificationEngine (SUB-09), Finding state machine
+  Verification: State machine test verifying transition from Candidate to Verified fails if Evidence vector is empty.
+[SEC-07] Evidence Immutability Invariant
+  Statement: Evidence blobs stored in blob storage are content-addressed (SHA-256). Any modification invalidates hash integrity.
+  Enforcement: ObservationStore (SUB-03), Blob Store
+  Verification: Tamper test asserting modified blob content triggers SHA-256 mismatch error on retrieval.
+[SEC-08] Cross-Tenant Project Isolation Invariant
+  Statement: SQLite databases and blob directories are physically partitioned per project. Multi-tenant project data cannot intermingle.
+  Enforcement: ObservationStore (SUB-03), Filesystem layout
+  Verification: Project switch test verifying queries in Project A return zero records from Project B.
+[SEC-09] Zero Plaintext Secrets Invariant
+  Statement: Credentials, API keys, and session tokens must use SecretReference UUID pointing to OS Keychain. No plaintext in DB, logs, or events.
+  Enforcement: IdentityManager (SUB-12), SQLite schema, Tracing logger
+  Verification: Database audit test scanning credentials table and log outputs asserting zero regex matches for plaintext credentials.
+[SEC-10] Triple Representation Invariant
+  Statement: Every transaction retains byte-exact raw blob, parsed structured representation, and normalized text for search.
+  Enforcement: HTTPParser (SUB-02), ProxyEngine (SUB-01), ObservationStore (SUB-03)
+  Verification: Round-trip parser test asserting raw byte slice is identical before and after parsing and storage.
+[SEC-11] WebView Sandbox Isolation Invariant
+  Statement: Tauri UI WebView never renders untrusted target HTML directly. Scanning browser is isolated out-of-process in BrowserDaemon.
+  Enforcement: BrowserService (SUB-15), Tauri IPC layer
+  Verification: DOM injection test verifying malicious payload executes in isolated Playwright context without executing in Tauri WebView.
+[SEC-12] Bounded Buffer Backpressure Invariant
+  Statement: All EventBus channels enforce bounded capacities with drop-on-lag for telemetry and backpressure for critical events.
+  Enforcement: EventBus (SUB-05)
+  Verification: Channel saturation test verifying broadcast channel drops excess messages while critical channel applies backpressure.
+
+=== STORAGE TABLES ===
+Table: scopes
+  Columns: ['id', 'version', 'timestamp', 'includes_json', 'excludes_json']
+Table: graph_nodes
+  Columns: ['id', 'version', 'timestamp', 'node_type', 'label', 'metadata_json']
+Table: graph_edges
+  Columns: ['id', 'source_id', 'target_id', 'edge_type', 'timestamp']
+Table: endpoints
+  Columns: ['id', 'host', 'path', 'method', 'timestamp', 'graph_node_id']
+Table: parameters
+  Columns: ['id', 'endpoint_id', 'name', 'location', 'inferred_type', 'timestamp']
+Table: observations
+  Columns: ['id', 'version', 'timestamp', 'provenance', 'source', 'data_ref', 'lifecycle', 'scope_id']
+Table: transactions
+  Columns: ['id', 'timestamp', 'protocol', 'stream_id', 'req_method', 'req_uri', 'req_blob_id', 'req_normalized_text', 'res_status', 'res_blob_id', 'res_normalized_text', 'timing_ms', 'tls_cipher', 'version', 'provenance', 'lifecycle', 'scope_id']
+Table: identities
+  Columns: ['id', 'version', 'timestamp', 'username', 'roles_json']
+Table: sessions
+  Columns: ['id', 'identity_id', 'cookies_json', 'headers_json', 'created_at', 'expires_at']
+Table: credentials
+  Columns: ['id', 'identity_id', 'credential_type', 'secret_reference', 'access_level', 'expires_at']
+Table: oast_tokens
+  Columns: ['id', 'token_string', 'created_at', 'context_json']
+Table: oast_interactions
+  Columns: ['id', 'token_id', 'timestamp', 'protocol', 'source_ip', 'raw_blob_id']
+Table: candidates
+  Columns: ['id', 'timestamp', 'source_observation_id', 'hypothesis', 'status', 'version', 'provenance', 'lifecycle', 'scope_id']
+Table: verifications
+  Columns: ['id', 'candidate_id', 'strategy_type', 'strategy_version', 'success', 'confidence', 'executed_at', 'duration_ms']
+Table: evidence
+  Columns: ['id', 'verification_id', 'evidence_type', 'data_blob_id', 'created_at']
+Table: findings
+  Columns: ['id', 'version', 'timestamp', 'title', 'severity', 'verification_id', 'state', 'provenance', 'lifecycle', 'scope_id']
+Table: task_checkpoints
+  Columns: ['task_id', 'status', 'last_updated', 'state_json']
+Table: scan_configs
+  Columns: ['id', 'scope_id', 'concurrency_limit', 'active_plugins_json', 'timestamp']
+Table: proxy_intercept_rules
+  Columns: ['id', 'match_condition', 'action', 'action_data_json', 'is_active']
+Table: workflows
+  Columns: ['id', 'name', 'steps_json', 'created_at']
+Table: reports
+  Columns: ['id', 'title', 'format', 'file_path', 'config_json', 'generated_at']
+Table: regression_tests
+  Columns: ['id', 'finding_id', 'seed_transaction_id', 'expected_status', 'created_at']
+Table: notes
+  Columns: ['id', 'target_id', 'author', 'content', 'timestamp']
+Table: screenshots
+  Columns: ['id', 'blob_id', 'full_page', 'timestamp']
+Table: attack_paths
+  Columns: ['id', 'start_node_id', 'target_node_id', 'edges_json', 'risk_score', 'discovered_at']
+Table: subdomain_assets
+  Columns: ['domain', 'ip_addresses_json', 'source', 'discovered_at']
+Table: cloud_assets
+  Columns: ['arn', 'service', 'region', 'discovered_via_credential_id']
+Table: api_proutes
+  Columns: ['id', 'path_template', 'method', 'expected_params_json', 'source_spec']
+Table: sast_findings
+  Columns: ['id', 'file_path', 'line_number', 'snippet', 'taint_source']
+Table: symbolic_proofs
+  Columns: ['id', 'target_variable', 'z3_mathematical_proof', 'proved_at']
+Table: app_state_machine
+  Columns: ['state_hash', 'url_path', 'dom_snapshot_hash', 'rl_reward_score', 'discovered_at']
+Table: crypto_weaknesses
+  Columns: ['id', 'protocol', 'weakness_type', 'extracted_private_key', 'pcap_reference']

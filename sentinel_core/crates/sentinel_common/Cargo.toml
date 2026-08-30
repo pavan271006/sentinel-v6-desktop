@@ -1,0 +1,24 @@
+[package]
+name = "sentinel_common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+sentinel-research = []
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

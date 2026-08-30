@@ -1,0 +1,764 @@
+# Valid Minimal Spec for Unit Testing
+metadata:
+  version: "6.0.0"
+  name: "Sentinel V6 Test Canonical Spec"
+  description: "Test canonical specification fixture"
+  schema_version: "1.0.0"
+  status: "AUTHORITATIVE"
+  date: "2026-08-17"
+
+subsystems:
+  taxonomy:
+    core_count: 14
+    professional_count: 7
+    adapter_count: 4
+    research_count: 3
+    total_count: 28
+  definitions:
+    # Core 1..14
+    - id: "SUB-01"
+      name: "ProxyEngine"
+      tier: "Core"
+      crate: "sentinel-proxy"
+      responsibilities: ["Intercept traffic"]
+      dependencies: ["HTTPParser", "ScopeEngine", "EventBus", "ObservationStore"]
+      events_emitted: ["ObservationCreated"]
+      events_consumed: []
+      traits_provided: ["ProxyEngine"]
+      traits_consumed: ["HttpParser", "ScopeEngine", "EventBus", "ObservationStore"]
+      permissions: ["bind_network_sockets"]
+      storage_access: ["transactions"]
+      security_boundary: "Untrusted input"
+    - id: "SUB-02"
+      name: "HTTPParser"
+      tier: "Core"
+      crate: "sentinel-parser"
+      responsibilities: ["Parse HTTP"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["HttpParser"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Parser safety"
+    - id: "SUB-03"
+      name: "ObservationStore"
+      tier: "Core"
+      crate: "sentinel-store"
+      responsibilities: ["Store data"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: ["FindingCreated"]
+      traits_provided: ["ObservationStore"]
+      traits_consumed: []
+      permissions: []
+      storage_access: ["observations", "transactions"]
+      security_boundary: "Encrypted store"
+    - id: "SUB-04"
+      name: "ScopeEngine"
+      tier: "Core"
+      crate: "sentinel-scope"
+      responsibilities: ["Network ACL"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ScopeEngine"]
+      traits_consumed: []
+      permissions: []
+      storage_access: ["scopes"]
+      security_boundary: "Fail closed"
+    - id: "SUB-05"
+      name: "EventBus"
+      tier: "Core"
+      crate: "sentinel-eventbus"
+      responsibilities: ["Routing"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["EventBus"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Bounded buffer"
+    - id: "SUB-06"
+      name: "TaskScheduler"
+      tier: "Core"
+      crate: "sentinel-tasks"
+      responsibilities: ["Scheduling"]
+      dependencies: ["EventBus"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["TaskScheduler"]
+      traits_consumed: ["EventBus"]
+      permissions: []
+      storage_access: ["task_checkpoints"]
+      security_boundary: "Task limits"
+    - id: "SUB-07"
+      name: "ScanOrchestrator"
+      tier: "Core"
+      crate: "sentinel-scan"
+      responsibilities: ["Scan orchestration"]
+      dependencies: ["TaskScheduler", "FuzzerEngine", "CoverageEngine", "ScopeEngine", "EventBus"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ScanOrchestrator"]
+      traits_consumed: ["TaskScheduler", "FuzzerEngine", "CoverageEngine", "ScopeEngine", "EventBus"]
+      permissions: []
+      storage_access: ["scan_configs"]
+      security_boundary: "Scan sandbox"
+    - id: "SUB-08"
+      name: "FuzzerEngine"
+      tier: "Core"
+      crate: "sentinel-fuzz"
+      responsibilities: ["Payload generation"]
+      dependencies: ["HTTPParser"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["FuzzerEngine"]
+      traits_consumed: ["HttpParser"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Safe fuzzer"
+    - id: "SUB-09"
+      name: "VerificationEngine"
+      tier: "Core"
+      crate: "sentinel-verify"
+      responsibilities: ["Proof verification"]
+      dependencies: ["ObservationStore"]
+      events_emitted: ["FindingCreated"]
+      events_consumed: []
+      traits_provided: ["VerificationEngine"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: ["candidates", "findings"]
+      security_boundary: "Evidence boundary"
+    - id: "SUB-10"
+      name: "ContextEngine"
+      tier: "Core"
+      crate: "sentinel-context"
+      responsibilities: ["Fingerprinting"]
+      dependencies: ["ObservationStore"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ContextEngine"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: []
+      security_boundary: "ReDoS limits"
+    - id: "SUB-11"
+      name: "CoverageEngine"
+      tier: "Core"
+      crate: "sentinel-coverage"
+      responsibilities: ["Coverage tracking"]
+      dependencies: ["ObservationStore"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["CoverageEngine"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Internal only"
+    - id: "SUB-12"
+      name: "IdentityManager"
+      tier: "Core"
+      crate: "sentinel-identity"
+      responsibilities: ["Auth states"]
+      dependencies: ["ObservationStore"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["IdentityManager"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: ["identities", "credentials"]
+      security_boundary: "OS keychain"
+    - id: "SUB-13"
+      name: "KnowledgeEngine"
+      tier: "Core"
+      crate: "sentinel-graph"
+      responsibilities: ["Graph topology"]
+      dependencies: ["ObservationStore"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["KnowledgeEngine"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: ["graph_nodes", "graph_edges"]
+      security_boundary: "Query recursion limit"
+    - id: "SUB-14"
+      name: "ReportEngine"
+      tier: "Core"
+      crate: "sentinel-report"
+      responsibilities: ["Report export"]
+      dependencies: ["ObservationStore"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ReportEngine"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: ["findings"]
+      security_boundary: "Sandbox export"
+    # Professional 15..21
+    - id: "SUB-15"
+      name: "BrowserService"
+      tier: "Professional"
+      crate: "sentinel-browser"
+      responsibilities: ["DOM and script analysis"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["BrowserService"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Playwright IPC sandbox"
+    - id: "SUB-16"
+      name: "OASTServer"
+      tier: "Professional"
+      crate: "sentinel-oast"
+      responsibilities: ["Out-of-band correlation"]
+      dependencies: ["ScopeEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["OastServer"]
+      traits_consumed: ["ScopeEngine"]
+      permissions: []
+      storage_access: ["oast_tokens", "oast_interactions"]
+      security_boundary: "AES-256 tokens"
+    - id: "SUB-17"
+      name: "AuthorizationEngine"
+      tier: "Professional"
+      crate: "sentinel-authz"
+      responsibilities: ["AuthZ matrix testing"]
+      dependencies: ["IdentityManager"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["AuthorizationEngine"]
+      traits_consumed: ["IdentityManager"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Tenant boundary"
+    - id: "SUB-18"
+      name: "AIEngine"
+      tier: "Professional"
+      crate: "sentinel-ai"
+      responsibilities: ["LLM analysis"]
+      dependencies: ["AIPolicyEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["AiEngine"]
+      traits_consumed: ["AiPolicyEngine"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Advisory only"
+    - id: "SUB-19"
+      name: "AIPolicyEngine"
+      tier: "Professional"
+      crate: "sentinel-ai-policy"
+      responsibilities: ["Host AI guard"]
+      dependencies: ["ScopeEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["AiPolicyEngine"]
+      traits_consumed: ["ScopeEngine"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Host-side policy"
+    - id: "SUB-20"
+      name: "PluginRuntime"
+      tier: "Professional"
+      crate: "sentinel-plugin"
+      responsibilities: ["WASM execution"]
+      dependencies: ["ScopeEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["PluginRuntime"]
+      traits_consumed: ["ScopeEngine"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Wasmtime WASI default deny"
+    - id: "SUB-21"
+      name: "ResearchPackManager"
+      tier: "Professional"
+      crate: "sentinel-pack"
+      responsibilities: ["Rule pack signing"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ResearchPackManager"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Ed25519 signatures"
+    # Adapter 22..25
+    - id: "SUB-22"
+      name: "SubfinderAdapter"
+      tier: "Adapter"
+      crate: "sentinel-adapter-subfinder"
+      responsibilities: ["Subdomain enumeration"]
+      dependencies: ["ScopeEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ExternalToolAdapter"]
+      traits_consumed: ["ScopeEngine"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Subprocess isolation"
+    - id: "SUB-23"
+      name: "CloudFoxAdapter"
+      tier: "Adapter"
+      crate: "sentinel-adapter-cloudfox"
+      responsibilities: ["Cloud discovery"]
+      dependencies: ["ScopeEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ExternalToolAdapter"]
+      traits_consumed: ["ScopeEngine"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Read-only APIs"
+    - id: "SUB-24"
+      name: "SemgrepAdapter"
+      tier: "Adapter"
+      crate: "sentinel-adapter-semgrep"
+      responsibilities: ["SAST scanning"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ExternalToolAdapter"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Subprocess isolation"
+    - id: "SUB-25"
+      name: "OpenApiParser"
+      tier: "Adapter"
+      crate: "sentinel-adapter-openapi"
+      responsibilities: ["OpenAPI route extraction"]
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ExternalToolAdapter"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Parser safety"
+    # Research 26..28
+    - id: "SUB-26"
+      name: "SmtSolverEngine"
+      tier: "Research"
+      crate: "sentinel-research-smt"
+      responsibilities: ["Symbolic logic proof"]
+      dependencies: ["VerificationEngine"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["SmtSolverEngine"]
+      traits_consumed: ["VerificationEngine"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Feature-gated research"
+    - id: "SUB-27"
+      name: "RlStateEngine"
+      tier: "Research"
+      crate: "sentinel-research-rl"
+      responsibilities: ["RL exploration"]
+      dependencies: ["BrowserService"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["RlStateEngine"]
+      traits_consumed: ["BrowserService"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Feature-gated research"
+    - id: "SUB-28"
+      name: "CryptoAnalysisEngine"
+      tier: "Research"
+      crate: "sentinel-research-crypto"
+      responsibilities: ["Cryptographic weakness detection"]
+      dependencies: ["ObservationStore"]
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["CryptoAnalysisEngine"]
+      traits_consumed: ["ObservationStore"]
+      permissions: []
+      storage_access: []
+      security_boundary: "Feature-gated research"
+
+domain_model:
+  lifecycle_pipeline:
+    - "Transaction"
+    - "Observation"
+    - "Candidate"
+    - "VerificationResult"
+    - "Evidence"
+    - "Finding"
+  core_entities:
+    - name: "Transaction"
+      fields:
+        - name: "meta"
+        - name: "request"
+        - name: "response"
+        - name: "timing"
+        - name: "tls_info"
+    - name: "Observation"
+      fields:
+        - name: "meta"
+        - name: "source"
+        - name: "data_ref"
+    - name: "Candidate"
+      fields:
+        - name: "meta"
+        - name: "source_observation_id"
+        - name: "hypothesis"
+        - name: "status"
+    - name: "VerificationResult"
+      fields:
+        - name: "success"
+        - name: "confidence"
+        - name: "evidence"
+    - name: "Evidence"
+      fields: []
+    - name: "Finding"
+      fields:
+        - name: "meta"
+        - name: "title"
+        - name: "severity"
+        - name: "state"
+  supporting_entities:
+    - name: "Scope"
+    - name: "Endpoint"
+    - name: "Payload"
+    - name: "Identity"
+    - name: "Session"
+    - name: "Credential"
+    - name: "SecretReference"
+    - name: "Asset"
+    - name: "Technology"
+    - name: "State"
+    - name: "Workflow"
+    - name: "Resource"
+    - name: "Action"
+    - name: "Task"
+    - name: "Report"
+    - name: "RegressionTest"
+    - name: "OASTInteraction"
+    - name: "AttackPath"
+    - name: "Note"
+    - name: "Screenshot"
+  enums:
+    - name: "HttpMethod"
+      variants: ["GET", "POST", "PUT", "DELETE"]
+    - name: "Severity"
+      variants: ["Critical", "High", "Medium", "Low", "Info"]
+    - name: "FindingLifecycle"
+      variants: ["Candidate", "Verified", "Confirmed"]
+
+credential_security:
+  model: "SecretReference"
+  zero_plaintext_rules: ["Zero plaintext secrets stored in plain records"]
+  secret_reference_specification:
+    description: "UUID reference to secure keychain"
+  supported_keychains: ["MacOS Keychain", "Windows Credential Manager", "Linux Secret Service"]
+
+scope_model:
+  policy: "FAIL_CLOSED_DEFAULT_DENY"
+  decision_schema:
+    struct_name: "ScopeDecision"
+    fields:
+      - name: "decision_id"
+      - name: "allowed"
+      - name: "reason"
+      - name: "matched_rule"
+      - name: "target"
+      - name: "scope_version"
+      - name: "timestamp"
+  dns_rebinding_defense:
+    description: "Post-DNS resolution checks"
+  redos_protection:
+    description: "Regex pattern limits"
+  scope_rules:
+    includes: "List of globs"
+    excludes: "List of excludes"
+
+interfaces_and_traits:
+  traits:
+    - name: "ProxyEngine"
+      methods: [{name: "start"}, {name: "stop"}]
+    - name: "HttpParser"
+      methods: [{name: "parse_request"}, {name: "parse_response"}]
+    - name: "ObservationStore"
+      methods: [{name: "insert"}, {name: "query_sql"}]
+    - name: "ScopeEngine"
+      methods: [{name: "is_in_scope"}, {name: "update_scope"}]
+    - name: "EventBus"
+      methods: [{name: "publish_telemetry"}, {name: "publish_critical"}]
+    - name: "TaskScheduler"
+      methods: [{name: "submit"}, {name: "cancel"}]
+    - name: "ScanOrchestrator"
+      methods: [{name: "start_scan"}, {name: "pause_scan"}]
+    - name: "FuzzerEngine"
+      methods: [{name: "fuzz"}]
+    - name: "VerificationEngine"
+      methods: [{name: "verify_candidate"}, {name: "correlate_oast"}]
+    - name: "ContextEngine"
+      methods: [{name: "fingerprint"}, {name: "classify_parameter"}]
+    - name: "CoverageEngine"
+      methods: [{name: "record_test"}]
+    - name: "IdentityManager"
+      methods: [{name: "add_identity"}]
+    - name: "KnowledgeEngine"
+      methods: [{name: "add_node"}]
+    - name: "ReportEngine"
+      methods: [{name: "generate"}]
+    - name: "BrowserService"
+      methods: [{name: "navigate"}]
+    - name: "OastServer"
+      methods: [{name: "start"}]
+    - name: "AuthorizationEngine"
+      methods: [{name: "build_matrix"}]
+    - name: "AiEngine"
+      methods: [{name: "analyze"}, {name: "is_available"}]
+    - name: "AiPolicyEngine"
+      methods: [{name: "validate_input"}, {name: "is_destructive"}]
+    - name: "PluginRuntime"
+      methods: [{name: "load_wasm"}, {name: "execute"}]
+    - name: "ResearchPackManager"
+      methods: [{name: "load_pack"}, {name: "verify_signature"}]
+    - name: "ExternalToolAdapter"
+      methods: [{name: "execute"}, {name: "is_installed"}]
+    - name: "SmtSolverEngine"
+      methods: [{name: "prove_logic_flaw"}]
+    - name: "RlStateEngine"
+      methods: [{name: "explore_state_machine"}]
+    - name: "CryptoAnalysisEngine"
+      methods: [{name: "analyze_handshake"}]
+
+events:
+  channels:
+    - name: "telemetry"
+    - name: "critical"
+  durable_events:
+    - name: "FindingCreated"
+  broadcast_events:
+    - name: "ObservationCreated"
+
+ipc_contracts:
+  protobuf_package: "sentinel.v6.ipc"
+  services:
+    - name: "BrowserDaemon"
+      rpcs:
+        - name: "Navigate"
+        - name: "ExecuteScript"
+        - name: "CaptureDom"
+        - name: "TakeScreenshot"
+        - name: "Close"
+  messages:
+    - name: "Uuid"
+    - name: "Timestamp"
+    - name: "NavigateRequest"
+    - name: "NavigateResponse"
+    - name: "ExecuteScriptRequest"
+    - name: "ExecuteScriptResponse"
+    - name: "CaptureDomRequest"
+    - name: "CaptureDomResponse"
+    - name: "TakeScreenshotRequest"
+    - name: "TakeScreenshotResponse"
+    - name: "CloseRequest"
+    - name: "CloseResponse"
+    - name: "UiTrafficEvent"
+    - name: "UiFindingEvent"
+    - name: "SentinelUiStream"
+    - name: "UiScanProgressEvent"
+    - name: "UiTaskStatusEvent"
+    - name: "UiCoverageEvent"
+    - name: "UiContextEvent"
+    - name: "UiScopeViolationEvent"
+  streams:
+    - name: "SentinelUiStream"
+
+configuration:
+  registries:
+    - name: "core"
+
+error_model:
+  canonical_enum: "SentinelError"
+  variants:
+    - name: "ScopeViolation"
+    - name: "NetworkTimeout"
+  crash_safe_rules: ["Never panic on untrusted inputs"]
+
+storage:
+  sqlite:
+    tables:
+      - name: "scopes"
+        columns: [{name: "id"}, {name: "version"}]
+      - name: "graph_nodes"
+        columns: [{name: "id"}, {name: "label"}]
+      - name: "graph_edges"
+        columns: [{name: "id"}, {name: "source_id"}, {name: "target_id"}]
+        foreign_keys:
+          - column: "source_id"
+            foreign_table: "graph_nodes"
+            foreign_column: "id"
+          - column: "target_id"
+            foreign_table: "graph_nodes"
+            foreign_column: "id"
+      - name: "endpoints"
+        columns: [{name: "id"}, {name: "graph_node_id"}]
+      - name: "parameters"
+        columns: [{name: "id"}, {name: "endpoint_id"}]
+      - name: "observations"
+        columns: [{name: "id"}, {name: "data_ref"}]
+      - name: "transactions"
+        columns: [{name: "id"}, {name: "req_blob_id"}]
+      - name: "identities"
+        columns: [{name: "id"}]
+      - name: "credentials"
+        columns: [{name: "id"}]
+      - name: "oast_tokens"
+        columns: [{name: "id"}]
+      - name: "oast_interactions"
+        columns: [{name: "id"}]
+      - name: "candidates"
+        columns: [{name: "id"}]
+      - name: "findings"
+        columns: [{name: "id"}]
+      - name: "task_checkpoints"
+        columns: [{name: "id"}]
+      - name: "scan_configs"
+        columns: [{name: "id"}]
+      - name: "proxy_intercept_rules"
+        columns: [{name: "id"}]
+  blob_store:
+    path: ".sentinel/blobs"
+    algorithm: "SHA-256"
+    compression: "zstd"
+  tantivy:
+    index_path: ".sentinel/search"
+    schema_fields: ["body_text", "headers"]
+    sync_mode: "WAL_TAILING"
+
+protocols:
+  http1_1: {enabled: true}
+  http2: {enabled: true}
+  http3_quic: {enabled: true}
+  tls: {enabled: true}
+  websocket: {enabled: true}
+  sse: {enabled: true}
+  grpc: {enabled: true}
+
+scanner_and_fuzzer:
+  pipeline_stages: ["Detection", "Candidate", "Verification", "Evidence", "Finding"]
+  fuzz_profile_schema: {name: "FuzzProfile"}
+  mutator_types: ["BitFlip", "ByteReplace", "Grammar", "Wordlist", "Radamsa", "AI"]
+  insertion_points: ["Query", "Body", "Header", "Path", "Cookie"]
+  oracles: ["StatusCode", "Timing", "OAST", "DOMDiff"]
+  resource_budget: {max_concurrent_requests: 50}
+  minimization: {enabled: true}
+  replay: {deterministic: true}
+  stop_conditions: ["MaxRequests", "Duration", "TargetErrorRate"]
+
+plugin_security:
+  capability_set:
+    network: false
+    filesystem: false
+    secrets: false
+    database: false
+    browser: false
+  resource_limits:
+    max_memory_mb: 64
+    max_execution_ms: 5000
+    max_network_requests: 0
+  sandbox_modes: ["Wasmtime"]
+  default_policy: "DENY"
+  signature_verification: "Ed25519"
+
+research_modules:
+  feature_flag: "sentinel-research"
+  modules:
+    - name: "SmtSolverEngine"
+    - name: "RlStateEngine"
+    - name: "CryptoAnalysisEngine"
+  isolation_invariants: ["Must never be linked into standard build without feature flag"]
+
+ai_security:
+  optionality_principle: "AI features are purely optional and auxiliary"
+  untrusted_target_data_principle: "All data from target is untrusted"
+  policy_layers: ["Input Sanitization", "Host AI Policy Engine", "Output Enforcement"]
+  blocked_patterns: ["rm -rf", "drop table", "execute_system_command"]
+  validation_schemas: ["AiRequest", "AiResponse"]
+
+security_invariants:
+  invariants:
+    - id: "SEC-01"
+      name: "Scope Authorization Invariant"
+      statement: "No active outbound network packet may be transmitted without an explicit ScopeDecision."
+      enforcement_layer: "ProxyEngine (SUB-01), ScopeEngine (SUB-04)"
+      verification_test: "Unit test asserting out-of-scope URI fails closed."
+    - id: "SEC-02"
+      name: "OAST Token Confidentiality Invariant"
+      statement: "Out-of-band interaction tokens must use AES-256 authenticated encryption."
+      enforcement_layer: "OASTServer (SUB-16)"
+      verification_test: "Token generation test confirming ciphertext entropy."
+    - id: "SEC-03"
+      name: "Host AI Policy Gate Invariant"
+      statement: "All AI-generated strings must pass through AIPolicyEngine host-side policy."
+      enforcement_layer: "AIPolicyEngine (SUB-19)"
+      verification_test: "Policy test confirming destructive prompt is rejected."
+    - id: "SEC-04"
+      name: "WASM Capability Drop Invariant"
+      statement: "WASM plugins execute with default-deny capabilities."
+      enforcement_layer: "PluginRuntime (SUB-20)"
+      verification_test: "Sandbox test verifying unpermitted socket traps."
+    - id: "SEC-05"
+      name: "Research Module Optionality Invariant"
+      statement: "Research engines are feature-flagged behind sentinel-research."
+      enforcement_layer: "Cargo crate feature architecture"
+      verification_test: "Build and test command with --no-default-features succeeds."
+    - id: "SEC-06"
+      name: "Finding Proof Requirement Invariant"
+      statement: "No Candidate may transition to Verified without empirical Evidence from VerificationEngine."
+      enforcement_layer: "VerificationEngine (SUB-09)"
+      verification_test: "State machine test verifying transition fails without evidence."
+    - id: "SEC-07"
+      name: "Evidence Immutability Invariant"
+      statement: "Evidence blobs stored in blob storage are content-addressed with SHA-256."
+      enforcement_layer: "ObservationStore (SUB-03)"
+      verification_test: "Tamper test asserting modified blob content triggers SHA-256 mismatch."
+    - id: "SEC-08"
+      name: "Cross-Tenant Project Isolation Invariant"
+      statement: "SQLite databases and blob directories are physically isolated per project."
+      enforcement_layer: "ObservationStore (SUB-03)"
+      verification_test: "Project switch test verifying project isolation."
+    - id: "SEC-09"
+      name: "Zero Plaintext Secrets Invariant"
+      statement: "Credentials, API keys, and session tokens must use SecretReference UUID pointing to OS keychain with zero plaintext secrets."
+      enforcement_layer: "IdentityManager (SUB-12)"
+      verification_test: "Database audit test asserting zero plaintext secrets in storage."
+    - id: "SEC-10"
+      name: "Triple Representation Invariant"
+      statement: "Every transaction retains byte-exact raw blob, parsed structured representation, and normalized text."
+      enforcement_layer: "HTTPParser (SUB-02)"
+      verification_test: "Round-trip parser test asserting raw byte slice identity."
+    - id: "SEC-11"
+      name: "WebView Sandbox Isolation Invariant"
+      statement: "Scanning browser runs in Playwright sandbox; Tauri WebView never renders untrusted target HTML."
+      enforcement_layer: "BrowserService (SUB-15)"
+      verification_test: "DOM injection test verifying malicious payload isolation."
+    - id: "SEC-12"
+      name: "Bounded Buffer Backpressure Invariant"
+      statement: "All EventBus channels enforce bounded capacities with backpressure."
+      enforcement_layer: "EventBus (SUB-05)"
+      verification_test: "Channel saturation test verifying bounded queue."
+
+httpql_grammar:
+  peg_specification: "Grammar rules for HTTPQL"
+  fields: ["method", "uri", "status", "headers", "body"]
+  operators: ["==", "!=", "~=", "contains", "in"]
+  header_subfields_syntax: "headers.header_name"
+  escape_sequence_rules: "Standard escape sequences"
+
+builtin_rules:
+  technologies: [{name: "nginx"}, {name: "apache"}]
+  parameter_classifiers: [{param: "id", class: "numeric"}]
+  ai_safety: [{rule: "block_shell_injection"}]

@@ -1,0 +1,78 @@
+// SENTINEL V6: AI Code Generation Scaffold
+// V6_HTTPQL_GRAMMAR.pest
+//
+// Definitive PEG grammar for HTTPQL (HTTP Query Language).
+// Used with the 'pest' crate in Rust for traffic filtering.
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+// ---------------------------------------------------------
+// Core Types
+// ---------------------------------------------------------
+
+int_lit = @{ "-"? ~ ASCII_DIGIT+ }
+string_lit = @{ "\"" ~ inner_str ~ "\"" }
+inner_str = @{ ("\\\"" | "\\\\" | (!"\"" ~ ANY))* }
+bool_lit = { "true" | "false" }
+null_lit = { "null" }
+array_lit = { "[" ~ value ~ ("," ~ value)* ~ "]" }
+
+value = { string_lit | int_lit | bool_lit | null_lit | array_lit }
+
+// ---------------------------------------------------------
+// Fields and Operators
+// ---------------------------------------------------------
+
+header_subfield = @{ (ASCII_ALPHANUMERIC | "-" | "_")+ }
+req_header_field = { "req.header." ~ header_subfield }
+res_header_field = { "res.header." ~ header_subfield }
+
+field = { 
+    req_header_field |
+    res_header_field |
+    "req.method" | "req.uri" | "req.host" | "req.path" | "req.body" | "req.header" |
+    "res.status" | "res.body" | "res.header" | "res.content_type" | "res.cookie" |
+    "tx.duration" | "tx.in_scope" | "tx.has_finding"
+}
+
+operator = {
+    "==" | "!=" | ">=" | "<=" | ">" | "<" |
+    "~="  | // Regex match
+    "!~=" | // Regex not match
+    "in"  | // Array inclusion
+    "contains" // Substring inclusion
+}
+
+// ---------------------------------------------------------
+// Expressions
+// ---------------------------------------------------------
+
+// A single condition like: res.status >= 400 or res.header.Server contains "nginx"
+condition = { field ~ operator ~ value }
+
+// Logical operators
+and_op = { "AND" | "and" | "&&" }
+or_op  = { "OR" | "or" | "||" }
+not_op = { "NOT" | "not" | "!" }
+
+// ---------------------------------------------------------
+// Recursive Query Structure
+// ---------------------------------------------------------
+
+primary = {
+    condition |
+    "(" ~ expr ~ ")" |
+    not_op ~ primary
+}
+
+and_expr = { primary ~ (and_op ~ primary)* }
+
+or_expr = { and_expr ~ (or_op ~ and_expr)* }
+
+expr = { or_expr }
+
+// ---------------------------------------------------------
+// Entry Point
+// ---------------------------------------------------------
+
+query = { SOI ~ expr ~ EOI }

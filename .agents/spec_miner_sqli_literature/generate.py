@@ -1,0 +1,1 @@
+# SQLi Research Synthesis Generator

@@ -1,0 +1,39 @@
+package sentinel:plugin@0.1.0;
+
+interface types {
+    enum severity {
+        info,
+        low,
+        medium,
+        high,
+        critical
+    }
+
+    record http-request {
+        method: string,
+        uri: string,
+        headers: list<tuple<string, string>>,
+        body: list<u8>,
+    }
+
+    record http-response {
+        status: u16,
+        headers: list<tuple<string, string>>,
+        body: list<u8>,
+    }
+
+    record check-result {
+        matched: bool,
+        check-id: string,
+        name: string,
+        severity: severity,
+        confidence: float32,
+        description: string,
+        evidence-payload: list<u8>,
+    }
+}
+
+world security-plugin {
+    import log: func(level: string, message: string);
+    export analyze-transaction: func(req: types.http-request, res: types.http-response) -> list<types.check-result>;
+}

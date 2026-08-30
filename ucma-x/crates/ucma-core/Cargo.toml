@@ -1,0 +1,14 @@
+[package]
+name = "ucma-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+blake3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+zeroize = { workspace = true }
+bytes = { workspace = true }

@@ -1,0 +1,7 @@
+syntax = "proto3";
+package sentinel.v6.ipc;
+
+// Missing BrowserDaemon service and SentinelUiStream oneofs
+message Uuid {
+    string value = 1;
+}

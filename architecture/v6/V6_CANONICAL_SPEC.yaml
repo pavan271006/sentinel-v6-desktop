@@ -1,0 +1,4278 @@
+# ==============================================================================
+# SENTINEL V6 — AUTHORITATIVE CANONICAL ARCHITECTURE SPECIFICATION
+# ==============================================================================
+# File: V6_CANONICAL_SPEC.yaml
+# Version: 6.0.0
+# Authority: Authoritative Machine-Readable Single Source of Truth
+# Status: AUTHORITATIVE
+# Date: 2026-08-17
+# ==============================================================================
+
+metadata:
+  version: "6.0.0"
+  name: "SENTINEL V6 Canonical Architecture Specification"
+  description: "The authoritative machine-readable single source of truth for SENTINEL V6: The Security Researcher's Operating Environment."
+  schema_version: "1.0.0"
+  status: "AUTHORITATIVE"
+  date: "2026-08-17"
+
+# ==============================================================================
+# 1. SUBSYSTEMS & TAXONOMY
+# ==============================================================================
+subsystems:
+  taxonomy:
+    core_count: 14
+    professional_count: 7
+    adapter_count: 4
+    research_count: 3
+    total_count: 28
+
+  definitions:
+    # --------------------------------------------------------------------------
+    # CORE TIER (14 Subsystems) — Single Local Desktop Binary
+    # --------------------------------------------------------------------------
+    - id: "SUB-01"
+      name: "ProxyEngine"
+      tier: "Core"
+      crate: "sentinel-proxy"
+      responsibilities:
+        - "Intercept, inspect, and modify HTTP/1.1, HTTP/2, and WebSocket network traffic"
+        - "Enforce ScopeEngine network decisions prior to socket connection"
+        - "Preserve raw byte stream representation and emit ObservationCreated events"
+        - "Apply active and passive interception rules (drop, modify, log)"
+      dependencies:
+        - "HTTPParser"
+        - "ScopeEngine"
+        - "EventBus"
+        - "ObservationStore"
+      events_emitted:
+        - "ObservationCreated"
+      events_consumed: []
+      traits_provided:
+        - "ProxyEngine"
+      traits_consumed:
+        - "HttpParser"
+        - "ScopeEngine"
+        - "EventBus"
+        - "ObservationStore"
+      permissions:
+        - "bind_network_sockets"
+        - "intercept_traffic"
+      storage_access:
+        - "transactions"
+        - "proxy_intercept_rules"
+        - "blobs"
+      security_boundary: "Untrusted network input; 10MB memory allocation bound per transaction"
+
+    - id: "SUB-02"
+      name: "HTTPParser"
+      tier: "Core"
+      crate: "sentinel-parser"
+      responsibilities:
+        - "Byte-safe, fault-tolerant parsing of HTTP/1.1 and HTTP/2 requests and responses"
+        - "Preserve raw delimiter whitespace and byte-exact fidelity without normalization loss"
+        - "Detect and emit structured ParseWarning items for request smuggling analysis"
+        - "Serialize structured request and response objects back to byte streams"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "HttpParser"
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Forked httparse parser; differential parser protection; zero-panic guarantees on malformed input"
+
+    - id: "SUB-03"
+      name: "ObservationStore"
+      tier: "Core"
+      crate: "sentinel-store"
+      responsibilities:
+        - "Provide ACID dual-write persistence for metadata in SQLite (WAL mode)"
+        - "Provide BM25 full-text search indexing over transaction bodies via Tantivy"
+        - "Manage content-addressed (SHA-256) blob store for raw payload storage"
+        - "Auto-rebuild Tantivy search indexes from SQLite WAL on startup if corrupted"
+      dependencies: []
+      events_emitted: []
+      events_consumed:
+        - "FindingCreated"
+        - "CandidateVerified"
+      traits_provided:
+        - "ObservationStore"
+      traits_consumed: []
+      permissions:
+        - "filesystem_read_write"
+      storage_access:
+        - "all_sqlite_tables"
+        - "blob_store"
+        - "tantivy_indices"
+      security_boundary: "Single-writer async channel; encrypted secrets at rest; zero plaintext storage"
+
+    - id: "SUB-04"
+      name: "ScopeEngine"
+      tier: "Core"
+      crate: "sentinel-scope"
+      responsibilities:
+        - "Enforce fail-closed (Default DENY) network access control list (ACL)"
+        - "Evaluate hostnames, URIs, and post-resolution socket IP addresses against scope rules"
+        - "Prevent SSRF and DNS rebinding attacks by validating resolved socket addresses"
+        - "Execute regex rule matching under strict length (<=1000) and time (<=100ms) bounds"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ScopeEngine"
+      traits_consumed: []
+      permissions: []
+      storage_access:
+        - "scopes"
+      security_boundary: "Fail-closed default DENY policy; ReDoS bounded regex engine; socket-level IP binding"
+
+    - id: "SUB-05"
+      name: "EventBus"
+      tier: "Core"
+      crate: "sentinel-bus"
+      responsibilities:
+        - "Two-tier asynchronous pub/sub messaging infrastructure"
+        - "Broadcast channel (tokio::sync::broadcast, 10,000 capacity) for telemetry and UI updates"
+        - "Guaranteed mpsc channel (tokio::sync::mpsc) with publisher backpressure for critical findings"
+        - "Route events between core engines, adapters, and UI Tauri IPC streams"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "EventBus"
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Strict memory isolation; bounded queue capacities; telemetry drop-on-lag"
+
+    - id: "SUB-06"
+      name: "TaskScheduler"
+      tier: "Core"
+      crate: "sentinel-scheduler"
+      responsibilities:
+        - "Manage priority queue of asynchronous scanning, fuzzing, and analysis background tasks"
+        - "Enforce ResourceBudget limits (max requests, duration, memory, concurrency, bandwidth)"
+        - "Persist task execution checkpoints into SQLite for crash recovery and resume"
+        - "Support task lifecycle states: Pending, Running, Paused, Completed, Failed, Cancelled"
+      dependencies:
+        - "EventBus"
+      events_emitted:
+        - "TaskStatus"
+      events_consumed: []
+      traits_provided:
+        - "TaskScheduler"
+      traits_consumed:
+        - "EventBus"
+      permissions: []
+      storage_access:
+        - "task_checkpoints"
+      security_boundary: "Bounded concurrency and memory limits per task; safe task cancellation tokens"
+
+    - id: "SUB-07"
+      name: "ScanOrchestrator"
+      tier: "Core"
+      crate: "sentinel-scanner"
+      responsibilities:
+        - "Orchestrate multi-phase active scanning workflows across target endpoints"
+        - "Evaluate ScopeEngine authorization before dispatching test jobs"
+        - "Coordinate task scheduling, fuzzer mutation streams, and verification engines"
+        - "Track real-time scan progress, completed checks, and phase transitions"
+      dependencies:
+        - "TaskScheduler"
+        - "FuzzerEngine"
+        - "CoverageEngine"
+        - "ScopeEngine"
+        - "EventBus"
+      events_emitted:
+        - "ScanProgress"
+      events_consumed: []
+      traits_provided:
+        - "ScanOrchestrator"
+      traits_consumed:
+        - "TaskScheduler"
+        - "FuzzerEngine"
+        - "CoverageEngine"
+        - "ScopeEngine"
+        - "EventBus"
+      permissions: []
+      storage_access:
+        - "scan_configs"
+        - "endpoints"
+      security_boundary: "Scope pre-validation before test dispatch; state machine pause/resume bounds"
+
+    - id: "SUB-08"
+      name: "FuzzerEngine"
+      tier: "Core"
+      crate: "sentinel-fuzzer"
+      responsibilities:
+        - "Generate structured and mutated test payloads based on FuzzProfile configurations"
+        - "Support 10 mutation algorithms: BitFlip, ByteReplace, Grammar, Wordlist, Radamsa, Boundary, Unicode, Truncation, FormatString, AI"
+        - "Inject test values across 10 insertion points (Query, Body, Header, Path, Cookie, JsonPath, XPath, Multipart, GraphQL, WS)"
+        - "Evaluate mutation stream rate limits and resource budget stop conditions"
+      dependencies:
+        - "HTTPParser"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "FuzzerEngine"
+      traits_consumed:
+        - "HttpParser"
+      permissions: []
+      storage_access: []
+      security_boundary: "Safe non-destructive payloads by default; Rayon thread pool concurrency limits"
+
+    - id: "SUB-09"
+      name: "VerificationEngine"
+      tier: "Core"
+      crate: "sentinel-verify"
+      responsibilities:
+        - "Execute active verification strategies to prove vulnerability existence without false positives"
+        - "Support 10 verification strategies: BrowserExecution, OASTCorrelation, TimingStatistical, ResponseDifferential, StateVerification, AuthorizationReplay, ContentVerification, MathematicalVerification, ErrorClassification, CausalMinimization"
+        - "Bind immutable, content-addressed Evidence to confirmed findings"
+        - "Correlate out-of-band OAST interactions with candidate hypotheses"
+      dependencies:
+        - "ObservationStore"
+      events_emitted:
+        - "FindingCreated"
+        - "CandidateVerified"
+      events_consumed: []
+      traits_provided:
+        - "VerificationEngine"
+      traits_consumed:
+        - "ObservationStore"
+      permissions: []
+      storage_access:
+        - "candidates"
+        - "verifications"
+        - "evidence"
+        - "findings"
+      security_boundary: "Mandatory empirical evidence requirement; non-destructive proof constraints"
+
+    - id: "SUB-10"
+      name: "ContextEngine"
+      tier: "Core"
+      crate: "sentinel-context"
+      responsibilities:
+        - "Passively fingerprint server technologies, frameworks, and web architectures from transactions"
+        - "Classify parameter semantics (UUID, JWT, Base64, Email, ObjectId, URL, FilePath, etc.)"
+        - "Feed detected context to ScanOrchestrator for intelligent test selection"
+        - "Execute regex signature rules with strict length and execution time bounds"
+      dependencies:
+        - "ObservationStore"
+      events_emitted:
+        - "ContextDetected"
+      events_consumed: []
+      traits_provided:
+        - "ContextEngine"
+      traits_consumed:
+        - "ObservationStore"
+      permissions: []
+      storage_access:
+        - "graph_nodes"
+      security_boundary: "ReDoS bounded signature evaluation; payload inspection ceiling (5MB max)"
+
+    - id: "SUB-11"
+      name: "CoverageEngine"
+      tier: "Core"
+      crate: "sentinel-coverage"
+      responsibilities:
+        - "Track attack surface exploration and testing depth across endpoints and parameters"
+        - "Record completed security checks per parameter to prevent redundant testing"
+        - "Calculate quantitative coverage metrics (endpoints tested, parameters tested, percentage)"
+        - "Query untested endpoints and parameters for next-test prioritization"
+      dependencies:
+        - "ObservationStore"
+      events_emitted:
+        - "CoverageUpdate"
+      events_consumed: []
+      traits_provided:
+        - "CoverageEngine"
+      traits_consumed:
+        - "ObservationStore"
+      permissions: []
+      storage_access:
+        - "endpoints"
+        - "parameters"
+      security_boundary: "Accurate parameter coverage metrics; in-memory deduplication"
+
+    - id: "SUB-12"
+      name: "IdentityManager"
+      tier: "Core"
+      crate: "sentinel-identity"
+      responsibilities:
+        - "Manage user identities, test personas, role contexts, and active sessions"
+        - "Integrate with OS Keychain / secure vault to resolve SecretReference UUIDs"
+        - "Inject authentication headers, cookies, and tokens into outgoing requests in-memory"
+        - "Zeroize decrypted credential buffers immediately after socket transmission"
+      dependencies:
+        - "ObservationStore"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "IdentityManager"
+      traits_consumed:
+        - "ObservationStore"
+      permissions:
+        - "keychain_access"
+      storage_access:
+        - "identities"
+        - "credentials"
+        - "sessions"
+      security_boundary: "Zero plaintext secrets in DB, logs, or events; ephemeral in-memory zeroization"
+
+    - id: "SUB-13"
+      name: "KnowledgeEngine"
+      tier: "Core"
+      crate: "sentinel-knowledge"
+      responsibilities:
+        - "Maintain topology graph of discovered assets, domains, IPs, services, and endpoints"
+        - "Execute graph traversal algorithms (shortest attack path, neighborhood exploration)"
+        - "Enforce bounded recursive CTE query depth (max depth <= 5) in SQLite"
+        - "Resolve multi-source entity relationships into unified graph nodes and edges"
+      dependencies:
+        - "ObservationStore"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "KnowledgeEngine"
+      traits_consumed:
+        - "ObservationStore"
+      permissions: []
+      storage_access:
+        - "graph_nodes"
+        - "graph_edges"
+        - "attack_paths"
+      security_boundary: "Bounded recursive query depth; cycle detection in attack path traversal"
+
+    - id: "SUB-14"
+      name: "ReportEngine"
+      tier: "Core"
+      crate: "sentinel-report"
+      responsibilities:
+        - "Export confirmed vulnerability findings into structured report formats (PDF, Markdown, JSON, HTML)"
+        - "Assemble content-addressed evidence, reproduction steps, and remediation guidance"
+        - "Sanitize finding descriptions to prevent HTML/script injection in generated reports"
+        - "Operate in isolated sandboxed file generation environment"
+      dependencies:
+        - "ObservationStore"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ReportEngine"
+      traits_consumed:
+        - "ObservationStore"
+      permissions:
+        - "filesystem_write"
+      storage_access:
+        - "findings"
+        - "verifications"
+        - "evidence"
+        - "reports"
+      security_boundary: "Sandboxed template rendering; no external network fetches during report generation"
+
+    # --------------------------------------------------------------------------
+    # PROFESSIONAL TIER (7 Subsystems) — Desktop Binary + Managed Daemons
+    # --------------------------------------------------------------------------
+    - id: "SUB-15"
+      name: "BrowserService"
+      tier: "Professional"
+      crate: "sentinel-browser"
+      responsibilities:
+        - "Manage out-of-process Playwright browser runner daemon via gRPC"
+        - "Perform DOM XSS verification, client-side script execution, and DOM snapshots"
+        - "Capture full-page and element PNG screenshots for visual evidence proof"
+        - "Enforce strict browser context pooling (3-5 max concurrent contexts)"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "BrowserService"
+      traits_consumed: []
+      permissions:
+        - "subprocess_spawn"
+        - "grpc_ipc"
+      storage_access:
+        - "screenshots"
+        - "blobs"
+      security_boundary: "Out-of-process gRPC isolation; Tauri WebView never renders untrusted target HTML"
+
+    - id: "SUB-16"
+      name: "OASTServer"
+      tier: "Professional"
+      crate: "sentinel-oast"
+      responsibilities:
+        - "Run out-of-band listener daemons for DNS, HTTP, and HTTPS callback correlation"
+        - "Generate cryptographically secure AES-256-GCM stateless correlation tokens"
+        - "Correlate external interaction callbacks with active SSRF, RCE, and XXE test cases"
+        - "Provide DoS resistance by validating token HMAC/ciphertext before storage lookup"
+      dependencies:
+        - "ScopeEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "OastServer"
+      traits_consumed:
+        - "ScopeEngine"
+      permissions:
+        - "bind_dns_http_sockets"
+      storage_access:
+        - "oast_tokens"
+        - "oast_interactions"
+      security_boundary: "AES-256-GCM stateless tokens; constant-time invalid token drop; DoS resilience"
+
+    - id: "SUB-17"
+      name: "AuthorizationEngine"
+      tier: "Professional"
+      crate: "sentinel-authz"
+      responsibilities:
+        - "Automated multi-identity authorization matrix construction and IDOR testing"
+        - "Execute cross-role request replay (e.g. Admin, TenantA, TenantB, Anonymous)"
+        - "Detect horizontal and vertical privilege escalation via differential analysis"
+        - "Identify broken object level authorization across parameterized endpoints"
+      dependencies:
+        - "IdentityManager"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "AuthorizationEngine"
+      traits_consumed:
+        - "IdentityManager"
+      permissions: []
+      storage_access:
+        - "identities"
+        - "endpoints"
+      security_boundary: "Differential status and body comparison; strict scope validation on replayed requests"
+
+    - id: "SUB-18"
+      name: "AIEngine"
+      tier: "Professional"
+      crate: "sentinel-ai"
+      responsibilities:
+        - "Provide optional LLM prompt synthesis and vulnerability hypothesis generation"
+        - "Generate targeted test mutation ideas and parameter classification suggestions"
+        - "Enforce structured JSON output schemas for all model completions"
+        - "Gracefully report unavailability (is_available == false) when offline or unconfigured"
+      dependencies:
+        - "AIPolicyEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "AiEngine"
+      traits_consumed:
+        - "AiPolicyEngine"
+      permissions:
+        - "outbound_ai_api"
+      storage_access: []
+      security_boundary: "Platform is 100% operational when offline; target response content is treated as untrusted"
+
+    - id: "SUB-19"
+      name: "AIPolicyEngine"
+      tier: "Professional"
+      crate: "sentinel-ai-policy"
+      responsibilities:
+        - "Enforce 5-layer security defense over all incoming prompts and outgoing AI completions"
+        - "Detect and neutralize indirect prompt injection attempts from hostile target data"
+        - "Block destructive commands (DROP TABLE, rm -rf, mkfs, dd, shell scripts)"
+        - "Enforce human-in-the-loop interactive approval gate for high-risk proposed actions"
+      dependencies:
+        - "ScopeEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "AiPolicyEngine"
+      traits_consumed:
+        - "ScopeEngine"
+      permissions: []
+      storage_access: []
+      security_boundary: "Fail-closed policy evaluation; blocks unapproved state mutations and prompt leaks"
+
+    - id: "SUB-20"
+      name: "PluginRuntime"
+      tier: "Professional"
+      crate: "sentinel-plugin"
+      responsibilities:
+        - "Execute third-party plugins in sandboxed WebAssembly (Wasmtime) and Rhai scripting environments"
+        - "Enforce fine-grained capability sets (network, filesystem, secrets, database, browser)"
+        - "Apply strict resource limits (memory ceiling, CPU time, execution timeout, bandwidth)"
+        - "Default policy is DENY for all ambient capabilities until explicitly granted by the user"
+      dependencies:
+        - "ScopeEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "PluginRuntime"
+      traits_consumed:
+        - "ScopeEngine"
+      permissions:
+        - "wasm_runtime"
+      storage_access: []
+      security_boundary: "Wasmtime WASI capability dropping; out-of-process isolation; user interactive consent"
+
+    - id: "SUB-21"
+      name: "ResearchPackManager"
+      tier: "Professional"
+      crate: "sentinel-pack"
+      responsibilities:
+        - "Load, package, and distribute community and enterprise security check packs"
+        - "Verify Ed25519 cryptographic signatures against trusted maintainer public keys"
+        - "Quarantine and warn on unsigned or signature-failing research packs"
+        - "Support hot-reloading of security check definitions during active sessions"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ResearchPackManager"
+      traits_consumed: []
+      permissions:
+        - "filesystem_read"
+      storage_access: []
+      security_boundary: "Ed25519 digital signature validation; unauthenticated pack quarantine"
+
+    # --------------------------------------------------------------------------
+    # ADAPTER TIER (4 Subsystems) — Process-Isolated External Tool Wrappers
+    # --------------------------------------------------------------------------
+    - id: "SUB-22"
+      name: "SubfinderAdapter"
+      tier: "Adapter"
+      crate: "sentinel-adapter-subfinder"
+      responsibilities:
+        - "Wrap Subfinder CLI for passive subdomain enumeration as an external subprocess"
+        - "Communicate strictly over STDIN / STDOUT JSON pipes without shared memory"
+        - "Validate discovered subdomains against ScopeEngine before adding to asset graph"
+        - "Handle tool absence gracefully with is_installed check and installation guidance"
+      dependencies:
+        - "ScopeEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ExternalToolAdapter"
+      traits_consumed:
+        - "ScopeEngine"
+      permissions:
+        - "subprocess_spawn"
+      storage_access:
+        - "subdomain_assets"
+        - "graph_nodes"
+      security_boundary: "Subprocess stdio JSON isolation; ScopeEngine target validation"
+
+    - id: "SUB-23"
+      name: "CloudFoxAdapter"
+      tier: "Adapter"
+      crate: "sentinel-adapter-cloudfox"
+      responsibilities:
+        - "Wrap CloudFox CLI for cloud infrastructure asset discovery (AWS/GCP/Azure)"
+        - "Enforce strict READ-ONLY execution mode by default"
+        - "Block mutating cloud API calls unless explicitly authorized via CloudWriteApproval"
+        - "Extract cloud ARNs, serverless endpoints, and storage buckets into asset graph"
+      dependencies:
+        - "ScopeEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ExternalToolAdapter"
+      traits_consumed:
+        - "ScopeEngine"
+      permissions:
+        - "subprocess_spawn"
+      storage_access:
+        - "cloud_assets"
+        - "graph_nodes"
+      security_boundary: "Read-only cloud discovery enforcement; interactive user prompt on write mutation"
+
+    - id: "SUB-24"
+      name: "SemgrepAdapter"
+      tier: "Adapter"
+      crate: "sentinel-adapter-semgrep"
+      responsibilities:
+        - "Wrap Semgrep CLI for static application security testing (SAST) over source code"
+        - "Isolate LGPL licensed binaries strictly via external process boundaries"
+        - "Parse static code findings and correlate with runtime observed endpoints"
+        - "Map taint sources and sinks to active verification test candidates"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ExternalToolAdapter"
+      traits_consumed: []
+      permissions:
+        - "subprocess_spawn"
+      storage_access:
+        - "sast_findings"
+      security_boundary: "Subprocess license and execution isolation; no LGPL code linked into core binary"
+
+    - id: "SUB-25"
+      name: "OpenApiParser"
+      tier: "Adapter"
+      crate: "sentinel-adapter-openapi"
+      responsibilities:
+        - "Parse OpenAPI 3.0, 3.1, and Swagger 2.0 specifications (YAML and JSON)"
+        - "Extract parameterized routes (PRoute), query/body schemas, and auth requirements"
+        - "Populate Endpoint and Parameter tables in SQLite for coverage analysis"
+        - "Enforce schema recursion depth limits to prevent ReDoS / expansion attacks"
+      dependencies: []
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "ExternalToolAdapter"
+      traits_consumed: []
+      permissions: []
+      storage_access:
+        - "api_proutes"
+        - "endpoints"
+        - "parameters"
+      security_boundary: "Bounded schema parsing depth; memory allocation cap during spec import"
+
+    # --------------------------------------------------------------------------
+    # RESEARCH TIER (3 Subsystems) — Feature-Gated Non-Core Engines
+    # --------------------------------------------------------------------------
+    - id: "SUB-26"
+      name: "SmtSolverEngine"
+      tier: "Research"
+      crate: "sentinel-research-smt"
+      feature_flag: "sentinel-research"
+      responsibilities:
+        - "Formal symbolic execution and logic reasoning using Z3 SMT solver bindings"
+        - "Prove authentication state bypasses and authorization invariant violations"
+        - "Generate mathematical proofs (SymbolicPath) for complex business logic flaws"
+        - "Enforce hard timeout (30s) and memory limits (1GB) on symbolic exploration"
+      dependencies:
+        - "VerificationEngine"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "SmtSolverEngine"
+      traits_consumed:
+        - "VerificationEngine"
+      permissions:
+        - "z3_bindings"
+      storage_access:
+        - "symbolic_proofs"
+      security_boundary: "Feature-flagged isolation; non-core critical path; bounded CPU/memory ceilings"
+
+    - id: "SUB-27"
+      name: "RlStateEngine"
+      tier: "Research"
+      crate: "sentinel-research-rl"
+      feature_flag: "sentinel-research"
+      responsibilities:
+        - "Deep reinforcement learning for automated web application state-space exploration"
+        - "Reward modeling based on DOM mutation discovery and unique route coverage"
+        - "Navigate complex multi-step single-page application (SPA) workflows"
+        - "Isolate heavy PyTorch / libtorch dependencies behind feature flags"
+      dependencies:
+        - "BrowserService"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "RlStateEngine"
+      traits_consumed:
+        - "BrowserService"
+      permissions:
+        - "neural_network_runtime"
+      storage_access:
+        - "app_state_machine"
+      security_boundary: "Feature-flagged isolation; bounded episode exploration; non-core critical path"
+
+    - id: "SUB-28"
+      name: "CryptoAnalysisEngine"
+      tier: "Research"
+      crate: "sentinel-research-crypto"
+      feature_flag: "sentinel-research"
+      responsibilities:
+        - "Cryptanalysis of captured TLS handshakes and custom cryptographic protocols"
+        - "Perform lattice reduction (LLL algorithm) for partial key exposure recovery"
+        - "Detect ECDSA / RSA nonce reuse and weak entropy generator patterns"
+        - "Extract cryptographic weaknesses from raw PCAP byte streams"
+      dependencies:
+        - "ObservationStore"
+      events_emitted: []
+      events_consumed: []
+      traits_provided:
+        - "CryptoAnalysisEngine"
+      traits_consumed:
+        - "ObservationStore"
+      permissions: []
+      storage_access:
+        - "crypto_weaknesses"
+      security_boundary: "Feature-flagged isolation; bounded PCAP buffer limits; non-core critical path"
+
+# ==============================================================================
+# 2. DOMAIN MODEL & CORE LIFECYCLE
+# ==============================================================================
+domain_model:
+  lifecycle_pipeline:
+    - "Transaction"
+    - "Observation"
+    - "Candidate"
+    - "VerificationResult"
+    - "Evidence"
+    - "Finding"
+
+  core_entities:
+    - name: "Transaction"
+      description: "Immutable record of an HTTP/TLS network exchange. Preserves raw byte representation, parsed structural components, and normalized text."
+      immutability: "Strictly Append-Only. Never physically modified or overwritten in SQLite."
+      storage_medium: "SQLite transactions table + Content-addressed filesystem blob store."
+      fields:
+        - name: "meta"
+          type: "EntityMetadata"
+          description: "Global entity metadata (id, version, timestamp, provenance, lifecycle, scope_id)."
+        - name: "request"
+          type: "MessageRepresentation"
+          description: "Structured representation of the HTTP request including raw_blob_id and normalized_text."
+        - name: "response"
+          type: "Option<MessageRepresentation>"
+          description: "Structured representation of the HTTP response (nullable if connection timed out or dropped)."
+          nullable: true
+        - name: "timing"
+          type: "std::time::Duration"
+          description: "Network round-trip latency duration."
+        - name: "tls_info"
+          type: "Option<TlsData>"
+          description: "TLS handshake parameters including cipher suite, ALPN protocol, and server name."
+          nullable: true
+
+    - name: "Observation"
+      description: "A discrete phenomenon or context extracted passively or actively from a Transaction (e.g. reflected parameter, technology fingerprint)."
+      immutability: "Strictly Append-Only. Soft-deleted via LifecycleState::Deleted."
+      storage_medium: "SQLite observations table."
+      fields:
+        - name: "meta"
+          type: "EntityMetadata"
+          description: "Global entity metadata (id, version, timestamp, provenance, lifecycle, scope_id)."
+        - name: "source"
+          type: "ObservationSource"
+          description: "Originating source of the observation (Proxy, OAST, Browser, Manual, Tool)."
+        - name: "data_ref"
+          type: "Uuid"
+          description: "UUID reference pointing to the underlying Transaction or raw blob."
+
+    - name: "Candidate"
+      description: "A testable hypothesis produced by heuristic rules or AI asserting that an Observation indicates a potential vulnerability."
+      immutability: "Mutable status during active verification pipeline."
+      storage_medium: "SQLite candidates table."
+      fields:
+        - name: "meta"
+          type: "EntityMetadata"
+          description: "Global entity metadata (id, version, timestamp, provenance, lifecycle, scope_id)."
+        - name: "source_observation_id"
+          type: "Uuid"
+          description: "Foreign key reference to the triggering Observation entity."
+        - name: "hypothesis"
+          type: "String"
+          description: "Detailed description of the suspected vulnerability mechanism."
+        - name: "status"
+          type: "String"
+          description: "Current verification progress status ('Pending', 'Verifying', 'Verified', 'Rejected')."
+
+    - name: "VerificationResult"
+      description: "The execution outcome produced by the VerificationEngine following the execution of an active verification strategy."
+      immutability: "Immutable once executed."
+      storage_medium: "SQLite verifications table."
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this verification execution."
+        - name: "candidate_id"
+          type: "Uuid"
+          description: "Foreign key reference to the tested Candidate entity."
+        - name: "strategy_ref"
+          type: "VerificationStrategyRef"
+          description: "Specific verification strategy type and version used."
+        - name: "success"
+          type: "bool"
+          description: "Whether the verification strategy conclusively proved the hypothesis."
+        - name: "confidence"
+          type: "f32"
+          description: "Confidence score of the verification result (0.0 to 1.0)."
+        - name: "evidence"
+          type: "Vec<Evidence>"
+          description: "Collection of empirical evidence proofs gathered during verification."
+        - name: "executed_at"
+          type: "DateTime<Utc>"
+          description: "Timestamp when the verification test completed."
+
+    - name: "Evidence"
+      description: "Content-addressed (SHA-256) cryptographic, mathematical, or empirical proof validating a vulnerability."
+      immutability: "Immutable once computed. Content hash ensures tamper-evident proof."
+      storage_medium: "SQLite evidence table + Content-addressed blob store."
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier of this evidence item."
+        - name: "verification_id"
+          type: "Uuid"
+          description: "Foreign key reference to the parent VerificationResult."
+        - name: "variant"
+          type: "EvidenceVariant"
+          description: "Specific evidence payload type: TransactionEvidence(Uuid), OastEvidence(Uuid), BrowserSnapshot(Uuid), TimingVariance, Differential(DiffData)."
+        - name: "created_at"
+          type: "DateTime<Utc>"
+          description: "Timestamp of evidence creation."
+
+    - name: "Finding"
+      description: "A confirmed, verified security vulnerability possessing a severity, state machine lifecycle, and bound evidence."
+      immutability: "Tracked through the FindingLifecycle state machine."
+      storage_medium: "SQLite findings table."
+      fields:
+        - name: "meta"
+          type: "EntityMetadata"
+          description: "Global entity metadata (id, version, timestamp, provenance, lifecycle, scope_id)."
+        - name: "title"
+          type: "String"
+          description: "Concise title of the confirmed vulnerability."
+        - name: "severity"
+          type: "Severity"
+          description: "Calculated severity rating (Critical, High, Medium, Low, Info)."
+        - name: "verification_id"
+          type: "Uuid"
+          description: "Foreign key reference to the supporting VerificationResult entity."
+        - name: "state"
+          type: "FindingLifecycle"
+          description: "Lifecycle tracking state (Candidate, Verified, Confirmed, Reported, Remediated, FalsePositive, AcceptedRisk, Regression)."
+
+  supporting_entities:
+    - name: "Scope"
+      description: "The authoritative network Access Control List (ACL) defining in-scope and out-of-scope boundaries."
+      relationships:
+        - "Referenced by ScanConfig (scope_id)"
+        - "Referenced by EntityMetadata (scope_id)"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this scope configuration."
+        - name: "version"
+          type: "u64"
+          description: "Monotonically increasing version counter for cache invalidation."
+        - name: "timestamp"
+          type: "DateTime<Utc>"
+          description: "Timestamp when the scope was last updated."
+        - name: "includes"
+          type: "Vec<String>"
+          description: "List of allowed target globs, host regexes, and IP CIDR ranges."
+        - name: "excludes"
+          type: "Vec<String>"
+          description: "List of prohibited target globs, regexes, and URL patterns."
+
+    - name: "Endpoint"
+      description: "A logical HTTP API endpoint defined by the unique combination of Host + Path + Method."
+      relationships:
+        - "References GraphNode (graph_node_id)"
+        - "Parent of Parameter entities (one-to-many)"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for the endpoint."
+        - name: "host"
+          type: "String"
+          description: "Target hostname or IP address."
+        - name: "path"
+          type: "String"
+          description: "URL path component (e.g. /api/v1/users)."
+        - name: "method"
+          type: "HttpMethod"
+          description: "HTTP method verb (GET, POST, etc.)."
+        - name: "timestamp"
+          type: "DateTime<Utc>"
+          description: "Timestamp when the endpoint was first discovered."
+        - name: "graph_node_id"
+          type: "Uuid"
+          description: "Foreign key reference to the underlying GraphNode in the asset graph."
+
+    - name: "Payload"
+      description: "A crafted or mutated injection string targeted at a specific parameter insertion point."
+      relationships:
+        - "Used by FuzzerEngine and VerificationEngine"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for the payload."
+        - name: "injection_point"
+          type: "ParamLocation"
+          description: "Target parameter location (Query, Body, Header, Path, Cookie, JsonPath, XPath, Multipart, GraphQL, WS)."
+        - name: "payload_string"
+          type: "String"
+          description: "Exact test payload string to inject."
+        - name: "expected_behavior"
+          type: "VerificationStrategy"
+          description: "Expected oracle verification strategy for confirming vulnerability trigger."
+
+    - name: "Identity"
+      description: "A user persona, role context, or authentication state used for authorization and IDOR matrix testing."
+      relationships:
+        - "Parent of Credential entities (one-to-many)"
+        - "Parent of Session entities (one-to-many)"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this identity persona."
+        - name: "version"
+          type: "u64"
+          description: "Version counter."
+        - name: "timestamp"
+          type: "DateTime<Utc>"
+          description: "Creation timestamp."
+        - name: "username"
+          type: "String"
+          description: "Descriptive username or persona name (e.g. admin_user, tenant_b_member)."
+        - name: "roles"
+          type: "Vec<String>"
+          description: "List of assigned organizational or application role strings."
+        - name: "meta"
+          type: "Option<EntityMetadata>"
+          description: "Optional metadata wrapper."
+          nullable: true
+
+    - name: "Session"
+      description: "An active authenticated HTTP session containing live cookies, bearer tokens, and session headers."
+      relationships:
+        - "References Identity (identity_id)"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this session."
+        - name: "identity_id"
+          type: "Uuid"
+          description: "Foreign key reference to the associated Identity entity."
+        - name: "cookies"
+          type: "HashMap<String, String>"
+          description: "Active session cookie key-value map."
+        - name: "headers"
+          type: "HashMap<String, String>"
+          description: "Active authentication headers (e.g. Authorization, X-CSRF-Token)."
+        - name: "created_at"
+          type: "DateTime<Utc>"
+          description: "Session establishment timestamp."
+        - name: "expires_at"
+          type: "Option<DateTime<Utc>>"
+          description: "Optional expiration timestamp."
+          nullable: true
+
+    - name: "Credential"
+      description: "Authentication secret metadata linked via a SecretReference to the OS secure keychain vault."
+      relationships:
+        - "References Identity (identity_id)"
+        - "Links to OS Keychain via secret_reference UUID"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this credential record."
+        - name: "identity_id"
+          type: "Uuid"
+          description: "Foreign key reference to the associated Identity entity."
+        - name: "credential_type"
+          type: "String"
+          description: "Authentication type category (OAuth2, JWT, SessionCookie, BasicAuth, ApiKey, ClientCert)."
+        - name: "secret_reference"
+          type: "Uuid"
+          description: "UUID pointer to the secure OS Keychain vault. Zero plaintext stored in SQLite."
+        - name: "access_level"
+          type: "AccessLevel"
+          description: "Access classification tier (Admin, User, Anonymous, TenantA, TenantB)."
+        - name: "expires_at"
+          type: "Option<DateTime<Utc>>"
+          description: "Optional credential expiration timestamp."
+          nullable: true
+
+    - name: "SecretReference"
+      description: "An opaque UUID indirection pointer used across domain records to refer to encrypted secrets stored in the OS vault."
+      relationships:
+        - "Resolved only in-memory by IdentityManager at socket hop"
+      fields:
+        - name: "reference_id"
+          type: "Uuid"
+          description: "Opaque UUID identifying the secret entry in the platform vault."
+        - name: "vault_backend"
+          type: "String"
+          description: "Underlying OS storage provider (Windows Credential Manager, Apple Keychain, Linux Secret Service)."
+
+    - name: "Asset"
+      description: "A discovered network host, IP address, subdomain, service, or cloud resource."
+      relationships:
+        - "Represented in the knowledge graph as a GraphNode"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this asset."
+        - name: "asset_type"
+          type: "String"
+          description: "Asset category ('Domain', 'IP', 'Service', 'CloudResource', 'Subdomain')."
+        - name: "identifier"
+          type: "String"
+          description: "Primary identifier string (FQDN, IPv4/IPv6, ARN, or service name)."
+        - name: "metadata"
+          type: "HashMap<String, String>"
+          description: "Discovered asset properties and attributes."
+
+    - name: "Technology"
+      description: "A detected software component, web server, runtime, framework, or cloud service."
+      relationships:
+        - "Identified by ContextEngine and linked to GraphNode entities"
+      fields:
+        - name: "id"
+          type: "String"
+          description: "Canonical technology rule ID (e.g. tech_nginx, tech_express)."
+        - name: "name"
+          type: "String"
+          description: "Display name (e.g. Nginx, Express.js, PHP, AWS ALB)."
+        - name: "category"
+          type: "String"
+          description: "Functional category (Web Server, Framework, Language, Load Balancer, Database)."
+        - name: "version"
+          type: "Option<String>"
+          description: "Extracted software version string if discovered."
+          nullable: true
+        - name: "confidence"
+          type: "f32"
+          description: "Detection confidence score (0.0 to 1.0)."
+
+    - name: "State"
+      description: "An application state representation or execution checkpoint in the testing workflow."
+      relationships:
+        - "Used by RlStateEngine, TaskScheduler, and ScanOrchestrator"
+      fields:
+        - name: "state_id"
+          type: "String"
+          description: "Deterministic SHA-256 hash or UUID of the state representation."
+        - name: "state_type"
+          type: "String"
+          description: "State category ('AppState', 'TaskCheckpoint', 'ScanPhase')."
+        - name: "payload_json"
+          type: "String"
+          description: "Serialized state machine variables and context."
+
+    - name: "Workflow"
+      description: "A sequence of recorded multi-step HTTP requests or browser actions executed as an atomic testing workflow."
+      relationships:
+        - "Executed by ScanOrchestrator and AuthorizationEngine"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this workflow."
+        - name: "name"
+          type: "String"
+          description: "Descriptive workflow title (e.g. CheckoutProcess, PasswordResetFlow)."
+        - name: "steps_json"
+          type: "String"
+          description: "Ordered JSON array of workflow steps with parameter extraction and assertion rules."
+        - name: "created_at"
+          type: "DateTime<Utc>"
+          description: "Creation timestamp."
+
+    - name: "Resource"
+      description: "A quantified execution limit governing compute, memory, concurrency, or network bandwidth."
+      relationships:
+        - "Embedded in ScanConfig, TaskConfig, and PluginSandboxConfig"
+      fields:
+        - name: "resource_type"
+          type: "String"
+          description: "Resource class (MemoryMb, CpuTimeMs, Concurrency, RequestCount, BandwidthBytes)."
+        - name: "limit_value"
+          type: "u64"
+          description: "Maximum allowable limit."
+        - name: "current_usage"
+          type: "u64"
+          description: "Currently consumed resource quantity."
+
+    - name: "Action"
+      description: "An executable operation proposed or executed by an engine, proxy interceptor, or AI policy."
+      relationships:
+        - "Governed by AIPolicyEngine and ProxyEngine"
+      fields:
+        - name: "action_id"
+          type: "Uuid"
+          description: "Unique identifier for this action."
+        - name: "action_type"
+          type: "String"
+          description: "Action classification ('Drop', 'Modify', 'Forward', 'ExecutePayload', 'ScanEndpoint')."
+        - name: "parameters"
+          type: "HashMap<String, String>"
+          description: "Action-specific parameter map."
+
+    - name: "Task"
+      description: "An asynchronous background unit of work scheduled and monitored by the TaskScheduler."
+      relationships:
+        - "Managed by TaskScheduler and tracked via TaskCheckpoints"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique task UUID."
+        - name: "task_type"
+          type: "String"
+          description: "Task type (ActiveScan, FuzzEndpoint, SubdomainEnum, ReportGeneration, DomAnalysis)."
+        - name: "priority"
+          type: "u8"
+          description: "Task execution priority (0 = lowest, 255 = highest)."
+        - name: "state"
+          type: "TaskLifecycle"
+          description: "Current lifecycle state (Pending, Running, Paused, Completed, Failed, Cancelled)."
+        - name: "progress_pct"
+          type: "f32"
+          description: "Completion progress percentage (0.0 to 100.0)."
+
+    - name: "Report"
+      description: "An exported vulnerability assessment document containing findings, evidence proofs, and executive summaries."
+      relationships:
+        - "Generated by ReportEngine from confirmed Finding entities"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this report."
+        - name: "title"
+          type: "String"
+          description: "Assessment report title."
+        - name: "format"
+          type: "ReportFormat"
+          description: "Output file format (Pdf, Markdown, Json, Html)."
+        - name: "file_path"
+          type: "String"
+          description: "Filesystem path where the generated report artifact is stored."
+        - name: "config_json"
+          type: "String"
+          description: "Serialized ReportConfig used to generate the document."
+        - name: "generated_at"
+          type: "DateTime<Utc>"
+          description: "Report generation timestamp."
+
+    - name: "RegressionTest"
+      description: "An automated regression test definition generated from a confirmed Finding to continuously verify patch status."
+      relationships:
+        - "References Finding (finding_id) and Transaction (seed_transaction_id)"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this regression test."
+        - name: "finding_id"
+          type: "Uuid"
+          description: "Foreign key reference to the verified Finding."
+        - name: "seed_transaction_id"
+          type: "Uuid"
+          description: "Foreign key reference to the seed Transaction used to reproduce the finding."
+        - name: "expected_status"
+          type: "FindingLifecycle"
+          description: "Expected finding state upon test completion (e.g. Remediated vs Regression)."
+        - name: "created_at"
+          type: "DateTime<Utc>"
+          description: "Creation timestamp."
+
+    - name: "OASTInteraction"
+      description: "An external DNS, HTTP, or HTTPS callback received by the OASTServer from a tested target."
+      relationships:
+        - "References OastToken (token_id)"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this interaction event."
+        - name: "token_id"
+          type: "Uuid"
+          description: "Foreign key reference to the matched OastToken record."
+        - name: "protocol"
+          type: "String"
+          description: "Interaction protocol ('DNS', 'HTTP', 'HTTPS')."
+        - name: "source_ip"
+          type: "String"
+          description: "Remote IP address initiating the out-of-band callback."
+        - name: "raw_blob_id"
+          type: "Uuid"
+          description: "UUID reference to the raw interaction bytes in blob storage."
+        - name: "timestamp"
+          type: "DateTime<Utc>"
+          description: "Timestamp when the callback interaction was received."
+
+    - name: "AttackPath"
+      description: "An ordered multi-hop sequence of exploitable graph edges connecting an initial asset to a high-value target."
+      relationships:
+        - "Computed by KnowledgeEngine over GraphNodes and GraphEdges"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this attack path."
+        - name: "start_node_id"
+          type: "Uuid"
+          description: "Starting GraphNode UUID."
+        - name: "target_node_id"
+          type: "Uuid"
+          description: "Destination target GraphNode UUID."
+        - name: "edge_ids"
+          type: "Vec<Uuid>"
+          description: "Ordered sequence of GraphEdge UUIDs composing the attack chain."
+        - name: "risk_score"
+          type: "f32"
+          description: "Calculated compound risk score for the attack chain."
+        - name: "discovered_at"
+          type: "DateTime<Utc>"
+          description: "Discovery timestamp."
+
+    - name: "Note"
+      description: "A pentester commentary or investigation note attached to any core domain entity."
+      relationships:
+        - "Can be attached to Findings, Transactions, Endpoints, or GraphNodes"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this note."
+        - name: "target_id"
+          type: "Uuid"
+          description: "UUID of the attached entity (Finding, Transaction, Endpoint, GraphNode)."
+        - name: "author"
+          type: "String"
+          description: "Author name or user persona."
+        - name: "content"
+          type: "String"
+          description: "Markdown commentary text."
+        - name: "timestamp"
+          type: "DateTime<Utc>"
+          description: "Creation or last modification timestamp."
+
+    - name: "Screenshot"
+      description: "A visual PNG rendering of a page state or DOM vulnerability proof captured by BrowserService."
+      relationships:
+        - "Linked to Evidence and BrowserService operations"
+      fields:
+        - name: "id"
+          type: "Uuid"
+          description: "Unique identifier for this screenshot record."
+        - name: "blob_id"
+          type: "Uuid"
+          description: "UUID reference to the raw PNG image bytes in the blob store."
+        - name: "full_page"
+          type: "bool"
+          description: "Whether the screenshot captures the entire scrollable page height."
+        - name: "timestamp"
+          type: "DateTime<Utc>"
+          description: "Capture timestamp."
+
+  enums:
+    - name: "HttpMethod"
+      description: "Supported HTTP method verbs including REST and GraphQL."
+      variants: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT", "GRAPHQL"]
+
+    - name: "ParamLocation"
+      description: "Structural location of a parameter or fuzzer injection point."
+      variants: ["Query", "Body", "Header", "Path", "Cookie", "JsonPath", "XPath", "MultipartField", "GraphQLVariable", "WebSocketFrame"]
+
+    - name: "DataType"
+      description: "Inferred or declared data type of a parameter value."
+      variants: ["String", "Integer", "Boolean", "Float", "Uuid", "Json", "Xml", "Base64", "Unknown"]
+
+    - name: "Provenance"
+      description: "Originating generator or creator of an entity."
+      variants: ["Manual", "Scanner", "Fuzzer", "Proxy", "AI", "Tool"]
+
+    - name: "LifecycleState"
+      description: "Entity storage lifecycle state for immutability and soft-deletion."
+      variants: ["Active", "Archived", "Deleted"]
+
+    - name: "TaskLifecycle"
+      description: "State machine lifecycle states for asynchronous tasks."
+      variants: ["Pending", "Running", "Paused", "Completed", "Failed", "Cancelled"]
+
+    - name: "ScanLifecycle"
+      description: "State machine lifecycle states for active scan sessions."
+      variants: ["Initializing", "Running", "Pausing", "Paused", "Finished", "Error"]
+
+    - name: "Severity"
+      description: "Vulnerability severity classification rating."
+      variants: ["Critical", "High", "Medium", "Low", "Info"]
+
+    - name: "FindingLifecycle"
+      description: "Definitive state machine for tracking vulnerability findings from hypothesis to remediation."
+      variants: ["Candidate", "Verified", "Confirmed", "Reported", "Remediated", "FalsePositive", "AcceptedRisk", "Regression"]
+
+    - name: "ObservationSource"
+      description: "Source mechanism producing an Observation."
+      variants: ["Proxy", "OAST", "Browser", "Manual", "Tool"]
+
+    - name: "AccessLevel"
+      description: "Authorization access classification for multi-role testing."
+      variants: ["Admin", "User", "Anonymous", "TenantA", "TenantB"]
+
+    - name: "ReportFormat"
+      description: "Supported document export formats for assessment reports."
+      variants: ["Pdf", "Markdown", "Json", "Html"]
+
+    - name: "MutatorType"
+      description: "Supported mutation algorithms provided by FuzzerEngine."
+      variants: ["BitFlip", "ByteReplace", "Grammar", "Wordlist", "Radamsa", "Boundary", "UnicodeNormalization", "Truncation", "FormatString", "AiAssisted"]
+
+    - name: "VerificationStrategy"
+      description: "Active verification strategies implemented by VerificationEngine to eliminate false positives."
+      variants: ["BrowserExecution", "OASTCorrelation", "TimingStatistical", "ResponseDifferential", "StateVerification", "AuthorizationReplay", "ContentVerification", "MathematicalVerification", "ErrorClassification", "CausalMinimization"]
+
+    - name: "ParameterClass"
+      description: "Semantic classification of parameter data types for intelligent payload selection."
+      variants: ["ObjectId", "Url", "FilePath", "Email", "Token", "Search", "Numeric", "Boolean", "Json", "Xml", "Html", "Enumeration", "FreeText", "Unknown"]
+
+    - name: "PolicyResultType"
+      description: "Outcome classification from AIPolicyEngine evaluation."
+      variants: ["Approved", "Blocked", "Filtered", "RequiresHumanApproval"]
+
+# ==============================================================================
+# 3. CREDENTIAL SECURITY & ZERO-PLAINTEXT VAULT
+# ==============================================================================
+credential_security:
+  model: "Zero-Knowledge Vault: Credential -> SecretReference (UUID) -> OS Secure Store (Keychain / Windows Credential Manager / Secret Service)"
+  zero_plaintext_rules:
+    - "Zero plaintext secrets stored in SQLite tables: credentials table stores secret_reference TEXT NOT NULL linking to the OS vault."
+    - "Zero plaintext secrets serialized across EventBus channels: all events carry opaque UUID references."
+    - "Zero plaintext secrets emitted in tracing, stdout, or JSON log files: automatic regex masking ([REDACTED]) applied to Authorization, Cookie, and API Key headers."
+    - "Zero plaintext secrets rendered in UI telemetry, project exports, or crash dumps."
+    - "Ephemeral in-memory resolution: IdentityManager resolves SecretReference to plaintext bytes strictly at socket dispatch time and zeroizes the memory buffer immediately after socket transmission."
+  secret_reference_specification:
+    type: "Uuid"
+    resolution_flow: "IdentityManager::inject_auth() -> OS Keychain API -> Ephemeral Buffer -> Outgoing ParsedRequest -> Socket Write -> In-Place Zeroize"
+    in_memory_zeroization: "Hardware-backed zeroization using the zeroize crate on drop"
+  supported_keychains:
+    - os: "Windows"
+      backend: "Windows Credential Manager / CryptProtectData (DPAPI)"
+      encryption: "AES-256-GCM via Windows CryptoAPI"
+    - os: "macOS"
+      backend: "Apple Keychain Services (Security.framework)"
+      encryption: "AES-256-GCM hardware key"
+    - os: "Linux"
+      backend: "Secret Service API / libsecret / Freedesktop D-Bus"
+      encryption: "AES-256-GCM with user session keyring"
+    - os: "Headless/CI"
+      backend: "Local memory-locked AES-256-GCM vault with master environment key"
+      encryption: "AES-256-GCM software encryption"
+
+# ==============================================================================
+# 4. SCOPE MODEL & FAIL-CLOSED ENFORCEMENT
+# ==============================================================================
+scope_model:
+  policy: "FAIL_CLOSED_DEFAULT_DENY"
+  decision_schema:
+    struct_name: "ScopeDecision"
+    fields:
+      - name: "decision_id"
+        type: "Uuid"
+        description: "Unique identifier for this evaluation decision."
+      - name: "allowed"
+        type: "bool"
+        description: "Whether the requested network action is permitted (true) or blocked (false)."
+      - name: "reason"
+        type: "String"
+        description: "Human-readable explanation of why the action was permitted or denied."
+      - name: "matched_rule"
+        type: "Option<Uuid>"
+        description: "UUID of the specific Scope inclusion or exclusion rule that matched, if any."
+        nullable: true
+      - name: "target"
+        type: "String"
+        description: "Target URI, hostname, or IP address that was evaluated."
+      - name: "scope_version"
+        type: "u64"
+        description: "Version counter of the Scope configuration at the time of evaluation."
+      - name: "timestamp"
+        type: "DateTime<Utc>"
+        description: "Timestamp when the scope decision was rendered."
+  dns_rebinding_defense:
+    description: "Evaluates post-DNS resolution socket IP addresses before TCP handshake. Drops connections resolving to unapproved private, loopback, or link-local IP addresses (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254, ::1, fc00::/7)."
+  redos_protection:
+    description: "Scope regex patterns are capped at 1000 characters and evaluated with a 100ms hard timeout. Regex timeouts or syntax errors fail closed immediately (allowed: false, reason: 'RegexTimeoutFailClosed')."
+  scope_rules:
+    includes: "List of allowed target globs, regexes, and IP CIDRs (e.g. *.example.com, 192.168.1.0/24)."
+    excludes: "List of explicitly blocked target globs, logout URLs, and third-party CDNs."
+
+# ==============================================================================
+# 5. INTERFACES & TRAITS
+# ==============================================================================
+interfaces_and_traits:
+  traits:
+    - name: "ProxyEngine"
+      subsystem: "SUB-01"
+      is_async: true
+      description: "Controls the HTTP/1.1, HTTP/2, and WebSocket traffic proxying and interception engine."
+      methods:
+        - name: "start"
+          args:
+            - name: "config"
+              type: "ProxyConfig"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Binds the local proxy socket and starts intercepting traffic."
+        - name: "stop"
+          args: []
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Gracefully stops the proxy listener and flushes pending transactions."
+        - name: "register_interceptor"
+          args:
+            - name: "interceptor"
+              type: "Box<dyn ProxyInterceptor>"
+          return_type: "()"
+          error_type: "None"
+          description: "Registers an in-process proxy interceptor callback."
+        - name: "set_intercept_rules"
+          args:
+            - name: "rules"
+              type: "Vec<InterceptRule>"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Updates the active HTTPQL-based traffic interception rules."
+
+    - name: "HttpParser"
+      subsystem: "SUB-02"
+      is_async: false
+      description: "Byte-preserving, fault-tolerant HTTP request and response parser and serializer."
+      methods:
+        - name: "parse_request"
+          args:
+            - name: "raw"
+              type: "&[u8]"
+          return_type: "Result<ParsedRequest, SentinelError>"
+          error_type: "SentinelError"
+          description: "Parses raw byte slice into structured ParsedRequest preserving exact byte offsets."
+        - name: "parse_response"
+          args:
+            - name: "raw"
+              type: "&[u8]"
+          return_type: "Result<ParsedResponse, SentinelError>"
+          error_type: "SentinelError"
+          description: "Parses raw byte slice into structured ParsedResponse."
+        - name: "serialize_request"
+          args:
+            - name: "request"
+              type: "&ParsedRequest"
+          return_type: "Result<Vec<u8>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Serializes a ParsedRequest struct back into a byte vector."
+        - name: "serialize_response"
+          args:
+            - name: "response"
+              type: "&ParsedResponse"
+          return_type: "Result<Vec<u8>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Serializes a ParsedResponse struct back into a byte vector."
+
+    - name: "ObservationStore"
+      subsystem: "SUB-03"
+      is_async: true
+      description: "Dual-write persistence engine managing SQLite WAL metadata and Tantivy full-text search index."
+      methods:
+        - name: "insert"
+          args:
+            - name: "obs"
+              type: "Observation"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Inserts a single observation into SQLite and Tantivy index."
+        - name: "insert_batch"
+          args:
+            - name: "obs_list"
+              type: "Vec<Observation>"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Batch inserts multiple observations in an atomic SQLite transaction."
+        - name: "get"
+          args:
+            - name: "id"
+              type: "Uuid"
+          return_type: "Result<Option<Observation>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Retrieves an observation by its UUID."
+        - name: "query_sql"
+          args:
+            - name: "sql"
+              type: "&str"
+            - name: "limit"
+              type: "u32"
+            - name: "offset"
+              type: "u32"
+          return_type: "Result<Vec<Observation>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes a parameterized SQL query over observations metadata with pagination."
+        - name: "search_fts"
+          args:
+            - name: "query"
+              type: "&str"
+            - name: "limit"
+              type: "u32"
+            - name: "offset"
+              type: "u32"
+          return_type: "Result<Vec<Observation>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes a BM25 full-text search query across Tantivy index with pagination."
+        - name: "rebuild_index"
+          args: []
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Rebuilds the Tantivy search index from SQLite WAL."
+
+    - name: "ScopeEngine"
+      subsystem: "SUB-04"
+      is_async: false
+      description: "Fail-closed network authorization ACL engine."
+      methods:
+        - name: "is_in_scope"
+          args:
+            - name: "uri"
+              type: "&str"
+          return_type: "ScopeDecision"
+          error_type: "None"
+          description: "Evaluates target URI against scope rules and returns a structured ScopeDecision."
+        - name: "is_ip_in_scope"
+          args:
+            - name: "ip"
+              type: "&str"
+          return_type: "ScopeDecision"
+          error_type: "None"
+          description: "Evaluates post-DNS resolved IP against scope rules to prevent SSRF/rebinding."
+        - name: "update_scope"
+          args:
+            - name: "scope"
+              type: "Scope"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Updates the active scope configuration and invalidates decision caches."
+
+    - name: "EventBus"
+      subsystem: "SUB-05"
+      is_async: false
+      description: "Two-tier asynchronous pub/sub messaging coordinator."
+      methods:
+        - name: "subscribe_telemetry"
+          args: []
+          return_type: "tokio::sync::broadcast::Receiver<SentinelEvent>"
+          error_type: "None"
+          description: "Subscribes to standard broadcast telemetry stream (best-effort, 10k capacity)."
+        - name: "subscribe_critical"
+          args: []
+          return_type: "tokio::sync::mpsc::Receiver<CriticalEvent>"
+          error_type: "None"
+          description: "Subscribes to guaranteed critical finding and audit stream (backpressured)."
+        - name: "publish_telemetry"
+          args:
+            - name: "event"
+              type: "SentinelEvent"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Publishes an event to the standard broadcast channel."
+        - name: "publish_critical"
+          args:
+            - name: "event"
+              type: "CriticalEvent"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Publishes a critical event to the guaranteed delivery mpsc channel."
+
+    - name: "TaskScheduler"
+      subsystem: "SUB-06"
+      is_async: true
+      description: "Priority queue task scheduler with checkpointing and resource budgeting."
+      methods:
+        - name: "submit"
+          args:
+            - name: "task"
+              type: "TaskConfig"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Submits a new background task to the execution queue."
+        - name: "pause"
+          args:
+            - name: "task_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Pauses execution of a running task."
+        - name: "resume"
+          args:
+            - name: "task_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Resumes execution of a paused task from its last checkpoint."
+        - name: "cancel"
+          args:
+            - name: "task_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Cancels execution of a running or pending task."
+        - name: "status"
+          args:
+            - name: "task_id"
+              type: "Uuid"
+          return_type: "Result<TaskLifecycle, SentinelError>"
+          error_type: "SentinelError"
+          description: "Retrieves the current lifecycle state of a task."
+        - name: "checkpoint"
+          args:
+            - name: "task_id"
+              type: "Uuid"
+            - name: "state"
+              type: "Vec<u8>"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Persists task progress state into SQLite task_checkpoints table."
+        - name: "restore_checkpoint"
+          args:
+            - name: "task_id"
+              type: "Uuid"
+          return_type: "Result<Option<Vec<u8>>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Loads the serialized state bytes for a task checkpoint."
+
+    - name: "ScanOrchestrator"
+      subsystem: "SUB-07"
+      is_async: true
+      description: "State machine coordinator for active multi-phase security scanning."
+      methods:
+        - name: "start_scan"
+          args:
+            - name: "config"
+              type: "ScanConfig"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Initializes and starts a new active vulnerability scan."
+        - name: "pause_scan"
+          args:
+            - name: "scan_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Pauses an ongoing active scan."
+        - name: "resume_scan"
+          args:
+            - name: "scan_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Resumes a paused scan."
+        - name: "cancel_scan"
+          args:
+            - name: "scan_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Cancels an active scan."
+        - name: "scan_status"
+          args:
+            - name: "scan_id"
+              type: "Uuid"
+          return_type: "Result<ScanLifecycle, SentinelError>"
+          error_type: "SentinelError"
+          description: "Queries the current lifecycle phase and progress of a scan."
+
+    - name: "FuzzerEngine"
+      subsystem: "SUB-08"
+      is_async: true
+      description: "Payload mutation and injection generator."
+      methods:
+        - name: "fuzz"
+          args:
+            - name: "seed"
+              type: "&Transaction"
+            - name: "profile"
+              type: "&FuzzProfile"
+          return_type: "Result<FuzzStream, SentinelError>"
+          error_type: "SentinelError"
+          description: "Generates a mutated stream of test requests from a seed transaction and profile."
+
+    - name: "VerificationEngine"
+      subsystem: "SUB-09"
+      is_async: true
+      description: "Vulnerability proof engine eliminating false positives."
+      methods:
+        - name: "verify_candidate"
+          args:
+            - name: "candidate"
+              type: "&Candidate"
+            - name: "strategy"
+              type: "VerificationStrategyRef"
+          return_type: "Result<VerificationResult, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes an active verification test against a vulnerability hypothesis."
+        - name: "correlate_oast"
+          args:
+            - name: "token"
+              type: "&str"
+          return_type: "Result<Option<OastEvidence>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Correlates an out-of-band interaction token with candidate hypotheses."
+        - name: "available_strategies"
+          args: []
+          return_type: "Vec<VerificationStrategy>"
+          error_type: "None"
+          description: "Lists all currently enabled verification strategy modules."
+
+    - name: "ContextEngine"
+      subsystem: "SUB-10"
+      is_async: false
+      description: "Passive technology fingerprinting and parameter semantic classifier."
+      methods:
+        - name: "fingerprint"
+          args:
+            - name: "transaction"
+              type: "&Transaction"
+          return_type: "Vec<TechFingerprint>"
+          error_type: "None"
+          description: "Detects software stack technologies from HTTP exchange headers and bodies."
+        - name: "classify_parameter"
+          args:
+            - name: "name"
+              type: "&str"
+            - name: "value"
+              type: "&str"
+          return_type: "ParameterClass"
+          error_type: "None"
+          description: "Classifies parameter semantic data type (UUID, JWT, Email, URL, etc.)."
+
+    - name: "CoverageEngine"
+      subsystem: "SUB-11"
+      is_async: true
+      description: "Attack surface exploration and security testing coverage mapper."
+      methods:
+        - name: "record_test"
+          args:
+            - name: "endpoint_id"
+              type: "Uuid"
+            - name: "param"
+              type: "&str"
+            - name: "check_id"
+              type: "&str"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Records completion of a specific check against an endpoint parameter."
+        - name: "get_coverage"
+          args:
+            - name: "scope_id"
+              type: "Uuid"
+          return_type: "Result<CoverageReport, SentinelError>"
+          error_type: "SentinelError"
+          description: "Computes overall endpoint and parameter coverage statistics for a scope."
+        - name: "untested_endpoints"
+          args:
+            - name: "scope_id"
+              type: "Uuid"
+          return_type: "Result<Vec<Endpoint>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Queries endpoints within scope that have untested parameters."
+
+    - name: "IdentityManager"
+      subsystem: "SUB-12"
+      is_async: true
+      description: "User identity, session management, and secure credential injection."
+      methods:
+        - name: "add_identity"
+          args:
+            - name: "identity"
+              type: "Identity"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Registers a new testing identity persona."
+        - name: "add_credential"
+          args:
+            - name: "credential"
+              type: "Credential"
+            - name: "secret_bytes"
+              type: "&[u8]"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Stores secret bytes in OS Keychain vault and saves Credential metadata."
+        - name: "list_identities"
+          args: []
+          return_type: "Result<Vec<Identity>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Lists all configured identity personas."
+        - name: "inject_auth"
+          args:
+            - name: "identity_id"
+              type: "Uuid"
+            - name: "request"
+              type: "&mut ParsedRequest"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Resolves SecretReference in OS vault and injects headers into outgoing request."
+        - name: "refresh_credential"
+          args:
+            - name: "identity_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes token refresh dance when receiving 401 Unauthorized."
+
+    - name: "KnowledgeEngine"
+      subsystem: "SUB-13"
+      is_async: true
+      description: "Knowledge graph topology store and attack path pathfinder."
+      methods:
+        - name: "add_node"
+          args:
+            - name: "node"
+              type: "GraphNode"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Inserts or updates a node in the knowledge graph."
+        - name: "add_edge"
+          args:
+            - name: "edge"
+              type: "GraphEdge"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Inserts a relationship edge connecting two graph nodes."
+        - name: "query_neighbors"
+          args:
+            - name: "node_id"
+              type: "Uuid"
+          return_type: "Result<Vec<GraphNode>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Queries all adjacent neighboring nodes."
+        - name: "find_path"
+          args:
+            - name: "from"
+              type: "Uuid"
+            - name: "to"
+              type: "Uuid"
+            - name: "max_depth"
+              type: "u32"
+          return_type: "Result<Vec<Vec<GraphEdge>>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Finds shortest attack paths between two nodes with bounded CTE depth."
+        - name: "resolve_entity"
+          args:
+            - name: "identifier"
+              type: "&str"
+          return_type: "Result<Option<GraphNode>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Resolves a domain, IP, or ARN string to its existing GraphNode."
+
+    - name: "ReportEngine"
+      subsystem: "SUB-14"
+      is_async: true
+      description: "Structured vulnerability report exporter."
+      methods:
+        - name: "generate"
+          args:
+            - name: "config"
+              type: "ReportConfig"
+          return_type: "Result<Vec<u8>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Generates report document byte buffer in requested format (PDF, Markdown, JSON, HTML)."
+
+    - name: "BrowserService"
+      subsystem: "SUB-15"
+      is_async: true
+      description: "Out-of-process Playwright browser runner coordinator."
+      methods:
+        - name: "navigate"
+          args:
+            - name: "url"
+              type: "&str"
+            - name: "timeout_ms"
+              type: "u32"
+          return_type: "Result<NavigationResult, SentinelError>"
+          error_type: "SentinelError"
+          description: "Navigates browser context to target URL and awaits DOM stabilization."
+        - name: "execute_script"
+          args:
+            - name: "js"
+              type: "&str"
+            - name: "timeout_ms"
+              type: "u32"
+          return_type: "Result<String, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes JavaScript in page context and returns JSON-serialized result."
+        - name: "capture_dom"
+          args:
+            - name: "include_shadow"
+              type: "bool"
+          return_type: "Result<String, SentinelError>"
+          error_type: "SentinelError"
+          description: "Captures full DOM HTML tree including shadow DOM roots."
+        - name: "take_screenshot"
+          args:
+            - name: "full_page"
+              type: "bool"
+          return_type: "Result<Vec<u8>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Captures page screenshot as PNG byte buffer."
+        - name: "close"
+          args: []
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Closes browser daemon instance and releases resources."
+
+    - name: "OastServer"
+      subsystem: "SUB-16"
+      is_async: true
+      description: "Out-of-band correlation listener server."
+      methods:
+        - name: "start"
+          args:
+            - name: "config"
+              type: "OastConfig"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Starts DNS, HTTP, and HTTPS listeners on configured ports."
+        - name: "stop"
+          args: []
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Stops OAST listener servers."
+        - name: "generate_token"
+          args:
+            - name: "context"
+              type: "&str"
+          return_type: "Result<String, SentinelError>"
+          error_type: "SentinelError"
+          description: "Generates an AES-256-GCM stateless correlation token."
+        - name: "poll_interactions"
+          args:
+            - name: "token"
+              type: "&str"
+          return_type: "Result<Vec<OastInteraction>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Polls for received callback interactions matching the token."
+
+    - name: "AuthorizationEngine"
+      subsystem: "SUB-17"
+      is_async: true
+      description: "Automated multi-role authorization and IDOR matrix testing engine."
+      methods:
+        - name: "build_matrix"
+          args:
+            - name: "identities"
+              type: "Vec<Uuid>"
+            - name: "endpoints"
+              type: "Vec<Uuid>"
+          return_type: "Result<AuthzMatrix, SentinelError>"
+          error_type: "SentinelError"
+          description: "Constructs an (identity, endpoint) Cartesian testing matrix."
+        - name: "test_matrix"
+          args:
+            - name: "matrix"
+              type: "&AuthzMatrix"
+          return_type: "Result<Vec<AuthzViolation>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes cross-role requests and detects unauthorized access violations."
+
+    - name: "AiEngine"
+      subsystem: "SUB-18"
+      is_async: true
+      description: "Optional LLM hypothesis generator and payload synthesis accelerator."
+      methods:
+        - name: "analyze"
+          args:
+            - name: "request"
+              type: "AiRequest"
+          return_type: "Result<AiResponse, SentinelError>"
+          error_type: "SentinelError"
+          description: "Sends prompt context to configured LLM and returns structured completion."
+        - name: "is_available"
+          args: []
+          return_type: "bool"
+          error_type: "None"
+          description: "Returns true if AI provider API keys and network access are operational."
+
+    - name: "AiPolicyEngine"
+      subsystem: "SUB-19"
+      is_async: false
+      description: "5-layer host-side security gate for AI prompts and completions."
+      methods:
+        - name: "validate_input"
+          args:
+            - name: "prompt"
+              type: "&str"
+          return_type: "PolicyResult"
+          error_type: "None"
+          description: "Validates outgoing prompt against prompt injection and instruction leak attempts."
+        - name: "validate_output"
+          args:
+            - name: "response"
+              type: "&str"
+            - name: "schema"
+              type: "Option<&str>"
+          return_type: "PolicyResult"
+          error_type: "None"
+          description: "Validates model completion against destructive patterns and JSON schemas."
+        - name: "is_destructive"
+          args:
+            - name: "command"
+              type: "&str"
+          return_type: "bool"
+          error_type: "None"
+          description: "Checks if a proposed command contains destructive SQL or OS operations."
+        - name: "requires_approval"
+          args:
+            - name: "command"
+              type: "&str"
+          return_type: "bool"
+          error_type: "None"
+          description: "Determines if an action requires interactive human approval."
+
+    - name: "PluginRuntime"
+      subsystem: "SUB-20"
+      is_async: true
+      description: "Capability-secured WebAssembly and Rhai plugin sandbox."
+      methods:
+        - name: "load_wasm"
+          args:
+            - name: "wasm_bytes"
+              type: "&[u8]"
+            - name: "config"
+              type: "PluginSandboxConfig"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Compiles and instantiates a WASM module within Wasmtime sandbox."
+        - name: "load_rhai"
+          args:
+            - name: "script_text"
+              type: "&str"
+          return_type: "Result<Uuid, SentinelError>"
+          error_type: "SentinelError"
+          description: "Parses and compiles a Rhai script with execution step limits."
+        - name: "execute"
+          args:
+            - name: "plugin_id"
+              type: "Uuid"
+            - name: "input"
+              type: "PluginInput"
+          return_type: "Result<PluginOutput, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes a plugin entry point with provided input and resource limits."
+        - name: "unload"
+          args:
+            - name: "plugin_id"
+              type: "Uuid"
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Unloads a plugin instance and releases memory."
+
+    - name: "ResearchPackManager"
+      subsystem: "SUB-21"
+      is_async: true
+      description: "Cryptographically signed research check pack distribution manager."
+      methods:
+        - name: "load_pack"
+          args:
+            - name: "path"
+              type: "&str"
+          return_type: "Result<PackManifest, SentinelError>"
+          error_type: "SentinelError"
+          description: "Loads and verifies an Ed25519 signed check pack bundle."
+        - name: "verify_signature"
+          args:
+            - name: "pack"
+              type: "&PackManifest"
+          return_type: "Result<bool, SentinelError>"
+          error_type: "SentinelError"
+          description: "Verifies Ed25519 cryptographic signature against trusted root keys."
+        - name: "list_checks"
+          args: []
+          return_type: "Result<Vec<SecurityCheck>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Enumerates all loaded security checks across active packs."
+        - name: "hot_reload"
+          args: []
+          return_type: "Result<(), SentinelError>"
+          error_type: "SentinelError"
+          description: "Hot-reloads check pack files from the disk packs directory."
+
+    - name: "ExternalToolAdapter"
+      subsystem: "SUB-22"
+      is_async: true
+      description: "SubfinderAdapter process-isolated tool adapter."
+      methods:
+        - name: "tool_name"
+          args: []
+          return_type: "&str"
+          error_type: "None"
+          description: "Returns 'Subfinder'."
+        - name: "is_installed"
+          args: []
+          return_type: "bool"
+          error_type: "None"
+          description: "Checks if subfinder binary exists in PATH."
+        - name: "execute"
+          args:
+            - name: "config"
+              type: "serde_json::Value"
+          return_type: "Result<serde_json::Value, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes Subfinder passive enumeration."
+
+    - name: "ExternalToolAdapter"
+      subsystem: "SUB-23"
+      is_async: true
+      description: "CloudFoxAdapter process-isolated tool adapter."
+      methods:
+        - name: "tool_name"
+          args: []
+          return_type: "&str"
+          error_type: "None"
+          description: "Returns 'CloudFox'."
+        - name: "is_installed"
+          args: []
+          return_type: "bool"
+          error_type: "None"
+          description: "Checks if cloudfox binary exists in PATH."
+        - name: "execute"
+          args:
+            - name: "config"
+              type: "serde_json::Value"
+          return_type: "Result<serde_json::Value, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes CloudFox read-only asset discovery."
+
+    - name: "ExternalToolAdapter"
+      subsystem: "SUB-24"
+      is_async: true
+      description: "SemgrepAdapter process-isolated tool adapter."
+      methods:
+        - name: "tool_name"
+          args: []
+          return_type: "&str"
+          error_type: "None"
+          description: "Returns 'Semgrep'."
+        - name: "is_installed"
+          args: []
+          return_type: "bool"
+          error_type: "None"
+          description: "Checks if semgrep binary exists in PATH."
+        - name: "execute"
+          args:
+            - name: "config"
+              type: "serde_json::Value"
+          return_type: "Result<serde_json::Value, SentinelError>"
+          error_type: "SentinelError"
+          description: "Executes Semgrep SAST scan over source files."
+
+    - name: "ExternalToolAdapter"
+      subsystem: "SUB-25"
+      is_async: true
+      description: "OpenApiParser process-isolated tool adapter."
+      methods:
+        - name: "tool_name"
+          args: []
+          return_type: "&str"
+          error_type: "None"
+          description: "Returns 'OpenApiParser'."
+        - name: "is_installed"
+          args: []
+          return_type: "bool"
+          error_type: "None"
+          description: "In-process deterministic parser (always returns true)."
+        - name: "execute"
+          args:
+            - name: "config"
+              type: "serde_json::Value"
+          return_type: "Result<serde_json::Value, SentinelError>"
+          error_type: "SentinelError"
+          description: "Parses OpenAPI/Swagger specification text into PRoutes."
+
+    - name: "SmtSolverEngine"
+      subsystem: "SUB-26"
+      is_async: true
+      feature_flag: "sentinel-research"
+      description: "Formal methods and Z3 symbolic reasoning engine."
+      methods:
+        - name: "prove_logic_flaw"
+          args:
+            - name: "source_code"
+              type: "&str"
+            - name: "invariant"
+              type: "&str"
+          return_type: "Result<SymbolicPath, SentinelError>"
+          error_type: "SentinelError"
+          description: "Proves whether a code state machine can violate a security invariant."
+
+    - name: "RlStateEngine"
+      subsystem: "SUB-27"
+      is_async: true
+      feature_flag: "sentinel-research"
+      description: "Deep reinforcement learning state exploration engine."
+      methods:
+        - name: "explore_state_machine"
+          args:
+            - name: "initial_url"
+              type: "&str"
+          return_type: "Result<Vec<RlRewardModel>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Discovers hidden application states via automated deep reinforcement learning exploration."
+
+    - name: "CryptoAnalysisEngine"
+      subsystem: "SUB-28"
+      is_async: true
+      feature_flag: "sentinel-research"
+      description: "Cryptanalysis and lattice reduction analyzer."
+      methods:
+        - name: "analyze_handshake"
+          args:
+            - name: "pcap_data"
+              type: "&[u8]"
+          return_type: "Result<Option<CryptoWeakness>, SentinelError>"
+          error_type: "SentinelError"
+          description: "Analyzes captured TLS/crypto handshakes for lattice reduction or nonce reuse weaknesses."
+
+# ==============================================================================
+# 6. EVENTS & CHANNELS REGISTRY
+# ==============================================================================
+events:
+  channels:
+    - name: "Standard Broadcast (Telemetry)"
+      rust_channel: "tokio::sync::broadcast::Sender<SentinelEvent>"
+      capacity: 10000
+      delivery_guarantee: "Best-effort"
+      backpressure_behavior: "Drop oldest messages on consumer lag"
+    - name: "Critical Channel (Auditable Findings)"
+      rust_channel: "tokio::sync::mpsc::Sender<CriticalEvent>"
+      capacity: "Unbounded (bounded by backpressure)"
+      delivery_guarantee: "Guaranteed delivery"
+      backpressure_behavior: "Publisher yields (async block) on saturation; appended to SQLite WAL"
+
+  durable_events:
+    - name: "FindingCreated"
+      enum_variant: "CriticalEvent::FindingCreated(Uuid)"
+      producer: "VerificationEngine (SUB-09)"
+      consumers:
+        - "ObservationStore (SUB-03)"
+        - "UI Stream"
+      payload_schema: "Uuid (Finding ID)"
+      ipc_mapping: "UiFindingEvent (tag 2)"
+
+    - name: "CandidateVerified"
+      enum_variant: "CriticalEvent::CandidateVerified(Uuid)"
+      producer: "VerificationEngine (SUB-09)"
+      consumers:
+        - "ObservationStore (SUB-03)"
+        - "UI Stream"
+      payload_schema: "Uuid (Candidate ID)"
+      ipc_mapping: "UiCandidateVerifiedEvent (tag 8)"
+
+    - name: "ScopeViolationAttempt"
+      enum_variant: "CriticalEvent::ScopeViolationAttempt { source: String, target: String, decision: ScopeDecision }"
+      producer: "ProxyEngine (SUB-01), ScopeEngine (SUB-04)"
+      consumers:
+        - "UI Stream"
+        - "Audit Logger"
+      payload_schema: "{ request_id: Uuid, attempted_uri: String, violation_reason: String, target: String, timestamp: DateTime<Utc> }"
+      ipc_mapping: "UiScopeViolationEvent (tag 7)"
+
+  broadcast_events:
+    - name: "ObservationCreated"
+      enum_variant: "SentinelEvent::ObservationCreated(Uuid)"
+      producer: "ProxyEngine (SUB-01)"
+      consumers:
+        - "ObservationStore (SUB-03)"
+        - "UI Stream"
+      payload_schema: "Uuid (Transaction ID)"
+      ipc_mapping: "UiTrafficEvent (tag 1)"
+
+    - name: "ContextDetected"
+      enum_variant: "SentinelEvent::ContextDetected(Uuid)"
+      producer: "ContextEngine (SUB-10)"
+      consumers:
+        - "UI Stream"
+        - "ScanOrchestrator (SUB-07)"
+      payload_schema: "Uuid (Endpoint ID)"
+      ipc_mapping: "UiContextEvent (tag 6)"
+
+    - name: "CoverageUpdate"
+      enum_variant: "SentinelEvent::CoverageUpdate(Uuid)"
+      producer: "CoverageEngine (SUB-11)"
+      consumers:
+        - "UI Stream"
+        - "ScanOrchestrator (SUB-07)"
+      payload_schema: "Uuid (Scope ID)"
+      ipc_mapping: "UiCoverageEvent (tag 5)"
+
+    - name: "ScanProgress"
+      enum_variant: "SentinelEvent::ScanProgress(ScanProgressUpdate)"
+      producer: "ScanOrchestrator (SUB-07)"
+      consumers:
+        - "UI Stream"
+      payload_schema: "ScanProgressUpdate { scan_id: Uuid, state: ScanLifecycle, progress_pct: f32, checks_completed: u64, timestamp: DateTime<Utc> }"
+      ipc_mapping: "UiScanProgressEvent (tag 3)"
+
+    - name: "TaskStatus"
+      enum_variant: "SentinelEvent::TaskStatus(TaskStateUpdate)"
+      producer: "TaskScheduler (SUB-06)"
+      consumers:
+        - "UI Stream"
+      payload_schema: "TaskStateUpdate { task_id: Uuid, state: TaskLifecycle, progress_pct: f32, error: Option<String>, timestamp: DateTime<Utc> }"
+      ipc_mapping: "UiTaskStatusEvent (tag 4)"
+
+# ==============================================================================
+# 7. IPC CONTRACTS & PROTOBUF DEFINITIONS
+# ==============================================================================
+ipc_contracts:
+  protobuf_package: "sentinel.v6.ipc"
+  services:
+    - name: "BrowserDaemon"
+      rpcs:
+        - name: "Navigate"
+          request: "NavigateRequest"
+          response: "NavigateResponse"
+        - name: "ExecuteScript"
+          request: "ExecuteScriptRequest"
+          response: "ExecuteScriptResponse"
+        - name: "CaptureDom"
+          request: "CaptureDomRequest"
+          response: "CaptureDomResponse"
+        - name: "TakeScreenshot"
+          request: "TakeScreenshotRequest"
+          response: "TakeScreenshotResponse"
+        - name: "Close"
+          request: "CloseRequest"
+          response: "CloseResponse"
+
+  messages:
+    - name: "Uuid"
+      fields:
+        - tag: 1
+          name: "value"
+          type: "string"
+
+    - name: "Timestamp"
+      fields:
+        - tag: 1
+          name: "seconds"
+          type: "int64"
+        - tag: 2
+          name: "nanos"
+          type: "int32"
+
+    - name: "NavigateRequest"
+      fields:
+        - tag: 1
+          name: "url"
+          type: "string"
+        - tag: 2
+          name: "timeout_ms"
+          type: "int32"
+        - tag: 3
+          name: "custom_headers"
+          type: "map<string, string>"
+        - tag: 4
+          name: "bypass_csp"
+          type: "bool"
+
+    - name: "NavigateResponse"
+      fields:
+        - tag: 1
+          name: "success"
+          type: "bool"
+        - tag: 2
+          name: "http_status"
+          type: "int32"
+        - tag: 3
+          name: "error_message"
+          type: "string"
+
+    - name: "ExecuteScriptRequest"
+      fields:
+        - tag: 1
+          name: "javascript_code"
+          type: "string"
+        - tag: 2
+          name: "await_promise"
+          type: "bool"
+        - tag: 3
+          name: "timeout_ms"
+          type: "int32"
+
+    - name: "ExecuteScriptResponse"
+      fields:
+        - tag: 1
+          name: "success"
+          type: "bool"
+        - tag: 2
+          name: "result_json"
+          type: "string"
+        - tag: 3
+          name: "error_message"
+          type: "string"
+
+    - name: "CaptureDomRequest"
+      fields:
+        - tag: 1
+          name: "include_shadow_dom"
+          type: "bool"
+
+    - name: "CaptureDomResponse"
+      fields:
+        - tag: 1
+          name: "html_content"
+          type: "string"
+
+    - name: "TakeScreenshotRequest"
+      fields:
+        - tag: 1
+          name: "full_page"
+          type: "bool"
+
+    - name: "TakeScreenshotResponse"
+      fields:
+        - tag: 1
+          name: "image_png"
+          type: "bytes"
+
+    - name: "CloseRequest"
+      fields: []
+
+    - name: "CloseResponse"
+      fields: []
+
+    - name: "UiTrafficEvent"
+      fields:
+        - tag: 1
+          name: "transaction_id"
+          type: "Uuid"
+        - tag: 2
+          name: "timestamp"
+          type: "Timestamp"
+        - tag: 3
+          name: "method"
+          type: "string"
+        - tag: 4
+          name: "uri"
+          type: "string"
+        - tag: 5
+          name: "status"
+          type: "int32"
+        - tag: 6
+          name: "duration_ms"
+          type: "int32"
+        - tag: 7
+          name: "in_scope"
+          type: "bool"
+        - tag: 8
+          name: "tags"
+          type: "repeated string"
+
+    - name: "UiFindingEvent"
+      fields:
+        - tag: 1
+          name: "finding_id"
+          type: "Uuid"
+        - tag: 2
+          name: "timestamp"
+          type: "Timestamp"
+        - tag: 3
+          name: "title"
+          type: "string"
+        - tag: 4
+          name: "severity"
+          type: "Severity"
+        - tag: 5
+          name: "state"
+          type: "FindingLifecycle"
+
+    - name: "UiScanProgressEvent"
+      fields:
+        - tag: 1
+          name: "scan_id"
+          type: "Uuid"
+        - tag: 2
+          name: "phase"
+          type: "string"
+        - tag: 3
+          name: "percent_complete"
+          type: "float"
+
+    - name: "UiTaskStatusEvent"
+      fields:
+        - tag: 1
+          name: "task_id"
+          type: "Uuid"
+        - tag: 2
+          name: "state"
+          type: "TaskState"
+        - tag: 3
+          name: "message"
+          type: "string"
+
+    - name: "UiCoverageEvent"
+      fields:
+        - tag: 1
+          name: "scope_id"
+          type: "Uuid"
+        - tag: 2
+          name: "total_endpoints"
+          type: "uint32"
+        - tag: 3
+          name: "tested_endpoints"
+          type: "uint32"
+        - tag: 4
+          name: "coverage_percent"
+          type: "float"
+
+    - name: "UiContextEvent"
+      fields:
+        - tag: 1
+          name: "endpoint_id"
+          type: "Uuid"
+        - tag: 2
+          name: "technology"
+          type: "string"
+        - tag: 3
+          name: "confidence"
+          type: "float"
+
+    - name: "UiScopeViolationEvent"
+      fields:
+        - tag: 1
+          name: "request_id"
+          type: "Uuid"
+        - tag: 2
+          name: "attempted_uri"
+          type: "string"
+        - tag: 3
+          name: "violation_reason"
+          type: "string"
+        - tag: 4
+          name: "timestamp"
+          type: "Timestamp"
+
+    - name: "UiCandidateVerifiedEvent"
+      fields:
+        - tag: 1
+          name: "candidate_id"
+          type: "Uuid"
+        - tag: 2
+          name: "verification_id"
+          type: "Uuid"
+        - tag: 3
+          name: "strategy"
+          type: "string"
+        - tag: 4
+          name: "success"
+          type: "bool"
+        - tag: 5
+          name: "timestamp"
+          type: "Timestamp"
+
+  streams:
+    - name: "SentinelUiStream"
+      oneof_field: "event"
+      mappings:
+        - tag: 1
+          name: "traffic"
+          type: "UiTrafficEvent"
+        - tag: 2
+          name: "finding"
+          type: "UiFindingEvent"
+        - tag: 3
+          name: "scan_progress"
+          type: "UiScanProgressEvent"
+        - tag: 4
+          name: "task_status"
+          type: "UiTaskStatusEvent"
+        - tag: 5
+          name: "coverage"
+          type: "UiCoverageEvent"
+        - tag: 6
+          name: "context"
+          type: "UiContextEvent"
+        - tag: 7
+          name: "scope_violation"
+          type: "UiScopeViolationEvent"
+        - tag: 8
+          name: "candidate_verified"
+          type: "UiCandidateVerifiedEvent"
+
+# ==============================================================================
+# 8. CONFIGURATION REGISTRY
+# ==============================================================================
+configuration:
+  registries:
+    - name: "SentinelConfig"
+      owner_subsystem: "Main"
+      hot_reloadable: false
+      fields:
+        - key: "database_path"
+          type: "PathBuf"
+          default: "~/.sentinel/projects/"
+          validation: "Valid filesystem path"
+          env_override: "SENTINEL_DB_PATH"
+          description: "Base directory path for SQLite databases and blob storage."
+        - key: "log_level"
+          type: "String"
+          default: "INFO"
+          validation: "Must be TRACE, DEBUG, INFO, WARN, or ERROR"
+          env_override: "SENTINEL_LOG_LEVEL"
+          description: "Global tracing log filter level."
+        - key: "max_memory_mb"
+          type: "u32"
+          default: 4096
+          validation: "Range: 512..65536"
+          env_override: "SENTINEL_MAX_MEMORY_MB"
+          description: "Maximum allowable memory ceiling for the application process."
+
+    - name: "ProxyConfig"
+      owner_subsystem: "SUB-01 ProxyEngine"
+      hot_reloadable: false
+      fields:
+        - key: "bind_address"
+          type: "String"
+          default: "127.0.0.1"
+          validation: "Valid IPv4 or IPv6 string"
+          env_override: "SENTINEL_PROXY_BIND"
+          description: "Local IP address for the proxy listener."
+        - key: "port"
+          type: "u16"
+          default: 8080
+          validation: "Range: 1..65535"
+          env_override: "SENTINEL_PROXY_PORT"
+          description: "Port number for the proxy listener."
+        - key: "upstream_proxy"
+          type: "Option<String>"
+          default: null
+          validation: "Valid URI string e.g. http://127.0.0.1:8081 or null"
+          env_override: "SENTINEL_UPSTREAM_PROXY"
+          description: "Optional upstream forward proxy URL."
+        - key: "tls_cert_path"
+          type: "String"
+          default: "~/.sentinel/ca/sentinel_ca.crt"
+          validation: "Valid path to readable CA certificate and key"
+          env_override: "SENTINEL_CA_PATH"
+          description: "Path to root CA certificate for dynamic TLS MITM generation."
+
+    - name: "ScanConfig"
+      owner_subsystem: "SUB-07 ScanOrchestrator"
+      hot_reloadable: true
+      fields:
+        - key: "scope_id"
+          type: "Uuid"
+          default: "00000000-0000-0000-0000-000000000000"
+          validation: "Must exist in scopes table"
+          description: "Target Scope UUID defining allowed test targets."
+        - key: "concurrency_limit"
+          type: "u32"
+          default: 10
+          validation: "Range: 1..100"
+          description: "Maximum concurrent active testing requests."
+        - key: "max_requests_per_endpoint"
+          type: "u32"
+          default: 500
+          validation: "Range: 10..100000"
+          description: "Maximum test requests per individual endpoint."
+        - key: "active_checks"
+          type: "Vec<String>"
+          default: ["all_safe"]
+          validation: "List of valid security check IDs"
+          description: "Enabled security check and rule identifiers."
+        - key: "verification_strategies"
+          type: "Vec<VerificationStrategy>"
+          default: ["ResponseDifferential", "OASTCorrelation", "TimingStatistical", "ContentVerification"]
+          validation: "List of enabled verification strategies"
+          description: "Active strategies to use for candidate verification."
+        - key: "budget"
+          type: "ResourceBudget"
+          default:
+            max_requests: 10000
+            max_duration_secs: 3600
+          validation: "Valid ResourceBudget object"
+          description: "Resource execution bounds for the scan."
+
+    - name: "ResourceBudget"
+      owner_subsystem: "SUB-06 TaskScheduler"
+      hot_reloadable: true
+      fields:
+        - key: "max_requests"
+          type: "u64"
+          default: 10000
+          validation: "Range: 100..10000000"
+          description: "Total maximum network requests per task."
+        - key: "max_duration_secs"
+          type: "u64"
+          default: 3600
+          validation: "Range: 60..86400"
+          description: "Maximum task execution duration in seconds."
+        - key: "max_findings"
+          type: "u32"
+          default: 100
+          validation: "Range: 1..10000"
+          description: "Maximum finding discovery limit before auto-pause."
+
+    - name: "PluginSandboxConfig"
+      owner_subsystem: "SUB-20 PluginRuntime"
+      hot_reloadable: false
+      fields:
+        - key: "capabilities"
+          type: "CapabilitySet"
+          default:
+            network: false
+            filesystem: false
+            secrets: false
+            database: false
+            browser: false
+          validation: "Valid CapabilitySet (default DENY)"
+          description: "Granted capability permissions for the plugin."
+        - key: "limits"
+          type: "ResourceLimits"
+          default:
+            max_memory_mb: 128
+            max_execution_ms: 5000
+            max_network_requests: 0
+          validation: "Valid ResourceLimits"
+          description: "Resource execution ceilings for the plugin."
+
+    - name: "OastConfig"
+      owner_subsystem: "SUB-16 OASTServer"
+      hot_reloadable: false
+      fields:
+        - key: "domain"
+          type: "String"
+          default: "oast.sentinelsec.net"
+          validation: "Valid FQDN"
+          env_override: "SENTINEL_OAST_DOMAIN"
+          description: "Root domain name for out-of-band listener correlation."
+        - key: "bind_ip"
+          type: "String"
+          default: "0.0.0.0"
+          validation: "Valid IP string"
+          description: "IP address to bind OAST listener daemons."
+        - key: "dns_port"
+          type: "u16"
+          default: 53
+          validation: "Port 53 or unprivileged port"
+          description: "DNS listener port."
+        - key: "http_port"
+          type: "u16"
+          default: 80
+          validation: "Port 80 or unprivileged port"
+          description: "HTTP listener port."
+        - key: "https_port"
+          type: "u16"
+          default: 443
+          validation: "Port 443 or unprivileged port"
+          description: "HTTPS listener port."
+        - key: "tls_cert_path"
+          type: "Option<String>"
+          default: null
+          validation: "Path to TLS certificate for HTTPS listener"
+          description: "Optional certificate path for OAST HTTPS listener."
+
+    - name: "ReportConfig"
+      owner_subsystem: "SUB-14 ReportEngine"
+      hot_reloadable: true
+      fields:
+        - key: "format"
+          type: "ReportFormat"
+          default: "Pdf"
+          validation: "Pdf, Markdown, Json, or Html"
+          description: "Desired report output document format."
+        - key: "finding_ids"
+          type: "Vec<Uuid>"
+          default: []
+          validation: "List of valid Finding UUIDs"
+          description: "Finding entities to include in the exported report."
+        - key: "include_evidence"
+          type: "bool"
+          default: true
+          validation: "Boolean"
+          description: "Whether to embed raw evidence blobs and screenshots."
+        - key: "template"
+          type: "Option<String>"
+          default: null
+          validation: "Valid template name or custom path"
+          description: "Custom reporting layout template."
+        - key: "include_reproduction_steps"
+          type: "bool"
+          default: true
+          validation: "Boolean"
+          description: "Whether to generate automated curl/reproduction steps."
+
+    - name: "AiConfig"
+      owner_subsystem: "SUB-18 AIEngine"
+      hot_reloadable: true
+      fields:
+        - key: "provider"
+          type: "String"
+          default: "openai"
+          validation: "Must be 'openai', 'anthropic', 'ollama', or 'custom'"
+          env_override: "SENTINEL_AI_PROVIDER"
+          description: "LLM backend provider."
+        - key: "model"
+          type: "String"
+          default: "gpt-4o"
+          validation: "Model identifier string"
+          env_override: "SENTINEL_AI_MODEL"
+          description: "Model name."
+        - key: "api_key_ref"
+          type: "Option<Uuid>"
+          default: null
+          validation: "UUID of secret reference in OS vault"
+          description: "SecretReference UUID for the AI provider API key."
+        - key: "max_tokens"
+          type: "u32"
+          default: 2048
+          validation: "Range: 256..16384"
+          description: "Maximum tokens per AI completion."
+        - key: "temperature"
+          type: "f32"
+          default: 0.2
+          validation: "Range: 0.0..1.0"
+          description: "Sampling temperature."
+
+    - name: "ResearchConfig"
+      owner_subsystem: "SUB-26..28 Research Tier"
+      hot_reloadable: false
+      fields:
+        - key: "smt_timeout_secs"
+          type: "u32"
+          default: 30
+          validation: "Range: 5..300"
+          description: "Maximum solver time limit per symbolic proof."
+        - key: "rl_max_episodes"
+          type: "u32"
+          default: 1000
+          validation: "Range: 10..100000"
+          description: "Maximum state exploration episodes."
+        - key: "crypto_max_pcap_size_mb"
+          type: "u32"
+          default: 50
+          validation: "Range: 1..500"
+          description: "Maximum PCAP file size for lattice reduction analysis."
+
+# ==============================================================================
+# 9. ERROR MODEL & RECOVERY POLICY
+# ==============================================================================
+error_model:
+  canonical_enum: "SentinelError"
+  variants:
+    - name: "Database"
+      code: "ERR_DB_001"
+      retryable: true
+      recovery_policy: "Async exponential backoff on retryable lock errors (SQLITE_BUSY). Critical checkpoint updates persist to WAL."
+      impacted_subsystems: ["SUB-03 ObservationStore", "SUB-14 ReportEngine", "SUB-06 TaskScheduler"]
+
+    - name: "Io"
+      code: "ERR_IO_002"
+      retryable: false
+      recovery_policy: "Fails operation immediately; logs structured error with file path context."
+      impacted_subsystems: ["SUB-01 ProxyEngine", "SUB-20 PluginRuntime", "SUB-14 ReportEngine"]
+
+    - name: "Tantivy"
+      code: "ERR_FTS_003"
+      retryable: false
+      recovery_policy: "Gracefully degrades body search; triggers background Tantivy index rebuild from SQLite WAL."
+      impacted_subsystems: ["SUB-03 ObservationStore"]
+
+    - name: "ScopeViolation"
+      code: "ERR_SCOPE_004"
+      retryable: false
+      recovery_policy: "Connection or task aborted immediately; fails closed; emits CriticalEvent::ScopeViolationAttempt."
+      impacted_subsystems: ["SUB-01 ProxyEngine", "SUB-07 ScanOrchestrator", "SUB-15 BrowserService", "SUB-22 SubfinderAdapter"]
+
+    - name: "BusOverflow"
+      code: "ERR_BUS_005"
+      retryable: true
+      recovery_policy: "Broadcast channel drops oldest messages for lagging UI consumers; Critical mpsc channel yields publisher."
+      impacted_subsystems: ["SUB-05 EventBus", "SUB-07 ScanOrchestrator"]
+
+    - name: "ParseError"
+      code: "ERR_PARSE_006"
+      retryable: false
+      recovery_policy: "Preserves raw byte representation in blob store; logs structured ParseWarning; aborts invalid frame without panic."
+      impacted_subsystems: ["SUB-02 HTTPParser", "SUB-25 OpenApiParser"]
+
+    - name: "AiEngine"
+      code: "ERR_AI_007"
+      retryable: true
+      recovery_policy: "Platform degrades to deterministic scanning; core scanning continues unhindered when AI is offline."
+      impacted_subsystems: ["SUB-18 AIEngine", "SUB-19 AIPolicyEngine"]
+
+    - name: "SandboxViolation"
+      code: "ERR_SANDBOX_008"
+      retryable: false
+      recovery_policy: "Wasmtime VM traps call immediately; terminates plugin instance; logs security audit event."
+      impacted_subsystems: ["SUB-20 PluginRuntime"]
+
+    - name: "InvariantViolation"
+      code: "ERR_INVAR_009"
+      retryable: false
+      recovery_policy: "Triggers safe panic wrapper; SQLite WAL and EventBus checkpointing ensure zero state corruption on restart."
+      impacted_subsystems: ["All Subsystems"]
+
+    - name: "TlsError"
+      code: "ERR_TLS_010"
+      retryable: true
+      recovery_policy: "Retries handshake with fallback TLS version/cipher suite."
+      impacted_subsystems: ["SUB-01 ProxyEngine", "SUB-16 OASTServer"]
+
+    - name: "NetworkError"
+      code: "ERR_NET_011"
+      retryable: true
+      recovery_policy: "Retries connection up to configured limit with exponential backoff."
+      impacted_subsystems: ["SUB-01 ProxyEngine", "SUB-07 ScanOrchestrator", "SUB-15 BrowserService"]
+
+    - name: "Timeout"
+      code: "ERR_TIME_012"
+      retryable: true
+      recovery_policy: "Cancels socket/child process and returns timeout error."
+      impacted_subsystems: ["SUB-07 ScanOrchestrator", "SUB-09 VerificationEngine", "SUB-15 BrowserService", "SUB-22..25 Adapters"]
+
+    - name: "AuthError"
+      code: "ERR_AUTH_013"
+      retryable: false
+      recovery_policy: "Invokes token refresh dance if 401; prompts user for updated credentials on permanent failure."
+      impacted_subsystems: ["SUB-12 IdentityManager", "SUB-17 AuthorizationEngine"]
+
+    - name: "InvalidConfiguration"
+      code: "ERR_CFG_014"
+      retryable: false
+      recovery_policy: "Rejects invalid configuration at load time with detailed validation diagnostics."
+      impacted_subsystems: ["All Subsystems"]
+
+  crash_safe_rules:
+    - "Never swallow unrecoverable errors: all errors must propagate to orchestrator or emit structured tracing logs."
+    - "SQLite WAL mode with PRAGMA synchronous=NORMAL ensures atomic transactional integrity on unexpected process termination."
+    - "EventBus task checkpoints ensure scans resume from last committed step without data loss."
+    - "Zero-allocation panic wrappers catch thread unwinding and release socket/file locks safely."
+
+# ==============================================================================
+# 10. STORAGE SCHEMA & DATA LAYOUT
+# ==============================================================================
+storage:
+  sqlite:
+    pragmas:
+      - "PRAGMA journal_mode=WAL;"
+      - "PRAGMA synchronous=NORMAL;"
+      - "PRAGMA foreign_keys=ON;"
+    tables:
+      # Group 1: Core Platform & Scopes
+      - name: "scopes"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "includes_json"
+            type: "TEXT"
+            nullable: false
+          - name: "excludes_json"
+            type: "TEXT"
+            nullable: false
+
+      # Group 2: Knowledge Graph
+      - name: "graph_nodes"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "node_type"
+            type: "TEXT"
+            nullable: false
+          - name: "label"
+            type: "TEXT"
+            nullable: false
+          - name: "metadata_json"
+            type: "TEXT"
+            nullable: true
+
+      - name: "graph_edges"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "source_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "graph_nodes"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "target_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "graph_nodes"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "edge_type"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_graph_edges_source"
+            columns: ["source_id"]
+          - name: "idx_graph_edges_target"
+            columns: ["target_id"]
+
+      - name: "endpoints"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "host"
+            type: "TEXT"
+            nullable: false
+          - name: "path"
+            type: "TEXT"
+            nullable: false
+          - name: "method"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "graph_node_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "graph_nodes"
+              column: "id"
+              on_delete: "CASCADE"
+        indexes:
+          - name: "idx_endpoints_unique"
+            columns: ["host", "path", "method"]
+            unique: true
+          - name: "idx_endpoints_graph_node"
+            columns: ["graph_node_id"]
+
+      - name: "parameters"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "endpoint_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "endpoints"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "name"
+            type: "TEXT"
+            nullable: false
+          - name: "location"
+            type: "TEXT"
+            nullable: false
+          - name: "inferred_type"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_parameters_endpoint"
+            columns: ["endpoint_id"]
+
+      # Group 3: Observations & Transactions
+      - name: "observations"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "provenance"
+            type: "TEXT"
+            nullable: false
+          - name: "source"
+            type: "TEXT"
+            nullable: false
+          - name: "data_ref"
+            type: "TEXT"
+            nullable: false
+          - name: "lifecycle"
+            type: "TEXT"
+            nullable: false
+          - name: "scope_id"
+            type: "TEXT"
+            nullable: true
+            foreign_key:
+              table: "scopes"
+              column: "id"
+              on_delete: "SET NULL"
+        indexes:
+          - name: "idx_observations_data_ref"
+            columns: ["data_ref"]
+          - name: "idx_observations_scope"
+            columns: ["scope_id"]
+
+      - name: "transactions"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "protocol"
+            type: "TEXT"
+            nullable: false
+          - name: "stream_id"
+            type: "INTEGER"
+            nullable: true
+          - name: "req_method"
+            type: "TEXT"
+            nullable: false
+          - name: "req_uri"
+            type: "TEXT"
+            nullable: false
+          - name: "req_blob_id"
+            type: "TEXT"
+            nullable: false
+          - name: "req_normalized_text"
+            type: "TEXT"
+            nullable: false
+          - name: "res_status"
+            type: "INTEGER"
+            nullable: true
+          - name: "res_blob_id"
+            type: "TEXT"
+            nullable: true
+          - name: "res_normalized_text"
+            type: "TEXT"
+            nullable: true
+          - name: "timing_ms"
+            type: "INTEGER"
+            nullable: false
+          - name: "tls_cipher"
+            type: "TEXT"
+            nullable: true
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "provenance"
+            type: "TEXT"
+            nullable: false
+          - name: "lifecycle"
+            type: "TEXT"
+            nullable: false
+          - name: "scope_id"
+            type: "TEXT"
+            nullable: true
+            foreign_key:
+              table: "scopes"
+              column: "id"
+              on_delete: "SET NULL"
+        indexes:
+          - name: "idx_transactions_uri"
+            columns: ["req_uri"]
+          - name: "idx_transactions_scope"
+            columns: ["scope_id"]
+
+      # Group 4: Identities, Sessions, & Credentials
+      - name: "identities"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "username"
+            type: "TEXT"
+            nullable: false
+          - name: "roles_json"
+            type: "TEXT"
+            nullable: false
+
+      - name: "sessions"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "identity_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "identities"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "cookies_json"
+            type: "TEXT"
+            nullable: false
+          - name: "headers_json"
+            type: "TEXT"
+            nullable: false
+          - name: "created_at"
+            type: "DATETIME"
+            nullable: false
+          - name: "expires_at"
+            type: "DATETIME"
+            nullable: true
+        indexes:
+          - name: "idx_sessions_identity"
+            columns: ["identity_id"]
+
+      - name: "credentials"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "identity_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "identities"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "credential_type"
+            type: "TEXT"
+            nullable: false
+          - name: "secret_reference"
+            type: "TEXT"
+            nullable: false
+          - name: "access_level"
+            type: "TEXT"
+            nullable: false
+          - name: "expires_at"
+            type: "DATETIME"
+            nullable: true
+        indexes:
+          - name: "idx_credentials_identity"
+            columns: ["identity_id"]
+
+      # Group 5: Out-of-Band (OAST)
+      - name: "oast_tokens"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "token_string"
+            type: "TEXT"
+            nullable: false
+          - name: "created_at"
+            type: "DATETIME"
+            nullable: false
+          - name: "context_json"
+            type: "TEXT"
+            nullable: true
+        indexes:
+          - name: "idx_oast_tokens_string"
+            columns: ["token_string"]
+            unique: true
+
+      - name: "oast_interactions"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "token_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "oast_tokens"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "protocol"
+            type: "TEXT"
+            nullable: false
+          - name: "source_ip"
+            type: "TEXT"
+            nullable: false
+          - name: "raw_blob_id"
+            type: "TEXT"
+            nullable: false
+        indexes:
+          - name: "idx_oast_interactions_token"
+            columns: ["token_id"]
+
+      # Group 6: Verification, Evidence, & Findings
+      - name: "candidates"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "source_observation_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "observations"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "hypothesis"
+            type: "TEXT"
+            nullable: false
+          - name: "status"
+            type: "TEXT"
+            nullable: false
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "provenance"
+            type: "TEXT"
+            nullable: false
+          - name: "lifecycle"
+            type: "TEXT"
+            nullable: false
+          - name: "scope_id"
+            type: "TEXT"
+            nullable: true
+            foreign_key:
+              table: "scopes"
+              column: "id"
+              on_delete: "SET NULL"
+        indexes:
+          - name: "idx_candidates_source_obs"
+            columns: ["source_observation_id"]
+
+      - name: "verifications"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "candidate_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "candidates"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "strategy_type"
+            type: "TEXT"
+            nullable: false
+          - name: "strategy_version"
+            type: "TEXT"
+            nullable: false
+          - name: "success"
+            type: "BOOLEAN"
+            nullable: false
+          - name: "confidence"
+            type: "REAL"
+            nullable: false
+          - name: "executed_at"
+            type: "DATETIME"
+            nullable: false
+          - name: "duration_ms"
+            type: "INTEGER"
+            nullable: false
+        indexes:
+          - name: "idx_verifications_candidate"
+            columns: ["candidate_id"]
+
+      - name: "evidence"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "verification_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "verifications"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "evidence_type"
+            type: "TEXT"
+            nullable: false
+          - name: "data_blob_id"
+            type: "TEXT"
+            nullable: false
+          - name: "created_at"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_evidence_verification"
+            columns: ["verification_id"]
+
+      - name: "findings"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "version"
+            type: "INTEGER"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+          - name: "title"
+            type: "TEXT"
+            nullable: false
+          - name: "severity"
+            type: "TEXT"
+            nullable: false
+          - name: "verification_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "verifications"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "state"
+            type: "TEXT"
+            nullable: false
+          - name: "provenance"
+            type: "TEXT"
+            nullable: false
+          - name: "lifecycle"
+            type: "TEXT"
+            nullable: false
+          - name: "scope_id"
+            type: "TEXT"
+            nullable: true
+            foreign_key:
+              table: "scopes"
+              column: "id"
+              on_delete: "SET NULL"
+        indexes:
+          - name: "idx_findings_verification"
+            columns: ["verification_id"]
+          - name: "idx_findings_state_severity"
+            columns: ["state", "severity"]
+          - name: "idx_findings_scope"
+            columns: ["scope_id"]
+
+      # Group 7: Task & Scanner State
+      - name: "task_checkpoints"
+        primary_key: "task_id"
+        columns:
+          - name: "task_id"
+            type: "TEXT"
+            nullable: false
+          - name: "status"
+            type: "TEXT"
+            nullable: false
+          - name: "last_updated"
+            type: "DATETIME"
+            nullable: false
+          - name: "state_json"
+            type: "TEXT"
+            nullable: false
+
+      - name: "scan_configs"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "scope_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "scopes"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "concurrency_limit"
+            type: "INTEGER"
+            nullable: false
+          - name: "active_plugins_json"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_scan_configs_scope"
+            columns: ["scope_id"]
+
+      - name: "proxy_intercept_rules"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "match_condition"
+            type: "TEXT"
+            nullable: false
+          - name: "action"
+            type: "TEXT"
+            nullable: false
+          - name: "action_data_json"
+            type: "TEXT"
+            nullable: true
+          - name: "is_active"
+            type: "BOOLEAN"
+            nullable: false
+
+      # Group 8: Pentester Productivity Entities
+      - name: "workflows"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "name"
+            type: "TEXT"
+            nullable: false
+          - name: "steps_json"
+            type: "TEXT"
+            nullable: false
+          - name: "created_at"
+            type: "DATETIME"
+            nullable: false
+
+      - name: "reports"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "title"
+            type: "TEXT"
+            nullable: false
+          - name: "format"
+            type: "TEXT"
+            nullable: false
+          - name: "file_path"
+            type: "TEXT"
+            nullable: false
+          - name: "config_json"
+            type: "TEXT"
+            nullable: false
+          - name: "generated_at"
+            type: "DATETIME"
+            nullable: false
+
+      - name: "regression_tests"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "finding_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "findings"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "seed_transaction_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "transactions"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "expected_status"
+            type: "TEXT"
+            nullable: false
+          - name: "created_at"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_regression_tests_finding"
+            columns: ["finding_id"]
+
+      - name: "notes"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "target_id"
+            type: "TEXT"
+            nullable: false
+          - name: "author"
+            type: "TEXT"
+            nullable: false
+          - name: "content"
+            type: "TEXT"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_notes_target"
+            columns: ["target_id"]
+
+      - name: "screenshots"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "blob_id"
+            type: "TEXT"
+            nullable: false
+          - name: "full_page"
+            type: "BOOLEAN"
+            nullable: false
+          - name: "timestamp"
+            type: "DATETIME"
+            nullable: false
+
+      - name: "attack_paths"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "start_node_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "graph_nodes"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "target_node_id"
+            type: "TEXT"
+            nullable: false
+            foreign_key:
+              table: "graph_nodes"
+              column: "id"
+              on_delete: "CASCADE"
+          - name: "edges_json"
+            type: "TEXT"
+            nullable: false
+          - name: "risk_score"
+            type: "REAL"
+            nullable: false
+          - name: "discovered_at"
+            type: "DATETIME"
+            nullable: false
+        indexes:
+          - name: "idx_attack_paths_start"
+            columns: ["start_node_id"]
+          - name: "idx_attack_paths_target"
+            columns: ["target_node_id"]
+
+      # Group 9: Adapter Integration Tables
+      - name: "subdomain_assets"
+        primary_key: "domain"
+        columns:
+          - name: "domain"
+            type: "TEXT"
+            nullable: false
+          - name: "ip_addresses_json"
+            type: "TEXT"
+            nullable: false
+          - name: "source"
+            type: "TEXT"
+            nullable: false
+          - name: "discovered_at"
+            type: "DATETIME"
+            nullable: false
+
+      - name: "cloud_assets"
+        primary_key: "arn"
+        columns:
+          - name: "arn"
+            type: "TEXT"
+            nullable: false
+          - name: "service"
+            type: "TEXT"
+            nullable: false
+          - name: "region"
+            type: "TEXT"
+            nullable: false
+          - name: "discovered_via_credential_id"
+            type: "TEXT"
+            nullable: true
+            foreign_key:
+              table: "credentials"
+              column: "id"
+              on_delete: "SET NULL"
+        indexes:
+          - name: "idx_cloud_assets_credential"
+            columns: ["discovered_via_credential_id"]
+
+      - name: "api_proutes"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "path_template"
+            type: "TEXT"
+            nullable: false
+          - name: "method"
+            type: "TEXT"
+            nullable: false
+          - name: "expected_params_json"
+            type: "TEXT"
+            nullable: false
+          - name: "source_spec"
+            type: "TEXT"
+            nullable: false
+
+      - name: "sast_findings"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "file_path"
+            type: "TEXT"
+            nullable: false
+          - name: "line_number"
+            type: "INTEGER"
+            nullable: false
+          - name: "snippet"
+            type: "TEXT"
+            nullable: false
+          - name: "taint_source"
+            type: "TEXT"
+            nullable: false
+
+      # Group 10: Research Modules (Feature Flagged)
+      - name: "symbolic_proofs"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "target_variable"
+            type: "TEXT"
+            nullable: false
+          - name: "z3_mathematical_proof"
+            type: "TEXT"
+            nullable: false
+          - name: "proved_at"
+            type: "DATETIME"
+            nullable: false
+
+      - name: "app_state_machine"
+        primary_key: "state_hash"
+        columns:
+          - name: "state_hash"
+            type: "TEXT"
+            nullable: false
+          - name: "url_path"
+            type: "TEXT"
+            nullable: false
+          - name: "dom_snapshot_hash"
+            type: "TEXT"
+            nullable: false
+          - name: "rl_reward_score"
+            type: "REAL"
+            nullable: false
+          - name: "discovered_at"
+            type: "DATETIME"
+            nullable: false
+
+      - name: "crypto_weaknesses"
+        primary_key: "id"
+        columns:
+          - name: "id"
+            type: "TEXT"
+            nullable: false
+          - name: "protocol"
+            type: "TEXT"
+            nullable: false
+          - name: "weakness_type"
+            type: "TEXT"
+            nullable: false
+          - name: "extracted_private_key"
+            type: "TEXT"
+            nullable: true
+          - name: "pcap_reference"
+            type: "TEXT"
+            nullable: false
+
+  blob_store:
+    path_template: "<project_root>/blobs/{sha256[0:2]}/{sha256}.blob"
+    addressing: "Content-addressed SHA-256 hash"
+    retention: "Immutable once written; soft-deleted via reference count"
+
+  tantivy:
+    path_template: "<project_root>/tantivy/"
+    fields:
+      - "tx_id"
+      - "req_method"
+      - "req_uri"
+      - "req_normalized_text"
+      - "res_status"
+      - "res_normalized_text"
+      - "timestamp"
+    commit_interval_ms: 500
+
+# ==============================================================================
+# 11. PROTOCOLS & NETWORK FRAMING
+# ==============================================================================
+protocols:
+  http1_1:
+    framing: "Text-based framing; preserves raw request/response byte slice, CRLF delimiters, header capitalization, and chunked transfer encoding."
+    security_testing: "Supports HTTP request smuggling tests (CL.TE, TE.CL, TE.TE) by disabling automatic header canonicalization."
+  http2:
+    framing: "Binary multiplexed framing with explicit stream_id, stream dependency tree, HPACK header compression state, and frame types (HEADERS, DATA, SETTINGS, RST_STREAM, GOAWAY, PING)."
+    security_testing: "Supports single-packet race condition testing across multiple concurrent streams on a shared TCP connection."
+  http3_quic:
+    framing: "QUIC UDP datagram transport with QPACK static/dynamic table compression, 0-RTT connection resumption, and connection migration."
+    security_testing: "Detects Alt-Svc upgrade headers (Alt-Svc: h3=':443') and probes QUIC handshake implementations."
+  tls:
+    framing: "TLS 1.2 and TLS 1.3 cryptographic transport negotiation."
+    tracking: "Tracks TLS version, negotiated cipher suite, SNI hostname, ALPN protocol list (h2, http/1.1), cert chain fingerprint, and JA3/JA4 fingerprints."
+  websocket:
+    framing: "RFC 6455 full-duplex frame parser: fin, rsv1-3, opcode (Continuation, Text, Binary, Close, Ping, Pong), mask_key, payload_len, and payload bytes."
+    security_testing: "Per-frame message assembly and bi-directional message interception in UI Repeater."
+  sse:
+    framing: "Server-Sent Events text stream parser: recognizes event, data, id, retry, and multi-line event payloads over long-lived HTTP responses."
+  grpc:
+    framing: "HTTP/2 transport with gRPC encapsulation (Compressed-Flag: 1 byte, Message-Length: 4 bytes, Protobuf-Message: N bytes)."
+    dissection: "Dissects gRPC frames, extracts grpc-status, grpc-message, and custom metadata trailers."
+
+# ==============================================================================
+# 12. SCANNER & FUZZER ARCHITECTURE
+# ==============================================================================
+scanner_and_fuzzer:
+  pipeline_stages:
+    - "1. Passive Detection: ContextEngine and rules extract Observations from captured Transactions."
+    - "2. Hypothesis Generation: Candidate hypotheses generated passively or via AI."
+    - "3. Active Verification: VerificationEngine dispatches test payloads via targeted VerificationStrategy."
+    - "4. Evidence Binding: Cryptographic, differential, or timing Evidence bound to VerificationResult."
+    - "5. Finding Confirmation: Verified candidate transitions to confirmed Finding with severity and lifecycle."
+
+  fuzz_profile_schema:
+    profile_id: "Uuid"
+    insertion_points: "Vec<ParamLocation>"
+    mutators: "Vec<MutatorType>"
+    encoders: "Vec<String>"
+    oracles: "Vec<FuzzOracle>"
+    resource_budget: "ResourceBudget"
+    concurrency: "u32"
+    timeout_ms: "u64"
+    stop_conditions: "Vec<StopCondition>"
+
+  mutator_types:
+    - "BitFlip: Inverts single or multiple bits in byte stream"
+    - "ByteReplace: Replaces random bytes with boundary or control characters"
+    - "Grammar: Generates syntax-valid payloads based on grammar rules"
+    - "Wordlist: Injects entries from targeted dictionary wordlists"
+    - "Boundary: Injects numeric boundaries (-1, 0, 2147483647, 9223372036854775807)"
+    - "UnicodeNormalization: Injects Unicode homoglyphs and normalization variants"
+    - "Truncation: Tests buffer overflows and null-byte string terminators"
+    - "FormatString: Injects format specifiers (%s, %x, %n, {{7*7}}, ${7*7})"
+    - "Radamsa: General-purpose blackbox mutation engine"
+    - "AiAssisted: Context-aware payload synthesis via LLM"
+
+  insertion_points:
+    - "Query: URL query string parameter"
+    - "Body: Form-urlencoded or raw request body"
+    - "Header: HTTP request header value"
+    - "Path: URL path segment or matrix parameter"
+    - "Cookie: Cookie key or value"
+    - "JsonPath: Target field in JSON object tree"
+    - "XPath: Target node or attribute in XML tree"
+    - "MultipartField: Multipart form field name or value"
+    - "GraphQLVariable: GraphQL query variable parameter"
+    - "WebSocketFrame: Payload of a WebSocket text frame"
+
+  oracles:
+    - "StatusCodeDifferential: Detects unexpected HTTP status code changes (e.g. 500 Internal Server Error)"
+    - "RegexMatch: Matches signature strings in response body or headers"
+    - "TimingThreshold: Statistical timing variance test (e.g. sleep(5) -> response latency > 5000ms)"
+    - "ErrorSignature: Detects database/framework syntax error messages"
+    - "JsonSchemaDifferential: Identifies structural changes in API JSON responses"
+    - "AstDifferential: Compares DOM AST trees for reflected script execution"
+    - "OastTrigger: Correlates out-of-band DNS/HTTP callback token receipt"
+
+  resource_budget:
+    max_requests: "u64 (default 10,000)"
+    max_duration_secs: "u64 (default 3,600)"
+    max_memory_mb: "u32 (default 1,024)"
+    max_concurrency: "u32 (default 10)"
+    max_bandwidth_bytes: "u64 (default 1,073,741,824)"
+
+  minimization: "Causal delta debugging algorithm reducing triggering payload to minimal reproducing byte slice."
+  replay: "Deterministic test replay engine supporting exact timing, cookies, and session header recreation."
+  stop_conditions:
+    - "MaxRequestsReached(u64)"
+    - "MaxDurationReached(u64)"
+    - "FindingCountReached(u32)"
+    - "TargetUnresponsive(u32)"
+    - "ErrorRateThresholdExceeded(f32)"
+    - "ScopePolicyViolation"
+    - "UserCancelled"
+
+# ==============================================================================
+# 13. PLUGIN SECURITY & SANDBOX
+# ==============================================================================
+plugin_security:
+  capability_set:
+    network: "bool (default false) — permits outbound HTTP/TCP requests through ScopeEngine"
+    filesystem: "bool (default false) — permits sandboxed filesystem read/write in plugin directory"
+    secrets: "bool (default false) — permits requesting credential resolution from IdentityManager"
+    database_read: "bool (default false) — permits read-only SQL queries on observations and endpoints"
+    browser: "bool (default false) — permits requesting BrowserService DOM execution"
+
+  resource_limits:
+    max_memory_mb: "u32 (default 128MB, maximum 1024MB)"
+    max_execution_ms: "u64 (default 5000ms, maximum 60000ms)"
+    max_network_requests: "u32 (default 0, maximum 1000)"
+    max_disk_bytes: "u64 (default 0, maximum 104857600)"
+    max_cpu_percent: "u32 (default 50%)"
+
+  sandbox_modes:
+    Wasm: "Wasmtime runtime with stripped WASI capabilities; memory isolated; no direct host socket/fs rights"
+    Rhai: "In-process Rhai script interpreter with instruction step limit and restricted standard library"
+    Process: "Unprivileged external OS process communicating strictly over STDIN/STDOUT JSON pipes"
+
+  default_policy: "DEFAULT_DENY: All capabilities are false upon installation. User must explicitly grant capabilities via UI modal dialog."
+  signature_verification: "Ed25519 digital signature verified against trusted maintainer public keys before loading check packs."
+
+# ==============================================================================
+# 14. RESEARCH MODULES & ISOLATION
+# ==============================================================================
+research_modules:
+  feature_flag: "sentinel-research"
+  modules:
+    - id: "SUB-26"
+      name: "SmtSolverEngine"
+      crate: "sentinel-research-smt"
+      technology: "Z3 SMT Solver C++ bindings"
+      purpose: "Formal symbolic execution of authentication logic state machines."
+    - id: "SUB-27"
+      name: "RlStateEngine"
+      crate: "sentinel-research-rl"
+      technology: "Deep Reinforcement Learning (PyTorch / libtorch)"
+      purpose: "State-space traversal and reward modeling for complex web applications."
+    - id: "SUB-28"
+      name: "CryptoAnalysisEngine"
+      crate: "sentinel-research-crypto"
+      technology: "Lattice Reduction (LLL algorithm) & Cryptanalysis"
+      purpose: "Weak entropy, nonce reuse, and key recovery from captured PCAP streams."
+
+  isolation_invariants:
+    - "Core platform MUST compile, pass 100% of unit/integration tests, and package with default-features = false (research excluded)."
+    - "Direction of dependency is strictly one-way: Core <- Adapter <- Professional <- Research. Core never imports Research."
+    - "Research modules execute in isolated worker threads or separate processes with hard memory ceilings (1024MB) and 30s timeouts."
+
+# ==============================================================================
+# 15. AI SECURITY & HOST-SIDE POLICY ENGINE
+# ==============================================================================
+ai_security:
+  optionality_principle: "The entire platform is 100% functional without AI. When AiEngine::is_available() == false, all workflows degrade gracefully to deterministic scanning."
+  untrusted_target_data_principle: "All HTTP responses, headers, and reflected input from target servers are treated as hostile, untrusted data containing potential indirect prompt injections."
+
+  policy_layers:
+    - layer: 1
+      name: "Input Sanitization & Prompt Leak Guard"
+      enforcement: "Regex filter blocking prompt injection markers ('ignore prior instructions', 'print system prompt', etc.)."
+    - layer: 2
+      name: "Structured JSON Schema Enforcement"
+      enforcement: "Enforces strict JSON schema validation on model responses (hypothesis, payload, confidence, reasoning)."
+    - layer: 3
+      name: "Destructive Pattern Filter"
+      enforcement: "Blocks dangerous SQL keywords (DROP TABLE, DELETE FROM, TRUNCATE) and destructive OS commands (rm -rf, mkfs, dd)."
+    - layer: 4
+      name: "ScopeEngine Enforcement"
+      enforcement: "Validates all AI-generated target URIs and hostnames against project ScopeDecision."
+    - layer: 5
+      name: "Human Interactive Approval Gate"
+      enforcement: "Displays modal approval dialog for high-risk actions before execution."
+
+  blocked_patterns:
+    sql_destructive: '(?i)(?:DROP\s+TABLE|DELETE\s+FROM|TRUNCATE\s+TABLE|ALTER\s+TABLE)'
+    os_destructive: '(?i)(?:rm\s+-rf|mkfs|dd\s+if=.*of=/dev/|wget.*\|sh)'
+    prompt_injection_leak: '(?i)(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions|system\s+prompt|print\s+your\s+instructions)'
+
+  validation_schemas:
+    payload_response:
+      type: "object"
+      required: ["hypothesis", "payload", "confidence", "reasoning"]
+      properties:
+        hypothesis:
+          type: "string"
+        payload:
+          type: "string"
+        confidence:
+          type: "number"
+          minimum: 0.0
+          maximum: 1.0
+        reasoning:
+          type: "string"
+
+# ==============================================================================
+# 16. NON-NEGOTIABLE SECURITY INVARIANTS
+# ==============================================================================
+security_invariants:
+  invariants:
+    - id: "SEC-01"
+      name: "Scope Authorization Invariant"
+      statement: "No active outbound network packet may be transmitted without an explicit ScopeDecision::Allowed from ScopeEngine. Default is DENY (fail-closed)."
+      enforcement_layer: "ProxyEngine (SUB-01), ScanOrchestrator (SUB-07), BrowserService (SUB-15), Adapters (SUB-22..25)"
+      verification_test: "Unit test asserting network connection attempt to out-of-scope URI immediately returns ScopeViolation error without TCP handshake."
+
+    - id: "SEC-02"
+      name: "OAST Token Confidentiality Invariant"
+      statement: "Out-of-band interaction tokens must use AES-256-GCM authenticated encryption. No plaintext target identifier may exist in the token string."
+      enforcement_layer: "OASTServer (SUB-16)"
+      verification_test: "Token generation test confirming ciphertext entropy and absence of target hostname in raw token string."
+
+    - id: "SEC-03"
+      name: "Host AI Policy Gate Invariant"
+      statement: "AI may never execute network requests autonomously. All AI-generated strings must pass the 5-layer AIPolicyEngine and ScopeEngine."
+      enforcement_layer: "AIPolicyEngine (SUB-19), AIEngine (SUB-18)"
+      verification_test: "Policy test confirming destructive prompt string is intercepted and rejected with PolicyResult::Blocked."
+
+    - id: "SEC-04"
+      name: "WASM Capability Drop Invariant"
+      statement: "WASM plugins execute in Wasmtime with default-deny capabilities (network=false, filesystem=false, secrets=false)."
+      enforcement_layer: "PluginRuntime (SUB-20)"
+      verification_test: "Sandbox test verifying unpermitted WASM socket open attempt traps with SentinelError::SandboxViolation."
+
+    - id: "SEC-05"
+      name: "Research Module Optionality Invariant"
+      statement: "Research engines (SMT, RL, Crypto) are feature-flagged behind sentinel-research. Core platform compiles and passes 100% of tests with default-features = false."
+      enforcement_layer: "Cargo crate feature architecture (SUB-26, SUB-27, SUB-28)"
+      verification_test: "Cargo build and test command running --no-default-features succeeding cleanly."
+
+    - id: "SEC-06"
+      name: "Finding Proof Requirement Invariant"
+      statement: "No Candidate may transition to FindingLifecycle::Verified without empirical, differential, or cryptographic Evidence from VerificationEngine."
+      enforcement_layer: "VerificationEngine (SUB-09), Finding state machine"
+      verification_test: "State machine test verifying transition from Candidate to Verified fails if Evidence vector is empty."
+
+    - id: "SEC-07"
+      name: "Evidence Immutability Invariant"
+      statement: "Evidence blobs stored in blob storage are content-addressed (SHA-256). Any modification invalidates hash integrity."
+      enforcement_layer: "ObservationStore (SUB-03), Blob Store"
+      verification_test: "Tamper test asserting modified blob content triggers SHA-256 mismatch error on retrieval."
+
+    - id: "SEC-08"
+      name: "Cross-Tenant Project Isolation Invariant"
+      statement: "SQLite databases and blob directories are physically partitioned per project. Multi-tenant project data cannot intermingle."
+      enforcement_layer: "ObservationStore (SUB-03), Filesystem layout"
+      verification_test: "Project switch test verifying queries in Project A return zero records from Project B."
+
+    - id: "SEC-09"
+      name: "Zero Plaintext Secrets Invariant"
+      statement: "Credentials, API keys, and session tokens must use SecretReference UUID pointing to OS Keychain. No plaintext in DB, logs, or events."
+      enforcement_layer: "IdentityManager (SUB-12), SQLite schema, Tracing logger"
+      verification_test: "Database audit test scanning credentials table and log outputs asserting zero regex matches for plaintext credentials."
+
+    - id: "SEC-10"
+      name: "Triple Representation Invariant"
+      statement: "Every transaction retains byte-exact raw blob, parsed structured representation, and normalized text for search."
+      enforcement_layer: "HTTPParser (SUB-02), ProxyEngine (SUB-01), ObservationStore (SUB-03)"
+      verification_test: "Round-trip parser test asserting raw byte slice is identical before and after parsing and storage."
+
+    - id: "SEC-11"
+      name: "WebView Sandbox Isolation Invariant"
+      statement: "Tauri UI WebView never renders untrusted target HTML directly. Scanning browser is isolated out-of-process in BrowserDaemon."
+      enforcement_layer: "BrowserService (SUB-15), Tauri IPC layer"
+      verification_test: "DOM injection test verifying malicious payload executes in isolated Playwright context without executing in Tauri WebView."
+
+    - id: "SEC-12"
+      name: "Bounded Buffer Backpressure Invariant"
+      statement: "All EventBus channels enforce bounded capacities with drop-on-lag for telemetry and backpressure for critical events."
+      enforcement_layer: "EventBus (SUB-05)"
+      verification_test: "Channel saturation test verifying broadcast channel drops excess messages while critical channel applies backpressure."
+
+# ==============================================================================
+# 17. HTTPQL GRAMMAR SPECIFICATION
+# ==============================================================================
+httpql_grammar:
+  peg_specification: |
+    WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+    int_lit = @{ "-"? ~ ASCII_DIGIT+ }
+    string_lit = @{ "\"" ~ inner_str ~ "\"" }
+    inner_str = @{ (("\\\"" | "\\\\") | (!"\"" ~ ANY))* }
+    bool_lit = { "true" | "false" }
+    null_lit = { "null" }
+    array_lit = { "[" ~ value ~ ("," ~ value)* ~ "]" }
+    value = { string_lit | int_lit | bool_lit | null_lit | array_lit }
+
+    header_field = @{ ("req.header." | "res.header.") ~ ASCII_ALPHANUMERIC+ ("-" ~ ASCII_ALPHANUMERIC+)* }
+    field = {
+        header_field |
+        "req.method" | "req.uri" | "req.host" | "req.path" | "req.body" | "req.header" | "req.query" | "req.param" | "req.cookie" |
+        "res.status" | "res.body" | "res.header" | "res.content_type" | "res.cookie" |
+        "tx.duration" | "tx.in_scope" | "tx.has_finding"
+    }
+
+    operator = {
+        "==" | "!=" | ">=" | "<=" | ">" | "<" |
+        "~=" | "!~=" | "in" | "contains"
+    }
+
+    condition = { field ~ operator ~ value }
+    and_op = { "AND" | "and" | "&&" }
+    or_op  = { "OR" | "or" | "||" }
+    not_op = { "NOT" | "not" | "!" }
+
+    primary = { condition | "(" ~ expr ~ ")" | not_op ~ primary }
+    and_expr = { primary ~ (and_op ~ primary)* }
+    or_expr = { and_expr ~ (or_op ~ and_expr)* }
+    expr = { or_expr }
+    query = { SOI ~ expr ~ EOI }
+
+  fields:
+    - "req.method: HTTP request method string (e.g. 'GET', 'POST')"
+    - "req.uri: Full request URI path and query (e.g. '/api/v1/users?id=10')"
+    - "req.host: Host header value (e.g. 'api.example.com')"
+    - "req.path: Request path component (e.g. '/api/v1/users')"
+    - "req.body: Raw or decoded request body string"
+    - "req.header: General request header lookup"
+    - "req.header.<HeaderName>: Specific request header subfield (e.g. req.header.Authorization)"
+    - "req.query: Entire query string"
+    - "req.param: Parameter value lookup across query and body"
+    - "req.cookie: Request cookie value lookup"
+    - "res.status: HTTP response status code integer (e.g. 200, 404, 500)"
+    - "res.body: Raw or decoded response body string"
+    - "res.header: General response header lookup"
+    - "res.header.<HeaderName>: Specific response header subfield (e.g. res.header.Server)"
+    - "res.content_type: Content-Type response header string (e.g. 'application/json')"
+    - "res.cookie: Set-Cookie response header lookup"
+    - "tx.duration: Request duration in milliseconds integer"
+    - "tx.in_scope: Boolean indicating whether transaction is in project scope"
+    - "tx.has_finding: Boolean indicating whether transaction has an associated finding"
+
+  operators:
+    - "==: Exact equality match"
+    - "!=: Inverted equality match"
+    - ">=: Greater than or equal (numeric)"
+    - "<=: Less than or equal (numeric)"
+    - ">: Greater than (numeric)"
+    - "<: Less than (numeric)"
+    - "~=: Regular expression match"
+    - "!~=: Regular expression inverted match"
+    - "in: Array or collection inclusion"
+    - "contains: Substring inclusion"
+
+  header_subfields_syntax: "Supports direct dot-notation header addressing: res.header.Server, res.header.X-Powered-By, req.header.Authorization."
+  escape_sequence_rules: "String literals support escaped quotes (\\\") and backslashes (\\\\)."
+
+# ==============================================================================
+# 18. BUILTIN RULES & PATTERNS
+# ==============================================================================
+builtin_rules:
+  technologies:
+    - id: "tech_nginx"
+      name: "Nginx"
+      category: "Web Server"
+      rules:
+        - location: "res.header.Server"
+          regex: '(?i)nginx(?:/([0-9.]+))?'
+
+    - id: "tech_express"
+      name: "Express.js"
+      category: "Web Framework"
+      rules:
+        - location: "res.header.X-Powered-By"
+          regex: '(?i)Express'
+
+    - id: "tech_php"
+      name: "PHP"
+      category: "Language"
+      rules:
+        - location: "res.header.X-Powered-By"
+          regex: '(?i)PHP(?:/([0-9.]+))?'
+        - location: "req.uri"
+          regex: '\.php$'
+
+    - id: "tech_aws_alb"
+      name: "AWS ALB"
+      category: "Load Balancer"
+      rules:
+        - location: "res.cookie"
+          regex: '^AWSALB='
+
+    - id: "tech_apache"
+      name: "Apache HTTP Server"
+      category: "Web Server"
+      rules:
+        - location: "res.header.Server"
+          regex: '(?i)Apache(?:/([0-9.]+))?'
+
+    - id: "tech_spring"
+      name: "Spring Framework"
+      category: "Web Framework"
+      rules:
+        - location: "res.header.X-Application-Context"
+          regex: '(?i)application'
+
+    - id: "tech_django"
+      name: "Django"
+      category: "Web Framework"
+      rules:
+        - location: "res.cookie"
+          regex: 'csrftoken='
+
+    - id: "tech_rails"
+      name: "Ruby on Rails"
+      category: "Web Framework"
+      rules:
+        - location: "res.header.X-Powered-By"
+          regex: '(?i)Phusion\s+Passenger'
+
+    - id: "tech_cloudflare"
+      name: "Cloudflare"
+      category: "CDN / WAF"
+      rules:
+        - location: "res.header.Server"
+          regex: '(?i)cloudflare'
+        - location: "res.header.CF-RAY"
+          regex: '.+'
+
+  parameter_classifiers:
+    - class: "UUID"
+      regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    - class: "JWT"
+      regex: '^eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*$'
+    - class: "Base64"
+      regex: '^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$'
+    - class: "Email"
+      regex: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    - class: "ObjectId"
+      regex: '^[0-9a-fA-F]{24}$'
+    - class: "Url"
+      regex: '^https?:\/\/[^\s\/$.?#].[^\s]*$'
+    - class: "FilePath"
+      regex: '^(?:[a-zA-Z]:\\|\/|\.\.\/|\.\.\\)[a-zA-Z0-9_\-\.\/\\ ]+$'
+    - class: "Numeric"
+      regex: '^-?[0-9]+(?:\.[0-9]+)?$'
+    - class: "Boolean"
+      regex: '^(?i:true|false|1|0|yes|no)$'
+    - class: "Json"
+      regex: '^(?:\{.*\}|\[.*\])$'
+    - class: "Xml"
+      regex: '^\s*<[^>]+>.*<\/[^>]+>\s*$'
+    - class: "Html"
+      regex: '(?i)<(?:html|div|span|p|a|script|iframe)[^>]*>'
+
+  ai_safety:
+    blocked_patterns:
+      - regex: '(?i)(?:DROP\s+TABLE|DELETE\s+FROM|TRUNCATE\s+TABLE|ALTER\s+TABLE)'
+        reason: "Destructive SQL operation generated by AI"
+      - regex: '(?i)(?:rm\s+-rf|mkfs|dd\s+if=.*of=/dev/|wget.*\|sh)'
+        reason: "Destructive OS command generated by AI"
+      - regex: '(?i)(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions|system\s+prompt|print\s+your\s+instructions)'
+        reason: "AI attempted to leak its own instructions into the payload"
+    validation_schemas:
+      payload_response:
+        type: "object"
+        required: ["hypothesis", "payload", "confidence", "reasoning"]
+        properties:
+          hypothesis:
+            type: "string"
+          payload:
+            type: "string"
+          confidence:
+            type: "number"
+            minimum: 0.0
+            maximum: 1.0
+          reasoning:
+            type: "string"

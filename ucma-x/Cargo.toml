@@ -1,0 +1,68 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/ucma-core",
+    "crates/ucma-scope",
+    "crates/ucma-http",
+    "crates/ucma-session",
+    "crates/ucma-bench",
+    "crates/ucma-parameter",
+    "crates/ucma-response",
+    "crates/ucma-sql-ir",
+    "crates/ucma-dialect",
+    "crates/ucma-ast",
+    "crates/ucma-graphql",
+    "crates/ucma-grpc",
+    "crates/ucma-websocket",
+    "tests/e2e", "crates/ucma-statistics", "crates/ucma-timing", "crates/ucma-oracles", "crates/ucma-metamorphic", "crates/ucma-causal", "crates/ucma-detection", "crates/ucma-grammar", "crates/ucma-smt", "crates/ucma-planner", "crates/ucma-db", "crates/ucma-explorer", "crates/ucma-state", "crates/ucma-second-order", "crates/ucma-cli",
+]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "cookies", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+url = { version = "2.5", features = ["serde"] }
+blake3 = { version = "1.5", features = ["serde"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bytes = "1.6"
+ipnet = { version = "2.9", features = ["serde"] }
+async-trait = "0.1"
+regex = "1.10"
+zeroize = { version = "1.8", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.8", features = ["v4", "serde"] }
+urlencoding = "2.1"
+quick-xml = { version = "0.36", features = ["serialize"] }
+base64 = "0.22"
+hex = "0.4"
+html-escape = "0.2"
+
+# Workspace internal crate dependencies
+ucma-core = { path = "crates/ucma-core" }
+ucma-scope = { path = "crates/ucma-scope" }
+ucma-http = { path = "crates/ucma-http" }
+ucma-session = { path = "crates/ucma-session" }
+ucma-parameter = { path = "crates/ucma-parameter" }
+ucma-response = { path = "crates/ucma-response" }
+ucma-sql-ir = { path = "crates/ucma-sql-ir" }
+ucma-dialect = { path = "crates/ucma-dialect" }
+ucma-ast = { path = "crates/ucma-ast" }
+ucma-graphql = { path = "crates/ucma-graphql" }
+ucma-grpc = { path = "crates/ucma-grpc" }
+ucma-websocket = { path = "crates/ucma-websocket" }
+ucma-statistics = { path = "crates/ucma-statistics" }
+ucma-timing = { path = "crates/ucma-timing" }
+ucma-oracles = { path = "crates/ucma-oracles" }
+ucma-metamorphic = { path = "crates/ucma-metamorphic" }
+ucma-causal = { path = "crates/ucma-causal" }
+ucma-detection = { path = "crates/ucma-detection" }
+ucma-grammar = { path = "crates/ucma-grammar" }
+ucma-smt = { path = "crates/ucma-smt" }
+ucma-planner = { path = "crates/ucma-planner" }
+ucma-db = { path = "crates/ucma-db" }
+ucma-explorer = { path = "crates/ucma-explorer" }
+ucma-state = { path = "crates/ucma-state" }
+ucma-second-order = { path = "crates/ucma-second-order" }

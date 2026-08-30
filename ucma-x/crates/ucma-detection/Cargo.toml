@@ -1,0 +1,25 @@
+[package]
+name = "ucma-detection"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+blake3.workspace = true
+uuid.workspace = true
+ucma-core.workspace = true
+ucma-scope.workspace = true
+ucma-http.workspace = true
+ucma-parameter.workspace = true
+ucma-response.workspace = true
+ucma-sql-ir.workspace = true
+ucma-dialect.workspace = true
+ucma-ast.workspace = true
+ucma-statistics.workspace = true
+ucma-timing.workspace = true
+ucma-metamorphic.workspace = true
+ucma-causal.workspace = true
+ucma-oracles.workspace = true

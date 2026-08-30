@@ -1,0 +1,194 @@
+// SENTINEL V6: AI Code Generation Scaffold
+// V6_IPC_CONTRACTS.proto
+//
+// Definitive Protobuf IPC schema for Rust Core <-> Node.js Browser Daemon
+// and Rust Core <-> React Frontend. Conforms strictly to V6_CANONICAL_SPEC.yaml.
+
+syntax = "proto3";
+package sentinel.v6.ipc;
+
+// ==========================================
+// Core Shared Types
+// ==========================================
+
+message Uuid {
+    string value = 1; // 36-char string representation
+}
+
+message Timestamp {
+    int64 seconds = 1;
+    int32 nanos = 2;
+}
+
+// ==========================================
+// 1. Rust <-> Node.js Browser Daemon
+// ==========================================
+
+service BrowserDaemon {
+    // Navigate to a URL and wait for DOM load
+    rpc Navigate(NavigateRequest) returns (NavigateResponse);
+    
+    // Execute a JS payload in the context of the page
+    rpc ExecuteScript(ExecuteScriptRequest) returns (ExecuteScriptResponse);
+    
+    // Capture the current DOM tree
+    rpc CaptureDom(CaptureDomRequest) returns (CaptureDomResponse);
+    
+    // Take a screenshot of the current page
+    rpc TakeScreenshot(TakeScreenshotRequest) returns (TakeScreenshotResponse);
+    
+    // Shut down the browser instance
+    rpc Close(CloseRequest) returns (CloseResponse);
+}
+
+message NavigateRequest {
+    string url = 1;
+    int32 timeout_ms = 2;
+    map<string, string> custom_headers = 3;
+    bool bypass_csp = 4;
+}
+
+message NavigateResponse {
+    bool success = 1;
+    int32 http_status = 2;
+    string error_message = 3;
+}
+
+message ExecuteScriptRequest {
+    string javascript_code = 1;
+    bool await_promise = 2;
+    int32 timeout_ms = 3;
+}
+
+message ExecuteScriptResponse {
+    bool success = 1;
+    string result_json = 2; // JSON serialized result of the script
+    string error_message = 3;
+}
+
+message CaptureDomRequest {
+    bool include_shadow_dom = 1;
+}
+
+message CaptureDomResponse {
+    string html_content = 1;
+}
+
+message TakeScreenshotRequest {
+    bool full_page = 1;
+}
+
+message TakeScreenshotResponse {
+    bytes image_png = 1;
+}
+
+message CloseRequest {}
+message CloseResponse {}
+
+// ==========================================
+// 2. Rust <-> React Frontend (Tauri IPC via Proto)
+// ==========================================
+
+message UiTrafficEvent {
+    Uuid transaction_id = 1;
+    Timestamp timestamp = 2;
+    string method = 3;
+    string uri = 4;
+    int32 status = 5;
+    int32 duration_ms = 6;
+    bool in_scope = 7;
+    repeated string tags = 8;
+}
+
+enum Severity {
+    SEVERITY_UNSPECIFIED = 0;
+    SEVERITY_INFO = 1;
+    SEVERITY_LOW = 2;
+    SEVERITY_MEDIUM = 3;
+    SEVERITY_HIGH = 4;
+    SEVERITY_CRITICAL = 5;
+}
+
+enum FindingLifecycle {
+    LIFECYCLE_UNSPECIFIED = 0;
+    LIFECYCLE_CANDIDATE = 1;
+    LIFECYCLE_VERIFIED = 2;
+    LIFECYCLE_CONFIRMED = 3;
+    LIFECYCLE_REPORTED = 4;
+    LIFECYCLE_REMEDIATED = 5;
+    LIFECYCLE_FALSE_POSITIVE = 6;
+    LIFECYCLE_ACCEPTED_RISK = 7;
+    LIFECYCLE_REGRESSION = 8;
+}
+
+message UiFindingEvent {
+    Uuid finding_id = 1;
+    Timestamp timestamp = 2;
+    string title = 3;
+    Severity severity = 4;
+    FindingLifecycle state = 5;
+}
+
+message UiScanProgressEvent {
+    Uuid scan_id = 1;
+    string phase = 2;
+    float percent_complete = 3;
+}
+
+enum TaskState {
+    TASK_STATE_UNSPECIFIED = 0;
+    TASK_STATE_PENDING = 1;
+    TASK_STATE_RUNNING = 2;
+    TASK_STATE_PAUSED = 3;
+    TASK_STATE_COMPLETED = 4;
+    TASK_STATE_FAILED = 5;
+    TASK_STATE_CANCELLED = 6;
+}
+
+message UiTaskStatusEvent {
+    Uuid task_id = 1;
+    TaskState state = 2;
+    string message = 3;
+}
+
+message UiCoverageEvent {
+    Uuid scope_id = 1;
+    uint32 total_endpoints = 2;
+    uint32 tested_endpoints = 3;
+    float coverage_percent = 4;
+}
+
+message UiContextEvent {
+    Uuid endpoint_id = 1;
+    string technology = 2;
+    float confidence = 3;
+}
+
+message UiScopeViolationEvent {
+    Uuid request_id = 1;
+    string attempted_uri = 2;
+    string violation_reason = 3;
+    Timestamp timestamp = 4;
+}
+
+message UiCandidateVerifiedEvent {
+    Uuid candidate_id = 1;
+    Uuid verification_id = 2;
+    string strategy = 3;
+    bool success = 4;
+    Timestamp timestamp = 5;
+}
+
+// Subscribed event stream from Core -> UI
+message SentinelUiStream {
+    oneof event {
+        UiTrafficEvent traffic = 1;
+        UiFindingEvent finding = 2;
+        UiScanProgressEvent scan_progress = 3;
+        UiTaskStatusEvent task_status = 4;
+        UiCoverageEvent coverage = 5;
+        UiContextEvent context = 6;
+        UiScopeViolationEvent scope_violation = 7;
+        UiCandidateVerifiedEvent candidate_verified = 8;
+    }
+}

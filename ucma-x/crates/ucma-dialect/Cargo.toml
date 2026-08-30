@@ -1,0 +1,14 @@
+[package]
+name = "ucma-dialect"
+version = "0.1.0"
+edition = "2024"
+authors = ["UCMA-X Core Team"]
+description = "DBMS Dialect rules, syntax rules, quoting, comments, fingerprinting, and error regexes"
+
+[dependencies]
+ucma-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }

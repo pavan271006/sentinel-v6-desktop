@@ -1,0 +1,3 @@
+"""
+Laboratory test suite package.
+"""

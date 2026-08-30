@@ -1,0 +1,16 @@
+[package]
+name = "ucma-bench"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ucma-core = { path = "../ucma-core" }
+ucma-scope = { path = "../ucma-scope" }
+ucma-http = { path = "../ucma-http" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }

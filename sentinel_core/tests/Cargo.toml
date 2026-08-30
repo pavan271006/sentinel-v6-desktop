@@ -1,0 +1,50 @@
+[package]
+name = "sentinel_integration_tests"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sentinel_common = { path = "../crates/sentinel_common" }
+sentinel_storage = { path = "../crates/sentinel_storage" }
+sentinel_bus = { path = "../crates/sentinel_bus" }
+sentinel_scope = { path = "../crates/sentinel_scope" }
+sentinel_parser = { path = "../crates/sentinel_parser" }
+sentinel_proxy = { path = "../crates/sentinel_proxy" }
+sentinel_httpql = { path = "../crates/sentinel_httpql" }
+sentinel_repeater = { path = "../crates/sentinel_repeater" }
+sentinel_context = { path = "../crates/sentinel_context" }
+sentinel_knowledge = { path = "../crates/sentinel_knowledge" }
+sentinel_coverage = { path = "../crates/sentinel_coverage" }
+sentinel_auth = { path = "../crates/sentinel_auth" }
+sentinel_scanner = { path = "../crates/sentinel_scanner" }
+sentinel_fuzzer = { path = "../crates/sentinel_fuzzer" }
+sentinel_verification = { path = "../crates/sentinel_verification" }
+sentinel_authz = { path = "../crates/sentinel_authz" }
+sentinel_api = { path = "../crates/sentinel_api" }
+sentinel_browser = { path = "../crates/sentinel_browser" }
+sentinel_oast = { path = "../crates/sentinel_oast" }
+sentinel_logic = { path = "../crates/sentinel_logic" }
+sentinel_report = { path = "../crates/sentinel_report" }
+sentinel_productivity = { path = "../crates/sentinel_productivity" }
+sentinel_plugin = { path = "../crates/sentinel_plugin" }
+sentinel_adapters = { path = "../crates/sentinel_adapters" }
+sentinel_ai = { path = "../crates/sentinel_ai" }
+sentinel_agent = { path = "../crates/sentinel_agent" }
+sentinel_enterprise = { path = "../crates/sentinel_enterprise" }
+
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tempfile.workspace = true
+tracing.workspace = true
+futures.workspace = true
+zeroize.workspace = true
+regex.workspace = true
+parking_lot.workspace = true
+bytes.workspace = true
+async-trait.workspace = true

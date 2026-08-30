@@ -1,0 +1,22 @@
+[package]
+name = "ucma-parameter"
+version = "0.1.0"
+edition = "2024"
+authors = ["UCMA-X Core Team"]
+description = "Multi-format parameter extraction, injection context inference, and encoding/decoding chains for UCMA-X"
+
+[dependencies]
+ucma-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+base64 = { workspace = true }
+hex = { workspace = true }
+html-escape = { workspace = true }
+quick-xml = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+bytes = { workspace = true }
+uuid = { workspace = true }

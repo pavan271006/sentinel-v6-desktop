@@ -1,0 +1,26 @@
+version: "1.0.0"
+date: "2026-08-21"
+candidates:
+  - id: "CAND-001"
+    hypothesis_id: "H-006"
+    title: "Asynchronous Multi-Tenant Context Dissociation in Event-Driven Workflow Rollback"
+    status: "CONFIRMED-NOVEL"
+    initial_discovery_date: "2026-08-21"
+    target_fixture: "lab/app.py (/api/workflow/*)"
+    independent_reproduction: "VERIFIED_PASS"
+    negative_control_result: "PASS (Fixed implementation completely neutralizes exploit vector)"
+    prior_art_overlap: "LOW / UNINDEXED_PRIMITIVE (Distinct from standard BOLA/BFLA; root cause is state context unpinning during async compensation rollback)"
+    confidence_score: 0.94
+    justification_for_tool: "Generalizable temporal state desynchronization detector applicable to async state-machine workflows"
+
+  - id: "CAND-FIX-001"
+    hypothesis_id: "H-001"
+    title: "REST Object Identifier Invariant Bypass"
+    status: "KNOWN"
+    initial_discovery_date: "2026-08-21"
+    target_fixture: "lab/app.py (/api/invoices/*)"
+    independent_reproduction: "VERIFIED_PASS"
+    negative_control_result: "PASS"
+    prior_art_overlap: "EXACT_MATCH (CWE-639 / BOLA)"
+    confidence_score: 1.00
+    justification_for_tool: "TOOL_REJECTED (Known vulnerability class; adequately covered by baseline DAST engines)"

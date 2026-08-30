@@ -1,0 +1,18 @@
+[package]
+name = "ucma-ast"
+version = "0.1.0"
+edition = "2024"
+authors = ["UCMA-X Core Team"]
+description = "Dialect-aware SQL AST definitions, tree manipulators, to_sql renderer, boundary injection mutator, and AST sanitizer"
+
+[dependencies]
+ucma-core = { workspace = true }
+ucma-parameter = { workspace = true }
+ucma-sql-ir = { workspace = true }
+ucma-dialect = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+hex = { workspace = true }

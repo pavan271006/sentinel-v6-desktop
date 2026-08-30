@@ -1,0 +1,16 @@
+[package]
+name = "ucma-scope"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ucma-core = { path = "../ucma-core" }
+url = { workspace = true }
+ipnet = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+regex = { workspace = true }
+chrono = { workspace = true }
+blake3 = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }

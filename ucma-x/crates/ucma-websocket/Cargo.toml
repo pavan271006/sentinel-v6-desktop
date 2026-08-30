@@ -1,0 +1,15 @@
+[package]
+name = "ucma-websocket"
+version = "0.1.0"
+edition = "2024"
+authors = ["UCMA-X Core Team"]
+description = "WebSocket frame capture, message decoding, and parameter extraction"
+
+[dependencies]
+ucma-core = { workspace = true }
+ucma-parameter = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+bytes = { workspace = true }

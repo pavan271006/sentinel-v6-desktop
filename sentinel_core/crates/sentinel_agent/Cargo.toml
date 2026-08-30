@@ -1,0 +1,28 @@
+[package]
+name = "sentinel_agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+sentinel_common = { path = "../sentinel_common" }
+sentinel_storage = { path = "../sentinel_storage" }
+sentinel_bus = { path = "../sentinel_bus" }
+sentinel_ai = { path = "../sentinel_ai" }
+sentinel_coverage = { path = "../sentinel_coverage" }
+sentinel_dispatch = { path = "../sentinel_dispatch" }
+
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

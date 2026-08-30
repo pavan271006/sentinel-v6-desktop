@@ -1,0 +1,723 @@
+# ==============================================================================
+# SENTINEL V6 — CANONICAL ARCHITECTURE SPECIFICATION SCHEMA
+# ==============================================================================
+# File: V6_CANONICAL_SPEC_SCHEMA.yaml
+# Authority: Authoritative Schema for V6_CANONICAL_SPEC.yaml
+# Version: 6.0.0
+# Description: JSON Schema (Draft 7 / 2020-12 Compatible) defining the structure,
+#              types, and internal invariants for the V6 machine-readable single source of truth.
+# ==============================================================================
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "SentinelV6CanonicalSpecSchema"
+description: "Authoritative Schema for SENTINEL V6 Canonical Specification"
+type: "object"
+required:
+  - "metadata"
+  - "subsystems"
+  - "domain_model"
+  - "credential_security"
+  - "scope_model"
+  - "interfaces_and_traits"
+  - "events"
+  - "ipc_contracts"
+  - "configuration"
+  - "error_model"
+  - "storage"
+  - "protocols"
+  - "scanner_and_fuzzer"
+  - "plugin_security"
+  - "research_modules"
+  - "ai_security"
+  - "security_invariants"
+  - "httpql_grammar"
+  - "builtin_rules"
+
+properties:
+  metadata:
+    type: "object"
+    required:
+      - "version"
+      - "name"
+      - "description"
+      - "schema_version"
+      - "status"
+      - "date"
+    properties:
+      version:
+        type: "string"
+        pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+      name:
+        type: "string"
+      description:
+        type: "string"
+      schema_version:
+        type: "string"
+      status:
+        type: "string"
+        enum: ["DRAFT", "PROPOSED", "AUTHORITATIVE", "FROZEN"]
+      date:
+        type: "string"
+
+  subsystems:
+    type: "object"
+    required:
+      - "taxonomy"
+      - "definitions"
+    properties:
+      taxonomy:
+        type: "object"
+        required:
+          - "core_count"
+          - "professional_count"
+          - "adapter_count"
+          - "research_count"
+          - "total_count"
+        properties:
+          core_count:
+            type: "integer"
+            enum: [14]
+          professional_count:
+            type: "integer"
+            enum: [7]
+          adapter_count:
+            type: "integer"
+            enum: [4]
+          research_count:
+            type: "integer"
+            enum: [3]
+          total_count:
+            type: "integer"
+            enum: [28]
+      definitions:
+        type: "array"
+        minItems: 28
+        maxItems: 28
+        items:
+          type: "object"
+          required:
+            - "id"
+            - "name"
+            - "tier"
+            - "crate"
+            - "responsibilities"
+            - "dependencies"
+            - "events_emitted"
+            - "events_consumed"
+            - "traits_provided"
+            - "traits_consumed"
+            - "permissions"
+            - "storage_access"
+            - "security_boundary"
+          properties:
+            id:
+              type: "string"
+              pattern: "^SUB-[0-9]{2}$"
+            name:
+              type: "string"
+            tier:
+              type: "string"
+              enum: ["Core", "Professional", "Adapter", "Research"]
+            crate:
+              type: "string"
+            responsibilities:
+              type: "array"
+              items:
+                type: "string"
+            dependencies:
+              type: "array"
+              items:
+                type: "string"
+            events_emitted:
+              type: "array"
+              items:
+                type: "string"
+            events_consumed:
+              type: "array"
+              items:
+                type: "string"
+            traits_provided:
+              type: "array"
+              items:
+                type: "string"
+            traits_consumed:
+              type: "array"
+              items:
+                type: "string"
+            permissions:
+              type: "array"
+              items:
+                type: "string"
+            storage_access:
+              type: "array"
+              items:
+                type: "string"
+            security_boundary:
+              type: "string"
+            feature_flag:
+              type: "string"
+
+  domain_model:
+    type: "object"
+    required:
+      - "lifecycle_pipeline"
+      - "core_entities"
+      - "supporting_entities"
+      - "enums"
+    properties:
+      lifecycle_pipeline:
+        type: "array"
+        minItems: 6
+        maxItems: 6
+        items:
+          type: "string"
+          enum: ["Transaction", "Observation", "Candidate", "VerificationResult", "Evidence", "Finding"]
+      core_entities:
+        type: "array"
+        minItems: 6
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "description"
+            - "immutability"
+            - "storage_medium"
+            - "fields"
+          properties:
+            name:
+              type: "string"
+            description:
+              type: "string"
+            immutability:
+              type: "string"
+            storage_medium:
+              type: "string"
+            fields:
+              type: "array"
+              items:
+                $ref: "#/definitions/EntityField"
+      supporting_entities:
+        type: "array"
+        minItems: 20
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "description"
+            - "relationships"
+            - "fields"
+          properties:
+            name:
+              type: "string"
+            description:
+              type: "string"
+            relationships:
+              type: "array"
+              items:
+                type: "string"
+            fields:
+              type: "array"
+              items:
+                $ref: "#/definitions/EntityField"
+      enums:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "description"
+            - "variants"
+          properties:
+            name:
+              type: "string"
+            description:
+              type: "string"
+            variants:
+              type: "array"
+              items:
+                type: "string"
+
+  credential_security:
+    type: "object"
+    required:
+      - "model"
+      - "zero_plaintext_rules"
+      - "secret_reference_specification"
+      - "supported_keychains"
+    properties:
+      model:
+        type: "string"
+      zero_plaintext_rules:
+        type: "array"
+        items:
+          type: "string"
+      secret_reference_specification:
+        type: "object"
+        required:
+          - "type"
+          - "resolution_flow"
+          - "in_memory_zeroization"
+      supported_keychains:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "os"
+            - "backend"
+            - "encryption"
+
+  scope_model:
+    type: "object"
+    required:
+      - "policy"
+      - "decision_schema"
+      - "dns_rebinding_defense"
+      - "redos_protection"
+      - "scope_rules"
+    properties:
+      policy:
+        type: "string"
+        enum: ["FAIL_CLOSED_DEFAULT_DENY"]
+      decision_schema:
+        type: "object"
+        required:
+          - "struct_name"
+          - "fields"
+        properties:
+          struct_name:
+            type: "string"
+            enum: ["ScopeDecision"]
+          fields:
+            type: "array"
+            items:
+              $ref: "#/definitions/EntityField"
+      dns_rebinding_defense:
+        type: "object"
+      redos_protection:
+        type: "object"
+      scope_rules:
+        type: "object"
+
+  interfaces_and_traits:
+    type: "object"
+    required:
+      - "traits"
+    properties:
+      traits:
+        type: "array"
+        minItems: 28
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "subsystem"
+            - "is_async"
+            - "methods"
+          properties:
+            name:
+              type: "string"
+            subsystem:
+              type: "string"
+            is_async:
+              type: "boolean"
+            feature_flag:
+              type: "string"
+            description:
+              type: "string"
+            methods:
+              type: "array"
+              items:
+                type: "object"
+                required:
+                  - "name"
+                  - "args"
+                  - "return_type"
+                  - "error_type"
+                properties:
+                  name:
+                    type: "string"
+                  args:
+                    type: "array"
+                    items:
+                      type: "object"
+                      required:
+                        - "name"
+                        - "type"
+                      properties:
+                        name:
+                          type: "string"
+                        type:
+                          type: "string"
+                  return_type:
+                    type: "string"
+                  error_type:
+                    type: "string"
+                  description:
+                    type: "string"
+
+  events:
+    type: "object"
+    required:
+      - "channels"
+      - "durable_events"
+      - "broadcast_events"
+    properties:
+      channels:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "rust_channel"
+            - "capacity"
+            - "delivery_guarantee"
+            - "backpressure_behavior"
+      durable_events:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "enum_variant"
+            - "producer"
+            - "consumers"
+            - "payload_schema"
+            - "ipc_mapping"
+      broadcast_events:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "enum_variant"
+            - "producer"
+            - "consumers"
+            - "payload_schema"
+            - "ipc_mapping"
+
+  ipc_contracts:
+    type: "object"
+    required:
+      - "protobuf_package"
+      - "services"
+      - "messages"
+      - "streams"
+    properties:
+      protobuf_package:
+        type: "string"
+      services:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "rpcs"
+          properties:
+            name:
+              type: "string"
+            rpcs:
+              type: "array"
+              items:
+                type: "object"
+                required:
+                  - "name"
+                  - "request"
+                  - "response"
+      messages:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "fields"
+          properties:
+            name:
+              type: "string"
+            fields:
+              type: "array"
+              items:
+                type: "object"
+                required:
+                  - "tag"
+                  - "name"
+                  - "type"
+      streams:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "oneof_field"
+            - "mappings"
+
+  configuration:
+    type: "object"
+    required:
+      - "registries"
+    properties:
+      registries:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "owner_subsystem"
+            - "fields"
+          properties:
+            name:
+              type: "string"
+            owner_subsystem:
+              type: "string"
+            hot_reloadable:
+              type: "boolean"
+            fields:
+              type: "array"
+              items:
+                type: "object"
+                required:
+                  - "key"
+                  - "type"
+                  - "default"
+                  - "description"
+                properties:
+                  key:
+                    type: "string"
+                  type:
+                    type: "string"
+                  default: {}
+                  validation:
+                    type: "string"
+                  env_override:
+                    type: "string"
+                  description:
+                    type: "string"
+
+  error_model:
+    type: "object"
+    required:
+      - "canonical_enum"
+      - "variants"
+      - "crash_safe_rules"
+    properties:
+      canonical_enum:
+        type: "string"
+        enum: ["SentinelError"]
+      variants:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "name"
+            - "code"
+            - "retryable"
+            - "recovery_policy"
+            - "impacted_subsystems"
+      crash_safe_rules:
+        type: "array"
+        items:
+          type: "string"
+
+  storage:
+    type: "object"
+    required:
+      - "sqlite"
+      - "blob_store"
+      - "tantivy"
+    properties:
+      sqlite:
+        type: "object"
+        required:
+          - "pragmas"
+          - "tables"
+        properties:
+          pragmas:
+            type: "array"
+            items:
+              type: "string"
+          tables:
+            type: "array"
+            minItems: 24
+            items:
+              type: "object"
+              required:
+                - "name"
+                - "primary_key"
+                - "columns"
+              properties:
+                name:
+                  type: "string"
+                primary_key:
+                  type: "string"
+                columns:
+                  type: "array"
+                  items:
+                    type: "object"
+                    required:
+                      - "name"
+                      - "type"
+                      - "nullable"
+                    properties:
+                      name:
+                        type: "string"
+                      type:
+                        type: "string"
+                      nullable:
+                        type: "boolean"
+                      foreign_key:
+                        type: "object"
+                        required:
+                          - "table"
+                          - "column"
+                        properties:
+                          table:
+                            type: "string"
+                          column:
+                            type: "string"
+                          on_delete:
+                            type: "string"
+                indexes:
+                  type: "array"
+                  items:
+                    type: "object"
+                    required:
+                      - "name"
+                      - "columns"
+                    properties:
+                      name:
+                        type: "string"
+                      columns:
+                        type: "array"
+                        items:
+                          type: "string"
+                      unique:
+                        type: "boolean"
+      blob_store:
+        type: "object"
+        required:
+          - "path_template"
+          - "addressing"
+          - "retention"
+      tantivy:
+        type: "object"
+        required:
+          - "path_template"
+          - "fields"
+          - "commit_interval_ms"
+
+  protocols:
+    type: "object"
+    required:
+      - "http1_1"
+      - "http2"
+      - "http3_quic"
+      - "tls"
+      - "websocket"
+      - "sse"
+      - "grpc"
+    properties:
+      http1_1:
+        type: "object"
+      http2:
+        type: "object"
+      http3_quic:
+        type: "object"
+      tls:
+        type: "object"
+      websocket:
+        type: "object"
+      sse:
+        type: "object"
+      grpc:
+        type: "object"
+
+  scanner_and_fuzzer:
+    type: "object"
+    required:
+      - "pipeline_stages"
+      - "fuzz_profile_schema"
+      - "mutator_types"
+      - "insertion_points"
+      - "oracles"
+      - "resource_budget"
+      - "minimization"
+      - "replay"
+      - "stop_conditions"
+
+  plugin_security:
+    type: "object"
+    required:
+      - "capability_set"
+      - "resource_limits"
+      - "sandbox_modes"
+      - "default_policy"
+      - "signature_verification"
+
+  research_modules:
+    type: "object"
+    required:
+      - "feature_flag"
+      - "modules"
+      - "isolation_invariants"
+
+  ai_security:
+    type: "object"
+    required:
+      - "optionality_principle"
+      - "untrusted_target_data_principle"
+      - "policy_layers"
+      - "blocked_patterns"
+      - "validation_schemas"
+
+  security_invariants:
+    type: "object"
+    required:
+      - "invariants"
+    properties:
+      invariants:
+        type: "array"
+        minItems: 12
+        items:
+          type: "object"
+          required:
+            - "id"
+            - "name"
+            - "statement"
+            - "enforcement_layer"
+            - "verification_test"
+
+  httpql_grammar:
+    type: "object"
+    required:
+      - "peg_specification"
+      - "fields"
+      - "operators"
+      - "header_subfields_syntax"
+      - "escape_sequence_rules"
+
+  builtin_rules:
+    type: "object"
+    required:
+      - "technologies"
+      - "parameter_classifiers"
+      - "ai_safety"
+
+definitions:
+  EntityField:
+    type: "object"
+    required:
+      - "name"
+      - "type"
+      - "description"
+    properties:
+      name:
+        type: "string"
+      type:
+        type: "string"
+      description:
+        type: "string"
+      nullable:
+        type: "boolean"
+      primary_key:
+        type: "boolean"
+      foreign_key:
+        type: "string"

@@ -1,0 +1,71 @@
+{
+  "security_context_graph": {
+    "scale_nodes": 5000,
+    "scale_edges": 14998,
+    "node_insertion_rate": 346964.41,
+    "edge_insertion_rate": 321788.87,
+    "reachability_latency_ms": {
+      "p50": 0.3301,
+      "p95": 0.7191,
+      "p99": 0.8933
+    },
+    "dijkstra_latency_ms": {
+      "p50": 5.7012,
+      "p95": 12.6083
+    },
+    "scc_latency_ms": 13.913,
+    "density": 0.0006
+  },
+  "adaptive_test_planner": {
+    "scale_candidates": 5000,
+    "ingestion_rate_cand_per_sec": 94372.03,
+    "scheduling_rate_tests_per_sec": 353185.59,
+    "feedback_latency_ms": {
+      "p50": 34.0065,
+      "p95": 38.1156
+    }
+  },
+  "differential_security_engine": {
+    "scale_pairs": 5000,
+    "token_masking_throughput_mb_per_sec": 10.85,
+    "divergence_throughput_pairs_per_sec": 15652.98,
+    "divergence_latency_ms": {
+      "p50": 0.0607,
+      "p95": 0.1033,
+      "p99": 0.1087
+    },
+    "welch_ttest_latency_ms": 0.00626
+  },
+  "http_desync_detector": {
+    "scale_iterations": 10000,
+    "probe_generation_rate_per_sec": 845987.9,
+    "frame_assembly_rate_batches_per_sec": 1678979.17,
+    "evaluation_rate_evals_per_sec": 955164.57,
+    "evaluation_latency_ms": {
+      "p50": 0.0006,
+      "p95": 0.001
+    }
+  },
+  "state_machine_inference": {
+    "scale_traces": 2000,
+    "inference_throughput_traces_per_sec": 876424.19,
+    "inferred_state_count": 7,
+    "inferred_transition_count": 6,
+    "vulnerability_check_rate_per_sec": 3191319.62,
+    "check_latency_ms": {
+      "p50": 0.0001,
+      "p95": 0.0009
+    }
+  },
+  "causal_evidence_engine": {
+    "scale_chains": 5000,
+    "cas_proof_throughput_per_sec": 673400.67,
+    "cas_throughput_mb_per_sec": 46.88,
+    "merkle_roots_per_sec": 13673.46,
+    "dag_assembly_rate_per_sec": 60002.69,
+    "assembly_latency_ms": {
+      "p50": 0.0161,
+      "p95": 0.01929
+    }
+  }
+}

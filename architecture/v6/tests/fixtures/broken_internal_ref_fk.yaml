@@ -1,0 +1,29 @@
+# Broken internal foreign key reference
+metadata:
+  version: "6.0.0"
+  name: "Broken FK"
+  description: "Test canonical spec fixture"
+  schema_version: "1.0.0"
+  status: "AUTHORITATIVE"
+  date: "2026-08-17"
+
+subsystems:
+  taxonomy:
+    core_count: 14
+    professional_count: 7
+    adapter_count: 4
+    research_count: 3
+    total_count: 28
+  definitions: []
+
+storage:
+  sqlite:
+    tables:
+      - name: "table_a"
+        columns: [{name: "id"}]
+      - name: "table_b"
+        columns: [{name: "id"}, {name: "a_id"}]
+        foreign_keys:
+          - column: "a_id"
+            foreign_table: "non_existent_table"  # Broken FK reference
+            foreign_column: "id"

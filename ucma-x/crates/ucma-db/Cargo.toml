@@ -1,0 +1,12 @@
+[package]
+name = "ucma-db"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ucma-core.workspace = true
+ucma-dialect.workspace = true
+ucma-response.workspace = true

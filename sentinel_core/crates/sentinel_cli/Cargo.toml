@@ -1,0 +1,43 @@
+[package]
+name = "sentinel_cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sentinel"
+path = "src/main.rs"
+
+[dependencies]
+sentinel_common = { path = "../sentinel_common" }
+sentinel_storage = { path = "../sentinel_storage" }
+sentinel_bus = { path = "../sentinel_bus" }
+sentinel_scope = { path = "../sentinel_scope" }
+sentinel_parser = { path = "../sentinel_parser" }
+sentinel_proxy = { path = "../sentinel_proxy" }
+sentinel_httpql = { path = "../sentinel_httpql" }
+sentinel_repeater = { path = "../sentinel_repeater" }
+sentinel_context = { path = "../sentinel_context" }
+sentinel_knowledge = { path = "../sentinel_knowledge" }
+sentinel_coverage = { path = "../sentinel_coverage" }
+sentinel_auth = { path = "../sentinel_auth" }
+sentinel_scanner = { path = "../sentinel_scanner" }
+sentinel_fuzzer = { path = "../sentinel_fuzzer" }
+sentinel_verification = { path = "../sentinel_verification" }
+sentinel_authz = { path = "../sentinel_authz" }
+sentinel_api = { path = "../sentinel_api" }
+sentinel_browser = { path = "../sentinel_browser" }
+sentinel_oast = { path = "../sentinel_oast" }
+sentinel_logic = { path = "../sentinel_logic" }
+sentinel_report = { path = "../sentinel_report" }
+sentinel_productivity = { path = "../sentinel_productivity" }
+sentinel_plugin = { path = "../sentinel_plugin" }
+sentinel_adapters = { path = "../sentinel_adapters" }
+sentinel_ai = { path = "../sentinel_ai" }
+sentinel_agent = { path = "../sentinel_agent" }
+sentinel_enterprise = { path = "../sentinel_enterprise" }
+tokio = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,30 @@
+# Subsystem depends on non-existent subsystem
+metadata:
+  version: "6.0.0"
+  name: "Broken Internal Ref Dependency"
+  description: "Test canonical spec fixture"
+  schema_version: "1.0.0"
+  status: "AUTHORITATIVE"
+  date: "2026-08-17"
+
+subsystems:
+  taxonomy:
+    core_count: 14
+    professional_count: 7
+    adapter_count: 4
+    research_count: 3
+    total_count: 28
+  definitions:
+    - id: "SUB-01"
+      name: "ProxyEngine"
+      tier: "Core"
+      crate: "sentinel-proxy"
+      responsibilities: ["Intercept traffic"]
+      dependencies: ["NonExistentSubsystem"]  # Broken reference
+      events_emitted: []
+      events_consumed: []
+      traits_provided: ["ProxyEngine"]
+      traits_consumed: []
+      permissions: []
+      storage_access: []
+      security_boundary: "Untrusted input"

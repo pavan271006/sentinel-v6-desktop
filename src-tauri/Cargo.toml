@@ -1,0 +1,63 @@
+[package]
+name = "sentinel-desktop"
+version = "6.0.0"
+description = "Sentinel V6 Desktop Application"
+authors = ["SENTINEL Team <security@sentinel.dev>"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["wry", "custom-protocol", "image-ico", "image-png"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+tracing = "0.1"
+flate2 = "1.0.30"
+parking_lot = "0.12"
+
+# Sentinel Core crates
+sentinel_common = { path = "../sentinel_core/crates/sentinel_common" }
+sentinel_storage = { path = "../sentinel_core/crates/sentinel_storage" }
+sentinel_bus = { path = "../sentinel_core/crates/sentinel_bus" }
+sentinel_scope = { path = "../sentinel_core/crates/sentinel_scope" }
+sentinel_proxy = { path = "../sentinel_core/crates/sentinel_proxy" }
+sentinel_httpql = { path = "../sentinel_core/crates/sentinel_httpql" }
+sentinel_repeater = { path = "../sentinel_core/crates/sentinel_repeater" }
+sentinel_productivity = { path = "../sentinel_core/crates/sentinel_productivity" }
+sentinel_verification = { path = "../sentinel_core/crates/sentinel_verification" }
+sentinel_scanner = { path = "../sentinel_core/crates/sentinel_scanner" }
+sentinel_fuzzer = { path = "../sentinel_core/crates/sentinel_fuzzer" }
+sentinel_auth = { path = "../sentinel_core/crates/sentinel_auth" }
+sentinel_authz = { path = "../sentinel_core/crates/sentinel_authz" }
+sentinel_knowledge = { path = "../sentinel_core/crates/sentinel_knowledge" }
+sentinel_coverage = { path = "../sentinel_core/crates/sentinel_coverage" }
+sentinel_report = { path = "../sentinel_core/crates/sentinel_report" }
+sentinel_oast = { path = "../sentinel_core/crates/sentinel_oast" }
+sentinel_browser = { path = "../sentinel_core/crates/sentinel_browser" }
+
+# UCMA-X Core Crates
+ucma-core = { path = "../ucma-x/crates/ucma-core" }
+ucma-scope = { path = "../ucma-x/crates/ucma-scope" }
+ucma-http = { path = "../ucma-x/crates/ucma-http" }
+ucma-parameter = { path = "../ucma-x/crates/ucma-parameter" }
+ucma-response = { path = "../ucma-x/crates/ucma-response" }
+ucma-sql-ir = { path = "../ucma-x/crates/ucma-sql-ir" }
+ucma-dialect = { path = "../ucma-x/crates/ucma-dialect" }
+ucma-ast = { path = "../ucma-x/crates/ucma-ast" }
+ucma-statistics = { path = "../ucma-x/crates/ucma-statistics" }
+ucma-timing = { path = "../ucma-x/crates/ucma-timing" }
+ucma-metamorphic = { path = "../ucma-x/crates/ucma-metamorphic" }
+ucma-causal = { path = "../ucma-x/crates/ucma-causal" }
+ucma-oracles = { path = "../ucma-x/crates/ucma-oracles" }
+ucma-planner = { path = "../ucma-x/crates/ucma-planner" }
+ucma-detection = { path = "../ucma-x/crates/ucma-detection" }
+ucma-db = { path = "../ucma-x/crates/ucma-db" }
+ucma-explorer = { path = "../ucma-x/crates/ucma-explorer" }
+ucma-state = { path = "../ucma-x/crates/ucma-state" }
+ucma-second-order = { path = "../ucma-x/crates/ucma-second-order" }

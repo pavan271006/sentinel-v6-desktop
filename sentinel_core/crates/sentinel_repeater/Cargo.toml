@@ -1,0 +1,33 @@
+[package]
+name = "sentinel_repeater"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+sentinel_common = { path = "../sentinel_common" }
+sentinel_storage = { path = "../sentinel_storage" }
+sentinel_bus = { path = "../sentinel_bus" }
+sentinel_scope = { path = "../sentinel_scope" }
+sentinel_parser = { path = "../sentinel_parser" }
+sentinel_dispatch = { path = "../sentinel_dispatch" }
+
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+webpki-roots = { workspace = true }
+bytes = { workspace = true }
+parking_lot = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+flate2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

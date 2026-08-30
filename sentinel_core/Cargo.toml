@@ -1,0 +1,72 @@
+[workspace]
+members = [
+    "crates/sentinel_common",
+    "crates/sentinel_storage",
+    "crates/sentinel_bus",
+    "crates/sentinel_scope",
+    "crates/sentinel_parser",
+    "crates/sentinel_proxy",
+    "crates/sentinel_httpql",
+    "crates/sentinel_repeater",
+    "crates/sentinel_context",
+    "crates/sentinel_knowledge",
+    "crates/sentinel_coverage",
+    "crates/sentinel_auth",
+    "crates/sentinel_scanner",
+    "crates/sentinel_fuzzer",
+    "crates/sentinel_verification",
+    "crates/sentinel_authz",
+    "crates/sentinel_api",
+    "crates/sentinel_browser",
+    "crates/sentinel_oast",
+    "crates/sentinel_logic",
+    "crates/sentinel_report",
+    "crates/sentinel_productivity",
+    "crates/sentinel_plugin",
+    "crates/sentinel_adapters",
+    "crates/sentinel_ai",
+    "crates/sentinel_agent",
+    "crates/sentinel_enterprise",
+    "crates/sentinel_cli",
+    "crates/sentinel_dispatch",
+    "tests", "ucma_core", "ucma_sprt", "ucma_evidence",
+]
+resolver = "2"
+
+[workspace.package]
+version = "6.0.0"
+edition = "2021"
+authors = ["SENTINEL Team <security@sentinel.dev>"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+chrono = { version = "0.4.38", features = ["serde"] }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = { version = "1.0.128" }
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
+thiserror = { version = "1.0.64" }
+async-trait = { version = "0.1.83" }
+tokio = { version = "1.40.0", features = ["full"] }
+sqlx = { version = "0.8.2", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+sha2 = { version = "0.10.8" }
+hex = { version = "0.4.3" }
+ipnet = { version = "2.10.0" }
+url = { version = "2.5.2" }
+zeroize = { version = "1.8.1", features = ["derive"] }
+futures = { version = "0.3.30" }
+tracing = { version = "0.1.40" }
+tempfile = { version = "3.13.0" }
+bytes = { version = "1.7.1" }
+tokio-util = { version = "0.7.12" }
+tokio-rustls = { version = "0.26.0" }
+rustls = { version = "0.23.12", default-features = false, features = ["std", "ring"] }
+rcgen = { version = "0.13.1", features = ["pem", "x509-parser"] }
+webpki-roots = { version = "0.26.3" }
+regex = { version = "1.10.6" }
+parking_lot = { version = "0.12.3" }
+base64 = { version = "0.22.1" }
+flate2 = "1.0.30"
+
+[workspace.lints.clippy]
+all = "allow"
+
