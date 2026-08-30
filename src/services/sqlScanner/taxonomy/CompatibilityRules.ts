@@ -42,8 +42,8 @@ export class CompatibilityRules {
       }
     }
 
-    // 2. UNION queries cannot be placed directly in ORDER BY without subquery wrapping
-    if (intent === 'UNION_COMPATIBILITY_TEST' && (context === 'order_by_clause' || context === 'group_by_clause')) {
+    // 2. UNION and WHERE-style probes cannot be placed directly in ORDER BY without subquery wrapping
+    if ((intent === 'UNION_COMPATIBILITY_TEST' || intent === 'ERROR_BEHAVIOR_TEST' || intent === 'TRUE_FALSE_DIFFERENTIAL') && (context === 'order_by_clause' || context === 'group_by_clause')) {
       return false;
     }
 

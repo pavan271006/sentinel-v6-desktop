@@ -213,14 +213,24 @@ export class AdaptiveTestPlanner {
     const baseGain = INTENT_DEFINITIONS[test.intent]?.baseInfoGain || 0.5;
     let multiplier = 1.0;
 
-    // If context is still ambiguous, boost tests that resolve context
+    // 1. If context is ORDER BY, heavily boost ORDER_BOUNDARY_TEST
+    if ((belief.mostLikelyContext === 'order_by_clause' || belief.mostLikelyContext === 'identifier') && test.intent === 'ORDER_BOUNDARY_TEST') {
+      multiplier += 0.5;
+    }
+
+    // 2. If DBMS is PostgreSQL or MSSQL, boost fast ERROR_BEHAVIOR_TEST (1 request cost, high determinism)
+    if ((belief.mostLikelyDbms === 'PostgreSQL' || belief.mostLikelyDbms === 'Microsoft SQL Server') && test.intent === 'ERROR_BEHAVIOR_TEST') {
+      multiplier += 0.4;
+    }
+
+    // 3. If context is ambiguous (high entropy), boost TRUE_FALSE_DIFFERENTIAL
     if (belief.contextEntropy > 1.0 && test.intent === 'TRUE_FALSE_DIFFERENTIAL') {
       multiplier += 0.3;
     }
 
-    // If vulnerability is already high confidence, boost UNION / Metadata discovery tests
+    // 4. If vulnerability is already high confidence, boost UNION / Metadata discovery tests
     if (belief.vulnerabilityProbability >= 0.75 && (test.intent === 'UNION_COMPATIBILITY_TEST' || test.intent === 'METADATA_DISCOVERY_TEST')) {
-      multiplier += 0.5;
+      multiplier += 0.6;
     }
 
     return Math.min(1.0, baseGain * multiplier);

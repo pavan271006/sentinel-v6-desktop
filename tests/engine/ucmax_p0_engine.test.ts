@@ -9,6 +9,8 @@ import { AdaptiveTestPlanner } from '../../src/services/sqlScanner/engine/Adapti
 import { ConcurrentExecutor } from '../../src/services/sqlScanner/engine/ConcurrentExecutor';
 import { MultiOracleEvaluator } from '../../src/services/sqlScanner/engine/MultiOracleEvaluator';
 import { CausalVerifier } from '../../src/services/sqlScanner/engine/CausalVerifier';
+import { TimeBasedTester } from '../../src/services/sqlScanner/TimeBasedTester';
+import { DepthLadder } from '../../src/services/sqlScanner/engine/DepthLadder';
 import { CandidateParameter } from '../../src/types/sqlScanner';
 
 describe('UCMA-X P0 Dynamic Engine — Complete Verification Suite', () => {
@@ -212,4 +214,113 @@ describe('UCMA-X P0 Dynamic Engine — Complete Verification Suite', () => {
       expect(stepsEmitted).toContain(5);
     });
   });
+
+  describe('7. In-Process Wald Sequential Probability Ratio Test (SPRT)', () => {
+    it('accepts H1 (Vulnerable) when sequential samples exhibit genuine sleep delay', () => {
+      const baselineMean = 50;
+      const baselineStdDev = 10;
+      const delayMs = 3000;
+      const samples = [3050, 3020]; // 2 samples of ~3s delay
+
+      const decision = TimeBasedTester.evaluateWithSprt(samples, [45, 55, 50], 3);
+      expect(decision.decision).toBe('ACCEPT_H1_VULNERABLE');
+      expect(decision.llr).toBeGreaterThan(decision.upperThresholdA);
+      expect(decision.confidence).toBe(0.99);
+    });
+
+    it('accepts H0 (Clean) when sequential samples match baseline latency', () => {
+      const samples = [48, 52, 51]; // 3 baseline samples without delay
+
+      const decision = TimeBasedTester.evaluateWithSprt(samples, [45, 55, 50], 3);
+      expect(decision.decision).toBe('ACCEPT_H0_CLEAN');
+      expect(decision.llr).toBeLessThan(decision.lowerThresholdB);
+    });
+  });
+
+  describe('8. Proof of Adaptivity (X != Y under Different Observations)', () => {
+    it('selects DIFFERENT next experiment when given different context/DBMS evidence', () => {
+      // Scenario A: Parameter is sort_by (order_by_clause context)
+      const paramA: CandidateParameter = {
+        id: 'p_sort',
+        name: 'sort_by',
+        location: 'query',
+        originalValue: 'created_at',
+        detectedContext: 'order_by_clause',
+        enabled: true,
+      };
+      const engineA = new HypothesisEngine(paramA, 'Unknown');
+      const plannedA = AdaptiveTestPlanner.selectNextExperiment(engineA.getBeliefState(), paramA, new Set(), 50);
+
+      // Scenario B: Parameter is user_id (numeric context, PostgreSQL)
+      const paramB: CandidateParameter = {
+        id: 'p_num',
+        name: 'user_id',
+        location: 'query',
+        originalValue: '101',
+        detectedContext: 'numeric',
+        enabled: true,
+      };
+      const engineB = new HypothesisEngine(paramB, 'PostgreSQL');
+      const plannedB = AdaptiveTestPlanner.selectNextExperiment(engineB.getBeliefState(), paramB, new Set(), 50);
+
+      // Strict requirement: Next selected experiments MUST differ (X != Y)
+      expect(plannedA.configuration.intent).toBe('ORDER_BOUNDARY_TEST');
+      expect(plannedB.configuration.intent).not.toBe('ORDER_BOUNDARY_TEST');
+      expect(plannedA.configuration.id).not.toBe(plannedB.configuration.id);
+    });
+
+    it('dynamically adapts next experiment when positive observation is received', () => {
+      const param: CandidateParameter = {
+        id: 'p_cat',
+        name: 'category',
+        location: 'query',
+        originalValue: 'Books',
+        detectedContext: 'single_quote_string',
+        enabled: true,
+      };
+      const engine = new HypothesisEngine(param, 'Unknown');
+      const initialPlan = AdaptiveTestPlanner.selectNextExperiment(engine.getBeliefState(), param, new Set(), 50);
+
+      // Apply positive observation confirming vulnerability to >=95%
+      engine.updateWithObservation({
+        oracleType: 'UNION_CANARY_REFLECTION',
+        isPositive: true,
+        confidence: 0.99,
+        evidence: 'Canary marker reflected in 3rd column',
+      });
+
+      const updatedPlan = AdaptiveTestPlanner.selectNextExperiment(engine.getBeliefState(), param, new Set([initialPlan.configuration.id]), 50);
+
+      // Next experiment should dynamically adapt to extraction/cardinality probing
+      expect(updatedPlan.configuration.id).not.toBe(initialPlan.configuration.id);
+    });
+  });
+
+  describe('9. Autonomous Investigation Depth Ladder (Levels 0–11)', () => {
+    it('advances through progressive depth levels and maintains accurate depth telemetry', () => {
+      const ladder = new DepthLadder();
+      expect(ladder.getCurrentLevel()).toBe(0);
+
+      ladder.advanceLevel(0, 'Discovered 3 parameters in raw HTTP request');
+      ladder.advanceLevel(1, 'Baseline established: 200 OK, latency 45ms (sigma=2.1ms)');
+      ladder.advanceLevel(2, 'Parameter category reflects into backend SQL query');
+      ladder.advanceLevel(3, 'SQL Injection confirmed via Boolean differential');
+      ladder.advanceLevel(4, 'Context resolved to single_quote_string');
+      ladder.advanceLevel(5, 'DBMS identified as PostgreSQL 15.4');
+      ladder.advanceLevel(6, 'Primary oracle selected: BOOLEAN_CONTENT_DIFF');
+      ladder.advanceLevel(7, 'Read exploitability confirmed via CAST error leakage');
+      ladder.advanceLevel(8, 'Database catalog discovered: 3 schemas, 8 tables');
+      ladder.advanceLevel(9, 'Sampled 5 authorized test rows from users table');
+      ladder.advanceLevel(10, 'Impact separated: Data read demonstrated; OS execution NOT tested');
+      ladder.advanceLevel(11, 'Independent clean-room reproduction: 3/3 passed');
+
+      const summary = ladder.getDepthSummary();
+      expect(summary.maxLevel).toBe(11);
+      expect(summary.maxLevelName).toBe('INDEPENDENT_VERIFICATION');
+      expect(summary.completedCount).toBeGreaterThanOrEqual(10);
+      expect(ladder.getEvidence(8)).toContain('Database catalog discovered: 3 schemas, 8 tables');
+    });
+  });
 });
+
+

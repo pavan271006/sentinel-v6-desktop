@@ -164,9 +164,6 @@ describe('Empirical Scanner Runtime Validation Suite', () => {
     );
 
     const report = await orchestrator.startScan();
-    if (report.verdict !== 'VULNERABLE') {
-      console.log('SCAN LOGS:', logs.map((l) => `${l.phase}: ${l.message}`));
-    }
     expect(report.verdict).toBe('VULNERABLE');
     expect(findings.length).toBeGreaterThan(0);
 

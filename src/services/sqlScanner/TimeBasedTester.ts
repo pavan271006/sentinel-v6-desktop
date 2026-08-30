@@ -1,4 +1,5 @@
 import { CandidateParameter, DbmsType } from '../../types/sqlScanner';
+import { SprtTimingEngine } from './engine/SprtTimingEngine';
 
 export interface TimeDelayProbe {
   dbms: DbmsType;
@@ -159,5 +160,20 @@ export class TimeBasedTester {
       expectedDurationMs: expectedDelayMs,
       latencyDiffMs,
     };
+  }
+
+  /**
+   * Evaluates sequential time samples using exact Wald Sequential Probability Ratio Test (SPRT)
+   */
+  public static evaluateWithSprt(
+    samples: number[],
+    baselineDurations: number[],
+    delaySeconds: number,
+    alpha = 0.01,
+    beta = 0.01
+  ) {
+    const stats = TimeBasedTester.computeTimingStats(baselineDurations);
+    const engine = new SprtTimingEngine(alpha, beta);
+    return engine.evaluate(samples, stats.mean, stats.stdDev, delaySeconds * 1000);
   }
 }
