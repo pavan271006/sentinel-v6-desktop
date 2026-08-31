@@ -1,0 +1,98 @@
+[
+  {
+    "id": "CVE-2023-34362",
+    "product": "Progress MOVEit Transfer",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2014-3704",
+    "product": "Drupal (Drupalgeddon 1)",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2019-1821",
+    "product": "Cisco Prime Infrastructure",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2023-38646",
+    "product": "Metabase",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-05",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2024-27956",
+    "product": "Automatic WordPress Plugin",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-06",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2023-29300",
+    "product": "Adobe ColdFusion",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2022-29464",
+    "product": "WSO2 Carbon",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-05",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2021-21972",
+    "product": "VMware vCenter",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2024-4577",
+    "product": "PHP-CGI (Argument Injection to SQL)",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2023-40044",
+    "product": "Progress WS_FTP Server",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  },
+  {
+    "id": "CVE-2020-0688",
+    "product": "Microsoft Exchange (Stored SQL Query)",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E4"
+  },
+  {
+    "id": "CVE-2024-28995",
+    "product": "SolarWinds Serv-U",
+    "cwe": "CWE-89",
+    "isSQLi": true,
+    "mechanism": "MECH-V3-01",
+    "evidence": "E5"
+  }
+]

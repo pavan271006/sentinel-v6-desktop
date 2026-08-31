@@ -1,0 +1,58 @@
+[
+  {
+    "id": "DRV-01",
+    "name": "node-postgres (pg)",
+    "ecosystem": "Node.js",
+    "multiStatements": "Raw query() only",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-02",
+    "name": "mysql2",
+    "ecosystem": "Node.js",
+    "multiStatements": "multipleStatements: false (Default)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-03",
+    "name": "tedious (MSSQL)",
+    "ecosystem": "Node.js",
+    "multiStatements": "Native TDS stream batching enabled",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-04",
+    "name": "psycopg2",
+    "ecosystem": "Python",
+    "multiStatements": "Client-side parameter escaping",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-05",
+    "name": "PyMySQL",
+    "ecosystem": "Python",
+    "multiStatements": "CLIENT_MULTI_STATEMENTS required",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-06",
+    "name": "MySQL Connector/J",
+    "ecosystem": "Java",
+    "multiStatements": "allowMultiQueries=false (Default)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-07",
+    "name": "PDO_MYSQL",
+    "ecosystem": "PHP",
+    "multiStatements": "PDO::ATTR_EMULATE_PREPARES=true (Default)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DRV-08",
+    "name": "go-sql-driver/mysql",
+    "ecosystem": "Go",
+    "multiStatements": "multiStatements=false (Default)",
+    "evidence": "E5"
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "TOOL-01",
+    "name": "sqlmap",
+    "architecture": "XML Boundaries + Payload Templates",
+    "author": "Bernardo Damele, Miroslav Stampar",
+    "evidence": "E5"
+  },
+  {
+    "id": "TOOL-02",
+    "name": "Burp Suite Scanner",
+    "architecture": "Dynamic Insertion Points + Collaborator OAST",
+    "author": "PortSwigger",
+    "evidence": "E5"
+  },
+  {
+    "id": "TOOL-03",
+    "name": "OWASP ZAP",
+    "architecture": "Plugin Active Scanner Rules",
+    "author": "OWASP Foundation",
+    "evidence": "E5"
+  },
+  {
+    "id": "TOOL-04",
+    "name": "libinjection",
+    "architecture": "Deterministic C Lexical Tokenizer",
+    "author": "Nick Galbreath",
+    "evidence": "E5"
+  },
+  {
+    "id": "TOOL-05",
+    "name": "SQLancer",
+    "architecture": "Metamorphic Relational Fuzzing",
+    "author": "Manuel Rigger",
+    "evidence": "E5"
+  },
+  {
+    "id": "TOOL-06",
+    "name": "ghauri",
+    "architecture": "Differential Token Matching & Adaptive Extraction",
+    "author": "r0oth3x49",
+    "evidence": "E5"
+  }
+]

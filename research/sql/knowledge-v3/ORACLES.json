@@ -1,0 +1,184 @@
+[
+  {
+    "id": "ORC-01",
+    "code": "ORC-CANARY-BODY",
+    "name": "Canary Body Reflection",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-02",
+    "code": "ORC-CANARY-STRUCT",
+    "name": "Canary JSON/XML Structural Reflection",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-03",
+    "code": "ORC-CAST-ERROR",
+    "name": "Type Conversion Exception Leak",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-04",
+    "code": "ORC-SYNTAX-ERROR",
+    "name": "Parser Syntax Error Leak",
+    "reliability": "MODERATE",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-05",
+    "code": "ORC-XPATH-ERROR",
+    "name": "XPath XML Function Error Leak",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-06",
+    "code": "ORC-DIV-ZERO-ERROR",
+    "name": "Division-by-Zero Exception Differential",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-07",
+    "code": "ORC-BOOLEAN-DIFF",
+    "name": "Boolean Token Differential",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-08",
+    "code": "ORC-BOOLEAN-STATUS",
+    "name": "HTTP Status Code Transition",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-09",
+    "code": "ORC-DOM-STRUCT-DIFF",
+    "name": "DOM Subtree Element Differential",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-10",
+    "code": "ORC-HEADER-DIFF",
+    "name": "HTTP Header Mutation Differential",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-11",
+    "code": "ORC-REDIRECT-DIFF",
+    "name": "Location Header Redirect Mutation",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-12",
+    "code": "ORC-TIME-SPRT",
+    "name": "Wald SPRT Latency Shift",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-13",
+    "code": "ORC-TIME-COMPUTE",
+    "name": "CPU Lock Latency Shift",
+    "reliability": "MODERATE",
+    "evidence": "E4"
+  },
+  {
+    "id": "ORC-14",
+    "code": "ORC-OOB-DNS",
+    "name": "Authoritative DNS Nonce Lookup",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-15",
+    "code": "ORC-OOB-HTTP",
+    "name": "Outbound HTTP Callback Logged",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-16",
+    "code": "ORC-OOB-SMB",
+    "name": "Outbound SMB Negotiation Logged",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-17",
+    "code": "ORC-METAMORPHIC",
+    "name": "Metamorphic Relational Count Invariance",
+    "reliability": "HIGH",
+    "evidence": "E4"
+  },
+  {
+    "id": "ORC-18",
+    "code": "ORC-STATE-READ",
+    "name": "Dependent Read Endpoint State Change",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-19",
+    "code": "ORC-DOM-LEVENSHTEIN",
+    "name": "DOM Tree String Levenshtein Distance Shift",
+    "reliability": "HIGH",
+    "evidence": "E4"
+  },
+  {
+    "id": "ORC-20",
+    "code": "ORC-CONTENT-LENGTH",
+    "name": "Content-Length Header Fixed Integer Delta",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-21",
+    "code": "ORC-HTTP-ETAG",
+    "name": "HTTP 304 / ETag Hash State Transition",
+    "reliability": "HIGH",
+    "evidence": "E4"
+  },
+  {
+    "id": "ORC-22",
+    "code": "ORC-TCP-RESET",
+    "name": "Database Process Crash TCP Reset / Drop",
+    "reliability": "MODERATE",
+    "evidence": "E4"
+  },
+  {
+    "id": "ORC-23",
+    "code": "ORC-THREAD-LOCK-TIMEOUT",
+    "name": "Database Lock Wait Timeout Exception",
+    "reliability": "HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-24",
+    "code": "ORC-WS-FRAME-RESP",
+    "name": "WebSocket Message Frame Binary Transition",
+    "reliability": "HIGH",
+    "evidence": "E4"
+  },
+  {
+    "id": "ORC-25",
+    "code": "ORC-GRAPHQL-ERRORS",
+    "name": "GraphQL errors[] Array Message Mutation",
+    "reliability": "EXTREMELY_HIGH",
+    "evidence": "E5"
+  },
+  {
+    "id": "ORC-26",
+    "code": "ORC-OPENTELEMETRY-SPAN",
+    "name": "Distributed Tracing Span Latency Anomaly",
+    "reliability": "HIGH",
+    "evidence": "E4"
+  }
+]

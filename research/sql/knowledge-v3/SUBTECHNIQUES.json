@@ -1,0 +1,68 @@
+[
+  {
+    "id": "SUB-V3-001",
+    "parentId": "TECH-V3-01",
+    "name": "Single quote with ANSI comment ('-- )",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-002",
+    "parentId": "TECH-V3-01",
+    "name": "Single quote with inline C-style comment ('/* */)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-003",
+    "parentId": "TECH-V3-01",
+    "name": "Single quote with MySQL hash comment ('#)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-004",
+    "parentId": "TECH-V3-01",
+    "name": "Single quote with balancing quote (' OR ''=')",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-010",
+    "parentId": "TECH-V3-07",
+    "name": "Direct numeric tautology (OR 1=1)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-020",
+    "parentId": "TECH-V3-13",
+    "name": "NULL-padded column count sweep (UNION SELECT NULL, ...)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-029",
+    "parentId": "TECH-V3-17",
+    "name": "PostgreSQL integer CAST leakage (CAST(... AS int))",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-034",
+    "parentId": "TECH-V3-21",
+    "name": "PostgreSQL pg_sleep(3) conditional latency probe",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V3-053",
+    "parentId": "TECH-V3-53",
+    "name": "PostgreSQL WITH RECURSIVE loop generator",
+    "evidence": "E4"
+  },
+  {
+    "id": "SUB-V3-054",
+    "parentId": "TECH-V3-54",
+    "name": "PostgreSQL SET search_path TO public, pg_temp",
+    "evidence": "E4"
+  },
+  {
+    "id": "SUB-V3-056",
+    "parentId": "TECH-V3-56",
+    "name": "PostgreSQL INSERT ... RETURNING id, token",
+    "evidence": "E5"
+  }
+]

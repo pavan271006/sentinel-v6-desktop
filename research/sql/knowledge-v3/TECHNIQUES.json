@@ -1,0 +1,162 @@
+[
+  {
+    "id": "TECH-V3-01",
+    "name": "Single-Quote String Delimiter Breakout",
+    "mechanism": "MECH-V3-01",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-02",
+    "name": "Double-Quote Identifier / String Breakout",
+    "mechanism": "MECH-V3-01",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-03",
+    "name": "PostgreSQL Dollar-Quote Tag Breakout",
+    "mechanism": "MECH-V3-01",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-07",
+    "name": "Boolean Relational Tautology (OR 1=1)",
+    "mechanism": "MECH-V3-02",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-13",
+    "name": "UNION Projection Column Sweep",
+    "mechanism": "MECH-V3-03",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-17",
+    "name": "Explicit Integer Type CAST Coercion Leak",
+    "mechanism": "MECH-V3-04",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-21",
+    "name": "Wald SPRT Statistical Latency Delay Probe",
+    "mechanism": "MECH-V3-04",
+    "safety": "TIMING_SENSITIVE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-25",
+    "name": "Semicolon Statement Chaining (Stacked)",
+    "mechanism": "MECH-V3-05",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-29",
+    "name": "UPDATE SET Additional Column Assignment",
+    "mechanism": "MECH-V3-06",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-34",
+    "name": "Dynamic ORDER BY Conditional CASE Expression",
+    "mechanism": "MECH-V3-07",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-41",
+    "name": "Transaction Boundary Injection (COMMIT)",
+    "mechanism": "MECH-V3-08",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-49",
+    "name": "pgvector Cosine Similarity Metric Injection (<=>)",
+    "mechanism": "MECH-V3-04",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-53",
+    "name": "Common Table Expression (CTE) Recursion Cycle Exhaustion",
+    "mechanism": "MECH-V3-10",
+    "safety": "TIMING_SENSITIVE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-54",
+    "name": "PostgreSQL search_path Schema Shadowing",
+    "mechanism": "MECH-V3-11",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-55",
+    "name": "LATERAL / CROSS APPLY Subquery Injection",
+    "mechanism": "MECH-V3-04",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-56",
+    "name": "RETURNING Clause Projection Exfiltration",
+    "mechanism": "MECH-V3-03",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-57",
+    "name": "TABLESAMPLE Cluster Statistical Extraction",
+    "mechanism": "MECH-V3-07",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-58",
+    "name": "Row-Level Security (RLS) Predicate Subversion",
+    "mechanism": "MECH-V3-02",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-59",
+    "name": "Dynamic DDL Table Creation (CREATE TABLE AS)",
+    "mechanism": "MECH-V3-09",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V3-60",
+    "name": "User-Defined Operator Injection (OPERATOR())",
+    "mechanism": "MECH-V3-12",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  }
+]

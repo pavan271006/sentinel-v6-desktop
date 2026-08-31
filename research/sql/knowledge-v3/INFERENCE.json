@@ -1,0 +1,87 @@
+[
+  {
+    "id": "INF-01",
+    "name": "Standard Binary Search",
+    "complexity": "O(log2 |Sigma|)",
+    "evidence": "E5"
+  },
+  {
+    "id": "INF-02",
+    "name": "Bitwise Extraction",
+    "complexity": "O(8)",
+    "evidence": "E5"
+  },
+  {
+    "id": "INF-03",
+    "name": "Shannon Entropy Search",
+    "complexity": "O(H(Sigma)) ~ 4.2 reqs (Simulated)",
+    "evidence": "E4",
+    "status": "THEORETICAL"
+  },
+  {
+    "id": "INF-04",
+    "name": "Wald SPRT Sequential Test",
+    "complexity": "2-5 samples",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-05",
+    "name": "Mann-Whitney U Rank Test",
+    "complexity": "N >= 8 samples",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-06",
+    "name": "Bayesian Belief Updating",
+    "complexity": "Dynamic",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-07",
+    "name": "Majority Triplicate Voting",
+    "complexity": "3x cost",
+    "evidence": "E5"
+  },
+  {
+    "id": "INF-08",
+    "name": "Backtracking State Recovery",
+    "complexity": "O(Backtrack)",
+    "evidence": "E5"
+  },
+  {
+    "id": "INF-09",
+    "name": "Range-Partitioned Dynamic Bisection",
+    "complexity": "O(log2 Range)",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-10",
+    "name": "Compressed Dictionary Trie Walk",
+    "complexity": "O(Trie Depth)",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-11",
+    "name": "Multi-Bit Parallel Bitwise Extraction",
+    "complexity": "O(8 / BitsPerProbe)",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-12",
+    "name": "Huffman-Weighted Frequency Search",
+    "complexity": "O(H_Huffman)",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-13",
+    "name": "Bayesian Particle Filter Tracker",
+    "complexity": "Dynamic",
+    "evidence": "E4"
+  },
+  {
+    "id": "INF-14",
+    "name": "Confidence-Bounded Sequential Sampling",
+    "complexity": "Adaptive",
+    "evidence": "E4"
+  }
+]

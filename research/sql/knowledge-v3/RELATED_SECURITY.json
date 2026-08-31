@@ -1,0 +1,72 @@
+[
+  {
+    "id": "CVE-2024-21887",
+    "product": "Ivanti Connect Secure",
+    "actualClass": "CWE-78: OS Command Injection",
+    "isSQLi": false,
+    "notes": "OS command injection via URI path"
+  },
+  {
+    "id": "CVE-2024-38856",
+    "product": "Apache OFBiz",
+    "actualClass": "CWE-863: Incorrect Authorization",
+    "isSQLi": false,
+    "notes": "Authorization filter bypass leading to Groovy RCE"
+  },
+  {
+    "id": "CVE-2023-22515",
+    "product": "Atlassian Confluence",
+    "actualClass": "CWE-284: Improper Access Control",
+    "isSQLi": false,
+    "notes": "Setup wizard access control bypass"
+  },
+  {
+    "id": "CVE-2022-26134",
+    "product": "Atlassian Confluence",
+    "actualClass": "CWE-917: OGNL Expression Injection",
+    "isSQLi": false,
+    "notes": "OGNL template injection in URI path"
+  },
+  {
+    "id": "CVE-2021-26084",
+    "product": "Atlassian Confluence",
+    "actualClass": "CWE-917: OGNL Expression Injection",
+    "isSQLi": false,
+    "notes": "OGNL injection in Velocity templates"
+  },
+  {
+    "id": "CVE-2024-47575",
+    "product": "Fortinet FortiManager",
+    "actualClass": "CWE-306: Missing Authentication",
+    "isSQLi": false,
+    "notes": "Authentication bypass on fgfmd daemon"
+  },
+  {
+    "id": "CVE-2023-35078",
+    "product": "Ivanti Endpoint Manager",
+    "actualClass": "CWE-287: Improper Authentication",
+    "isSQLi": false,
+    "notes": "Unauthenticated API invocation flaw"
+  },
+  {
+    "id": "CVE-2022-1388",
+    "product": "F5 BIG-IP iControl REST",
+    "actualClass": "CWE-306: Missing Authentication",
+    "isSQLi": false,
+    "notes": "Hop-by-hop header smuggling dropping auth"
+  },
+  {
+    "id": "CVE-2018-7600",
+    "product": "Drupal (Drupalgeddon 2)",
+    "actualClass": "CWE-20: Improper Input Validation",
+    "isSQLi": false,
+    "notes": "Render array callback execution (RCE)"
+  },
+  {
+    "id": "CVE-2022-22965",
+    "product": "Spring Framework (Spring4Shell)",
+    "actualClass": "CWE-94: Code Injection (ClassLoader)",
+    "isSQLi": false,
+    "notes": "DataBinder ClassLoader property manipulation"
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "SURF-01",
+    "name": "URL Query Parameter",
+    "mime": "application/x-www-form-urlencoded",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-02",
+    "name": "Form URL-Encoded Body",
+    "mime": "application/x-www-form-urlencoded",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-03",
+    "name": "Multipart Form Field",
+    "mime": "multipart/form-data",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-04",
+    "name": "Multipart Filename Header",
+    "mime": "multipart/form-data",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-05",
+    "name": "Flat JSON Request Body",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-06",
+    "name": "Deeply Nested JSON Object",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-07",
+    "name": "JSON Array Elements",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-08",
+    "name": "XML / SOAP Element Body",
+    "mime": "application/xml",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-09",
+    "name": "HTTP Cookie Header",
+    "mime": "Cookie",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-10",
+    "name": "Custom Gateway Header",
+    "mime": "HTTP Header",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-11",
+    "name": "REST Clean Path Segment",
+    "mime": "URI Path",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-12",
+    "name": "GraphQL Variables JSON",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-13",
+    "name": "GraphQL Direct Query Document",
+    "mime": "application/graphql",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-14",
+    "name": "WebSocket Text Frame",
+    "mime": "WS Text Frame",
+    "evidence": "E4"
+  },
+  {
+    "id": "SURF-15",
+    "name": "Async Message Queue Payload (Kafka/RabbitMQ)",
+    "mime": "Message Broker",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-16",
+    "name": "gRPC Protobuf Payload / Transcoding",
+    "mime": "application/grpc",
+    "evidence": "E4"
+  },
+  {
+    "id": "SURF-17",
+    "name": "Webhook Ingress Callback",
+    "mime": "application/json",
+    "evidence": "E4"
+  },
+  {
+    "id": "SURF-18",
+    "name": "OpenAPI Path Templating Parameter",
+    "mime": "URI Path",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-19",
+    "name": "Redis Pub/Sub Event Stream",
+    "mime": "Stream Message",
+    "evidence": "E4"
+  },
+  {
+    "id": "SURF-20",
+    "name": "File Metadata / EXIF Tag Stream",
+    "mime": "image/jpeg",
+    "evidence": "E4"
+  }
+]

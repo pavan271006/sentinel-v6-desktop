@@ -1,0 +1,58 @@
+[
+  {
+    "id": "VER-PG17",
+    "dbms": "PostgreSQL",
+    "version": "17",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-PG16",
+    "dbms": "PostgreSQL",
+    "version": "16",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-PG15",
+    "dbms": "PostgreSQL",
+    "version": "15",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-MYSQL84",
+    "dbms": "MySQL",
+    "version": "8.4 LTS",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-MYSQL90",
+    "dbms": "MySQL",
+    "version": "9.0",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-MSSQL2022",
+    "dbms": "MSSQL",
+    "version": "2022",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-ORACLE23C",
+    "dbms": "Oracle",
+    "version": "23c",
+    "status": "Active",
+    "evidence": "E5"
+  },
+  {
+    "id": "VER-SQLITE346",
+    "dbms": "SQLite",
+    "version": "3.46",
+    "status": "Active",
+    "evidence": "E5"
+  }
+]

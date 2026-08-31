@@ -1,0 +1,58 @@
+[
+  {
+    "id": "LIFE-01",
+    "code": "SYNC_FIRST_ORDER",
+    "name": "Synchronous First-Order Execution",
+    "latency": "5-500ms",
+    "evidence": "E5"
+  },
+  {
+    "id": "LIFE-02",
+    "code": "STORED_SECOND_ORDER",
+    "name": "Second-Order Stored-and-Retrieved",
+    "latency": "Multi-request",
+    "evidence": "E5"
+  },
+  {
+    "id": "LIFE-03",
+    "code": "ASYNC_QUEUE_WORKER",
+    "name": "Asynchronous Message Queue Execution",
+    "latency": "2-30s",
+    "evidence": "E5"
+  },
+  {
+    "id": "LIFE-04",
+    "code": "SCHEDULED_BATCH_CRON",
+    "name": "Scheduled Batch & Cron Processing",
+    "latency": "Minutes to Hours",
+    "evidence": "E4"
+  },
+  {
+    "id": "LIFE-05",
+    "code": "EVENT_DRIVEN_TRIGGER",
+    "name": "Event-Driven Trigger Execution",
+    "latency": "100ms - 5s",
+    "evidence": "E4"
+  },
+  {
+    "id": "LIFE-06",
+    "code": "MICROSERVICE_MULTI_HOP",
+    "name": "Microservice Mesh Multi-Hop Pipeline",
+    "latency": "50ms - 2s",
+    "evidence": "E4"
+  },
+  {
+    "id": "LIFE-07",
+    "code": "DISTRIBUTED_SHARD_ASYNC",
+    "name": "Distributed Cross-Shard Asynchronous Query",
+    "latency": "100ms - 10s",
+    "evidence": "E4"
+  },
+  {
+    "id": "LIFE-08",
+    "code": "HUMAN_APPROVAL_QUEUE",
+    "name": "Human-in-the-Loop Administrative Approval Queue",
+    "latency": "Hours to Days",
+    "evidence": "E4"
+  }
+]

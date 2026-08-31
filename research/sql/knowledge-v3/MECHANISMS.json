@@ -1,0 +1,98 @@
+[
+  {
+    "id": "MECH-V3-01",
+    "code": "LEXICAL_BOUNDARY_BREAKOUT",
+    "name": "Lexical Boundary Breakout",
+    "description": "Premature termination of string, identifier, or literal boundaries via quotes, backticks, brackets, or dollar tags.",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-02",
+    "code": "PREDICATE_LOGIC_MUTATION",
+    "name": "Relational Predicate Logic Mutation",
+    "description": "Mutating boolean evaluation trees in WHERE, HAVING, and JOIN ON clauses via boolean operators (AND, OR, NOT, XOR).",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-03",
+    "code": "SET_OPERATION_UNION",
+    "name": "Relational Set Operations (UNION/EXCEPT)",
+    "description": "Appending independent relation sets to primary queries using UNION, UNION ALL, EXCEPT, or MINUS.",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-04",
+    "code": "SCALAR_EXPRESSION_INJECTION",
+    "name": "Scalar Expression & Function Injection",
+    "description": "Injecting scalar subqueries, arithmetic expressions, type casts, and built-in functions into scalar evaluation slots.",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-05",
+    "code": "STATEMENT_BATCHING_STACKED",
+    "name": "Statement Batching & Stacked Execution",
+    "description": "Semicolon statement chaining executing secondary DDL, DML, DCL, or procedural blocks.",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-06",
+    "code": "DML_ASSIGNMENT_MUTATION",
+    "name": "DML Assignment & Tuple Mutation",
+    "description": "Injecting column assignments in UPDATE SET or row tuples in INSERT VALUES.",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-07",
+    "code": "STRUCTURAL_CLAUSE_MANIPULATION",
+    "name": "Structural Clause Manipulation",
+    "description": "Mutating structural query modifier clauses (ORDER BY, GROUP BY, LIMIT, OFFSET, WINDOW).",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-08",
+    "code": "TRANSACTION_AND_PROCEDURAL_CONTROL",
+    "name": "Transaction & Procedural Control",
+    "description": "Injecting transaction boundaries (COMMIT, ROLLBACK, SAVEPOINT) or procedural concurrency locks.",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-09",
+    "code": "SCHEMA_DDL_DCL_MUTATION",
+    "name": "Dynamic Schema DDL & DCL Mutation",
+    "description": "Injecting structural schema definitions (CREATE TABLE AS, GRANT, REVOKE, TRUNCATE) in dynamic execution slots.",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-10",
+    "code": "CTE_RECURSIVE_CHAINING",
+    "name": "Common Table Expression (CTE) Recursion Chaining",
+    "description": "Injecting recursive WITH clauses or anchor queries to traverse relational hierarchies or cause computational exhaustion.",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-11",
+    "code": "DATABASE_OBJECT_IDENTIFIER_HIJACKING",
+    "name": "Database Object & Search Path Hijacking",
+    "description": "Manipulating dynamic schema resolution paths (SET search_path) or fully qualified object identifiers.",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V3-12",
+    "code": "DATA_TYPE_COERCION_OPERATOR",
+    "name": "Custom Type Coercion & Operator Override",
+    "description": "Injecting custom user-defined operators (OPERATOR(schema.op)) or complex domain casting rules.",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  }
+]

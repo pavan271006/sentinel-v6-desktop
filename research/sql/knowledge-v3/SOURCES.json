@@ -1,0 +1,37 @@
+[
+  {
+    "id": "SRC-01",
+    "type": "standard",
+    "name": "OWASP WSTG v4.2",
+    "url": "https://owasp.org/www-project-web-security-testing-guide/",
+    "evidence": "E5"
+  },
+  {
+    "id": "SRC-02",
+    "type": "standard",
+    "name": "MITRE CWE-89",
+    "url": "https://cwe.mitre.org/data/definitions/89.html",
+    "evidence": "E5"
+  },
+  {
+    "id": "SRC-03",
+    "type": "vendor_manual",
+    "name": "PostgreSQL 17 Manual",
+    "url": "https://www.postgresql.org/docs/17/",
+    "evidence": "E5"
+  },
+  {
+    "id": "SRC-04",
+    "type": "vendor_manual",
+    "name": "MySQL 9.0 Reference Manual",
+    "url": "https://dev.mysql.com/doc/refman/9.0/en/",
+    "evidence": "E5"
+  },
+  {
+    "id": "SRC-05",
+    "type": "vendor_manual",
+    "name": "Microsoft T-SQL Documentation",
+    "url": "https://learn.microsoft.com/en-us/sql/t-sql/",
+    "evidence": "E5"
+  }
+]

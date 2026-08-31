@@ -1,0 +1,47 @@
+[
+  {
+    "source": "MECH-V3-01",
+    "rel": "REALIZED_BY",
+    "target": "TECH-V3-01"
+  },
+  {
+    "source": "MECH-V3-02",
+    "rel": "REALIZED_BY",
+    "target": "TECH-V3-07"
+  },
+  {
+    "source": "MECH-V3-03",
+    "rel": "REALIZED_BY",
+    "target": "TECH-V3-13"
+  },
+  {
+    "source": "MECH-V3-04",
+    "rel": "REALIZED_BY",
+    "target": "TECH-V3-17"
+  },
+  {
+    "source": "MECH-V3-04",
+    "rel": "REALIZED_BY",
+    "target": "TECH-V3-21"
+  },
+  {
+    "source": "TECH-V3-01",
+    "rel": "REQUIRES_CONTEXT",
+    "target": "CTX-01"
+  },
+  {
+    "source": "TECH-V3-17",
+    "rel": "COMPATIBLE_WITH",
+    "target": "DBMS-PG"
+  },
+  {
+    "source": "TECH-V3-17",
+    "rel": "OBSERVED_VIA",
+    "target": "ORC-03"
+  },
+  {
+    "source": "TECH-V3-21",
+    "rel": "OBSERVED_VIA",
+    "target": "ORC-12"
+  }
+]

@@ -1,0 +1,236 @@
+[
+  {
+    "id": "DBMS-PG",
+    "name": "PostgreSQL",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-MYSQL",
+    "name": "MySQL",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "SLEEP(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-MARIADB",
+    "name": "MariaDB",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "SLEEP(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-MSSQL",
+    "name": "Microsoft SQL Server",
+    "family": "Relational",
+    "comment": "--",
+    "concat": "+",
+    "sleep": "WAITFOR DELAY",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-ORACLE",
+    "name": "Oracle Database",
+    "family": "Relational",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "DBMS_LOCK.SLEEP",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-SQLITE",
+    "name": "SQLite",
+    "family": "Embedded",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "randomblob()",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-DB2",
+    "name": "IBM Db2",
+    "family": "Enterprise",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "UDF",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-HANA",
+    "name": "SAP HANA",
+    "family": "In-Memory",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Proc",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-CRDB",
+    "name": "CockroachDB",
+    "family": "NewSQL",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-TIDB",
+    "name": "TiDB",
+    "family": "NewSQL",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "SLEEP(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-YUGABYTE",
+    "name": "YugabyteDB",
+    "family": "NewSQL",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-DUCKDB",
+    "name": "DuckDB",
+    "family": "In-Process OLAP",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "Analytical",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-SNOWFLAKE",
+    "name": "Snowflake",
+    "family": "Cloud DWH",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "SYSTEM$WAIT",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-REDSHIFT",
+    "name": "Amazon Redshift",
+    "family": "Cloud OLAP",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-BIGQUERY",
+    "name": "Google BigQuery",
+    "family": "Cloud DWH",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "Analytical",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-CLICKHOUSE",
+    "name": "ClickHouse",
+    "family": "Columnar OLAP",
+    "comment": "-- ",
+    "concat": "concat()",
+    "sleep": "sleep(N)",
+    "evidence": "E5"
+  },
+  {
+    "id": "DBMS-DATABRICKS",
+    "name": "Databricks SQL",
+    "family": "Lakehouse",
+    "comment": "-- ",
+    "concat": "concat()",
+    "sleep": "Analytical",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-TRINO",
+    "name": "Presto / Trino",
+    "family": "Federated SQL",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "Subquery",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-FIREBIRD",
+    "name": "Firebird",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "UDF",
+    "evidence": "E3"
+  },
+  {
+    "id": "DBMS-H2",
+    "name": "H2 Database",
+    "family": "Embedded Java",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "CALL sleep(N)",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-DERBY",
+    "name": "Apache Derby",
+    "family": "Embedded Java",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Java UDF",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-HSQLDB",
+    "name": "HSQLDB",
+    "family": "Embedded Java",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Java UDF",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-INFORMIX",
+    "name": "Informix Dynamic Server",
+    "family": "Enterprise",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Subquery",
+    "evidence": "E3"
+  },
+  {
+    "id": "DBMS-VERTICA",
+    "name": "Vertica",
+    "family": "Columnar OLAP",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "sleep(N)",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-SPANNER",
+    "name": "Google Cloud Spanner",
+    "family": "Distributed NewSQL",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "Analytical",
+    "evidence": "E4"
+  },
+  {
+    "id": "DBMS-SCYLLA",
+    "name": "ScyllaDB / Cassandra (CQL)",
+    "family": "Wide-Column",
+    "comment": "//",
+    "concat": "N/A",
+    "sleep": "N/A",
+    "evidence": "E4"
+  }
+]
