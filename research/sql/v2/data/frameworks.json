@@ -1,0 +1,72 @@
+[
+  {
+    "id": "FW-01",
+    "ecosystem": "Node.js",
+    "name": "TypeORM",
+    "pattern": "orderBy(req.query.sort)",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-02",
+    "ecosystem": "Node.js",
+    "name": "Sequelize",
+    "pattern": "Sequelize.literal(input)",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-03",
+    "ecosystem": "Node.js",
+    "name": "Prisma",
+    "pattern": "$queryRawUnsafe(`... ${id}`)",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-04",
+    "ecosystem": "Python",
+    "name": "Django ORM",
+    "pattern": ".extra(where=[\"...\"])",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-05",
+    "ecosystem": "Python",
+    "name": "SQLAlchemy",
+    "pattern": "text(\"... \" + input)",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-06",
+    "ecosystem": "Ruby",
+    "name": "ActiveRecord",
+    "pattern": ".where(\"name = '#{input}'\")",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-07",
+    "ecosystem": "Java",
+    "name": "Hibernate",
+    "pattern": "createQuery(\"FROM User WHERE name = '\" + input + \"'\")",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-08",
+    "ecosystem": "C#",
+    "name": "Entity Framework Core",
+    "pattern": "FromSqlRaw(\"... \" + input)",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-09",
+    "ecosystem": "PHP",
+    "name": "Laravel Eloquent",
+    "pattern": "whereRaw(\"name = '\" . $input . \"'\")",
+    "evidence": "E5"
+  },
+  {
+    "id": "FW-10",
+    "ecosystem": "Go",
+    "name": "GORM",
+    "pattern": "db.Raw(fmt.Sprintf(\"... %s\", input))",
+    "evidence": "E5"
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "SURF-01",
+    "name": "URL Query Parameter",
+    "mime": "application/x-www-form-urlencoded",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-02",
+    "name": "Form URL-Encoded Body",
+    "mime": "application/x-www-form-urlencoded",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-03",
+    "name": "Multipart Form Field",
+    "mime": "multipart/form-data",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-04",
+    "name": "Multipart Filename",
+    "mime": "multipart/form-data",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-05",
+    "name": "Flat JSON Body",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-06",
+    "name": "Deeply Nested JSON Object",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-07",
+    "name": "JSON Array Elements",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-08",
+    "name": "XML / SOAP Body",
+    "mime": "application/xml",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-09",
+    "name": "HTTP Cookie Header",
+    "mime": "Cookie",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-10",
+    "name": "Custom Gateway Header",
+    "mime": "HTTP Header",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-11",
+    "name": "REST Clean Path Segment",
+    "mime": "URI Path",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-12",
+    "name": "GraphQL Variables JSON",
+    "mime": "application/json",
+    "evidence": "E5"
+  },
+  {
+    "id": "SURF-13",
+    "name": "WebSocket Text Frame",
+    "mime": "WS Text Frame",
+    "evidence": "E4"
+  },
+  {
+    "id": "SURF-14",
+    "name": "Async Message Queue Payload",
+    "mime": "Message Broker",
+    "evidence": "E5"
+  }
+]

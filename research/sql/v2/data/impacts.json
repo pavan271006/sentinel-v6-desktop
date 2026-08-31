@@ -1,0 +1,32 @@
+[
+  {
+    "id": "IMP-01",
+    "name": "Unauthorized Data Exposure",
+    "tier": "DEMONSTRATED_CAPABILITY"
+  },
+  {
+    "id": "IMP-02",
+    "name": "Database Schema Enumeration",
+    "tier": "DEMONSTRATED_CAPABILITY"
+  },
+  {
+    "id": "IMP-03",
+    "name": "Authentication Barrier Bypass",
+    "tier": "DEMONSTRATED_CAPABILITY"
+  },
+  {
+    "id": "IMP-04",
+    "name": "Multi-Tenant SaaS Boundary Leak",
+    "tier": "DEMONSTRATED_CAPABILITY"
+  },
+  {
+    "id": "IMP-05",
+    "name": "Unauthorized Data Modification",
+    "tier": "DEMONSTRATED_CAPABILITY"
+  },
+  {
+    "id": "IMP-06",
+    "name": "Database Superuser Privilege Escalation",
+    "tier": "DEMONSTRATED_CAPABILITY"
+  }
+]

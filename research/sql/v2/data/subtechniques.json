@@ -1,0 +1,56 @@
+[
+  {
+    "id": "SUB-V2-001",
+    "parentId": "TECH-V2-01",
+    "name": "Single quote with ANSI comment ('-- )",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-002",
+    "parentId": "TECH-V2-01",
+    "name": "Single quote with inline C-style comment ('/* */)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-003",
+    "parentId": "TECH-V2-01",
+    "name": "Single quote with MySQL hash comment ('#)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-004",
+    "parentId": "TECH-V2-01",
+    "name": "Single quote with balancing quote (' OR ''=')",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-010",
+    "parentId": "TECH-V2-07",
+    "name": "Direct numeric tautology (OR 1=1)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-020",
+    "parentId": "TECH-V2-13",
+    "name": "NULL-padded column count sweep (UNION SELECT NULL, ...)",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-029",
+    "parentId": "TECH-V2-17",
+    "name": "PostgreSQL integer CAST leakage (CAST(... AS int))",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-034",
+    "parentId": "TECH-V2-21",
+    "name": "PostgreSQL pg_sleep(3) conditional latency probe",
+    "evidence": "E5"
+  },
+  {
+    "id": "SUB-V2-038",
+    "parentId": "TECH-V2-23",
+    "name": "MSSQL xp_dirtree UNC path resolution",
+    "evidence": "E5"
+  }
+]

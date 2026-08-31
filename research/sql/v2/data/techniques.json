@@ -1,0 +1,90 @@
+[
+  {
+    "id": "TECH-V2-01",
+    "name": "Single-Quote String Delimiter Breakout",
+    "mechanism": "MECH-V2-01",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-07",
+    "name": "Boolean Relational Tautology (OR 1=1)",
+    "mechanism": "MECH-V2-02",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-13",
+    "name": "UNION Projection Column Sweep",
+    "mechanism": "MECH-V2-03",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-17",
+    "name": "Explicit Integer Type CAST Coercion Leak",
+    "mechanism": "MECH-V2-04",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-21",
+    "name": "Wald SPRT Statistical Latency Delay Probe",
+    "mechanism": "MECH-V2-04",
+    "safety": "TIMING_SENSITIVE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-25",
+    "name": "Semicolon Statement Chaining (Stacked)",
+    "mechanism": "MECH-V2-05",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-29",
+    "name": "UPDATE SET Additional Column Assignment",
+    "mechanism": "MECH-V2-06",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-34",
+    "name": "Dynamic ORDER BY Conditional CASE Expression",
+    "mechanism": "MECH-V2-07",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-41",
+    "name": "Transaction Boundary Injection (COMMIT)",
+    "mechanism": "MECH-V2-08",
+    "safety": "STATE_DEPENDENT",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-49",
+    "name": "pgvector Cosine Similarity Metric Injection (<=>)",
+    "mechanism": "MECH-V2-04",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "TECH-V2-52",
+    "name": "5-Step Counterfactual Causal Verification",
+    "mechanism": "MECH-V2-02",
+    "safety": "PARALLEL_SAFE",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  }
+]

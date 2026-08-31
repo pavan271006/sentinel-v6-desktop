@@ -1,0 +1,58 @@
+[
+  {
+    "id": "MECH-V2-01",
+    "code": "LEXICAL_BREAKOUT",
+    "name": "Lexical Boundary Breakout",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-02",
+    "code": "PREDICATE_MUTATION",
+    "name": "Relational Predicate Logic Mutation",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-03",
+    "code": "SET_OPERATION_UNION",
+    "name": "Relational Set Operations (UNION)",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-04",
+    "code": "SCALAR_EXPRESSION",
+    "name": "Scalar Expression & Function Injection",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-05",
+    "code": "STATEMENT_BATCHING",
+    "name": "Statement Batching & Stacked Execution",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-06",
+    "code": "DML_ASSIGN_MUTATION",
+    "name": "DML Assignment & Tuple Mutation",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-07",
+    "code": "STRUCTURAL_CLAUSE",
+    "name": "Structural Clause Manipulation",
+    "evidence": "E5",
+    "status": "VALIDATED"
+  },
+  {
+    "id": "MECH-V2-08",
+    "code": "TRANSACTION_CONTROL",
+    "name": "Transaction & Procedural Control",
+    "evidence": "E4",
+    "status": "VALIDATED"
+  }
+]

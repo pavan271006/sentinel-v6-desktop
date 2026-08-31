@@ -1,0 +1,182 @@
+[
+  {
+    "id": "CTX-01",
+    "name": "Single-Quote String Literal",
+    "delimiter": "'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-02",
+    "name": "Double-Quote String / Identifier",
+    "delimiter": "\"",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-03",
+    "name": "PostgreSQL Dollar-Quote Literal",
+    "delimiter": "$$",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-04",
+    "name": "Oracle Q-Quote Literal",
+    "delimiter": "Q'['",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-05",
+    "name": "Unicode String Literal",
+    "delimiter": "N'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-06",
+    "name": "MySQL Backtick Identifier",
+    "delimiter": "`",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-07",
+    "name": "Direct Numeric Literal",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-08",
+    "name": "Parenthesized Numeric Literal",
+    "delimiter": "))",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-09",
+    "name": "Bitwise Arithmetic Expression",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-10",
+    "name": "ORDER BY Expression",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-11",
+    "name": "ORDER BY Direction Keyword",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-12",
+    "name": "GROUP BY Expression",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-13",
+    "name": "HAVING Aggregate Predicate",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-14",
+    "name": "LIMIT Row Count",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-15",
+    "name": "OFFSET Row Skip",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-16",
+    "name": "Window Partitioning Clause",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-17",
+    "name": "Dynamic Table Name Identifier",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-18",
+    "name": "Dynamic Column Projection",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-19",
+    "name": "Dynamic Schema Qualifier",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-20",
+    "name": "Optimizer Index Hint",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-21",
+    "name": "INSERT VALUES Tuple Literal",
+    "delimiter": "')",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-22",
+    "name": "INSERT INTO SELECT Projection",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-23",
+    "name": "UPDATE SET Field Assignment",
+    "delimiter": "'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-24",
+    "name": "DELETE WHERE Boolean Predicate",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-25",
+    "name": "UPSERT ON CONFLICT SET",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-26",
+    "name": "MERGE ON Join Condition",
+    "delimiter": "",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-27",
+    "name": "Dynamic SQL EXECUTE String",
+    "delimiter": "'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-28",
+    "name": "JSONB Path Key Expression",
+    "delimiter": "'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-29",
+    "name": "Vector Distance Operator (<=>)",
+    "delimiter": "]",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-30",
+    "name": "Array Subscript Index",
+    "delimiter": "]",
+    "evidence": "E5"
+  }
+]

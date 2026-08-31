@@ -1,0 +1,50 @@
+[
+  {
+    "id": "FLOW-01",
+    "ingress": "/register",
+    "entity": "users.username",
+    "trigger": "/change-password",
+    "impact": "Account Takeover",
+    "evidence": "E5"
+  },
+  {
+    "id": "FLOW-02",
+    "ingress": "/tickets",
+    "entity": "tickets.subject",
+    "trigger": "/admin/tickets/search",
+    "impact": "Schema Leak",
+    "evidence": "E5"
+  },
+  {
+    "id": "FLOW-03",
+    "ingress": "/checkout",
+    "entity": "orders.shipping",
+    "trigger": "/invoices/pdf/{id}",
+    "impact": "Tenant Data Exposure",
+    "evidence": "E5"
+  },
+  {
+    "id": "FLOW-04",
+    "ingress": "/organization",
+    "entity": "org.name",
+    "trigger": "/analytics/report",
+    "impact": "Financial Leak",
+    "evidence": "E5"
+  },
+  {
+    "id": "FLOW-05",
+    "ingress": "/upload",
+    "entity": "files.filename",
+    "trigger": "Celery Worker",
+    "impact": "Async Worker SQLi",
+    "evidence": "E4"
+  },
+  {
+    "id": "FLOW-06",
+    "ingress": "/oauth/callback",
+    "entity": "oauth.name",
+    "trigger": "/dashboard/team",
+    "impact": "Federated Identity Leak",
+    "evidence": "E4"
+  }
+]

