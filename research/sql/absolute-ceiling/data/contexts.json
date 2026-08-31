@@ -1,0 +1,394 @@
+[
+  {
+    "id": "CTX-01",
+    "name": "Single-Quote String Literal",
+    "delimiter": "'",
+    "example": "WHERE name = '<INPUT>'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-02",
+    "name": "Double-Quote Identifier / String",
+    "delimiter": "\"",
+    "example": "WHERE \"name\" = \"<INPUT>\"",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-03",
+    "name": "PostgreSQL Dollar-Quote Literal",
+    "delimiter": "$$",
+    "example": "WHERE body = $$<INPUT>$$",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-04",
+    "name": "Oracle Q-Quote Literal",
+    "delimiter": "Q'['",
+    "example": "WHERE note = Q'[<INPUT>]'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-05",
+    "name": "Unicode String Literal (N'...')",
+    "delimiter": "N'",
+    "example": "WHERE label = N'<INPUT>'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-06",
+    "name": "MySQL Backtick Identifier",
+    "delimiter": "`",
+    "example": "SELECT `<INPUT>` FROM tbl",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-07",
+    "name": "Direct Numeric Literal",
+    "delimiter": "",
+    "example": "WHERE id = <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-08",
+    "name": "Parenthesized Numeric Literal",
+    "delimiter": "))",
+    "example": "WHERE (id = (<INPUT>))",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-09",
+    "name": "Bitwise Arithmetic Expression",
+    "delimiter": "",
+    "example": "WHERE (flags & <INPUT>) > 0",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-10",
+    "name": "ORDER BY Expression",
+    "delimiter": "",
+    "example": "ORDER BY (CASE WHEN (<INPUT>) THEN 1 ELSE 2 END)",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-11",
+    "name": "ORDER BY Direction Keyword",
+    "delimiter": "",
+    "example": "ORDER BY name <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-12",
+    "name": "GROUP BY Expression",
+    "delimiter": "",
+    "example": "GROUP BY <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-13",
+    "name": "HAVING Aggregate Predicate",
+    "delimiter": "",
+    "example": "HAVING COUNT(*) > <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-14",
+    "name": "LIMIT Row Count",
+    "delimiter": "",
+    "example": "LIMIT <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-15",
+    "name": "OFFSET Row Skip",
+    "delimiter": "",
+    "example": "OFFSET <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-16",
+    "name": "Window Partitioning Clause",
+    "delimiter": "",
+    "example": "OVER (PARTITION BY <INPUT>)",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-17",
+    "name": "Dynamic Table Name Identifier",
+    "delimiter": "",
+    "example": "SELECT * FROM <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-18",
+    "name": "Dynamic Column Projection",
+    "delimiter": "",
+    "example": "SELECT <INPUT> FROM tbl",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-19",
+    "name": "Dynamic Schema Qualifier",
+    "delimiter": "",
+    "example": "SELECT * FROM <INPUT>.users",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-20",
+    "name": "Optimizer Index Hint",
+    "delimiter": "",
+    "example": "FROM tbl USE INDEX (<INPUT>)",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-21",
+    "name": "INSERT VALUES Tuple Literal",
+    "delimiter": "')",
+    "example": "VALUES ('a', '<INPUT>')",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-22",
+    "name": "INSERT INTO SELECT Projection",
+    "delimiter": "",
+    "example": "INSERT INTO tbl SELECT <INPUT> FROM s",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-23",
+    "name": "UPDATE SET Field Assignment",
+    "delimiter": "'",
+    "example": "UPDATE tbl SET col = '<INPUT>'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-24",
+    "name": "DELETE WHERE Boolean Predicate",
+    "delimiter": "",
+    "example": "DELETE FROM tbl WHERE id = <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-25",
+    "name": "UPSERT ON CONFLICT SET",
+    "delimiter": "",
+    "example": "ON CONFLICT (id) DO UPDATE SET c=<INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-26",
+    "name": "MERGE ON Join Condition",
+    "delimiter": "",
+    "example": "MERGE INTO tgt ON (tgt.id = <INPUT>)",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-27",
+    "name": "Dynamic SQL EXECUTE String",
+    "delimiter": "'",
+    "example": "EXECUTE IMMEDIATE '<INPUT>'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-28",
+    "name": "JSONB Path Key Expression",
+    "delimiter": "'",
+    "example": "WHERE data->>'<INPUT>' = 'val'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-29",
+    "name": "Vector Cosine Distance Operator (<=>)",
+    "delimiter": "]",
+    "example": "WHERE embedding <=> '<INPUT>'::vector",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-30",
+    "name": "Array Subscript Index",
+    "delimiter": "]",
+    "example": "WHERE tags[<INPUT>] = 'val'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-31",
+    "name": "CTE Anchor Query Expression",
+    "delimiter": "",
+    "example": "WITH RECURSIVE cte AS (SELECT <INPUT> UNION SELECT ...)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-32",
+    "name": "CTE Recursive Member Expression",
+    "delimiter": "",
+    "example": "WITH RECURSIVE cte AS (SELECT 1 UNION SELECT <INPUT> FROM cte)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-33",
+    "name": "LATERAL Join Subquery",
+    "delimiter": "",
+    "example": "SELECT * FROM tbl, LATERAL (<INPUT>) AS lat",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-34",
+    "name": "RETURNING Projection Clause",
+    "delimiter": "",
+    "example": "INSERT INTO tbl VALUES (1) RETURNING <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-35",
+    "name": "TABLESAMPLE System Rate Expression",
+    "delimiter": "",
+    "example": "SELECT * FROM tbl TABLESAMPLE SYSTEM (<INPUT>)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-36",
+    "name": "WINDOW Frame Bounds (ROWS BETWEEN)",
+    "delimiter": "",
+    "example": "OVER (ROWS BETWEEN <INPUT> PRECEDING AND CURRENT ROW)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-37",
+    "name": "Full-Text Search Match Modifier",
+    "delimiter": "'",
+    "example": "WHERE MATCH(body) AGAINST('<INPUT>' IN BOOLEAN MODE)",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-38",
+    "name": "Cast Target Type Identifier",
+    "delimiter": "",
+    "example": "SELECT CAST(col AS <INPUT>)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-39",
+    "name": "Custom User-Defined Operator",
+    "delimiter": "",
+    "example": "WHERE col OPERATOR(<INPUT>) 'val'",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-40",
+    "name": "Database Search Path Configuration",
+    "delimiter": "'",
+    "example": "SET search_path TO <INPUT>",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-41",
+    "name": "Virtual / Generated Column Definition",
+    "delimiter": "",
+    "example": "ALTER TABLE tbl ADD col INT GENERATED ALWAYS AS (<INPUT>)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-42",
+    "name": "JSON Path Query Expression (jsonpath)",
+    "delimiter": "'",
+    "example": "SELECT jsonb_path_query(data, '<INPUT>')",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-43",
+    "name": "Vector L2 Euclidean Metric Operator (<->)",
+    "delimiter": "]",
+    "example": "ORDER BY embedding <-> '<INPUT>'::vector",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-44",
+    "name": "Vector Dot Product Metric Operator (<#>)",
+    "delimiter": "]",
+    "example": "WHERE (embedding <#> '<INPUT>'::vector) < 0",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-45",
+    "name": "Vector L1 Manhattan Metric Operator (<+>)",
+    "delimiter": "]",
+    "example": "ORDER BY embedding <+> '<INPUT>'::vector",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-46",
+    "name": "Time Travel AS OF Timestamp / Version",
+    "delimiter": "'",
+    "example": "SELECT * FROM tbl FOR SYSTEM_TIME AS OF '<INPUT>'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-47",
+    "name": "GIS Spatial ST_GeomFromText Predicate",
+    "delimiter": "'",
+    "example": "WHERE ST_Contains(geom, ST_GeomFromText('<INPUT>'))",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-48",
+    "name": "XML Table Query Expression (XMLTABLE)",
+    "delimiter": "'",
+    "example": "FROM XMLTABLE('/root/<INPUT>' PASSING xml_col)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-49",
+    "name": "JSON Table Query Expression (JSON_TABLE)",
+    "delimiter": "'",
+    "example": "FROM JSON_TABLE(data, '$.<INPUT>' COLUMNS (...))",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-50",
+    "name": "Database Pragma / Configuration Value",
+    "delimiter": "'",
+    "example": "PRAGMA key = '<INPUT>'",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-51",
+    "name": "CROSS APPLY Table Function Argument",
+    "delimiter": "",
+    "example": "CROSS APPLY STRING_SPLIT(tags, '<INPUT>')",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-52",
+    "name": "QUALIFY Window Predicate (Snowflake/BigQuery)",
+    "delimiter": "",
+    "example": "QUALIFY ROW_NUMBER() OVER (...) = <INPUT>",
+    "evidence": "E5"
+  },
+  {
+    "id": "CTX-53",
+    "name": "CONNECT BY Hierarchical Query Predicate",
+    "delimiter": "",
+    "example": "CONNECT BY PRIOR id = parent_id AND <INPUT>",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-54",
+    "name": "PIVOT / UNPIVOT In-List Expression",
+    "delimiter": "",
+    "example": "PIVOT (SUM(val) FOR cat IN (<INPUT>))",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-55",
+    "name": "MATCH_RECOGNIZE Pattern Expression",
+    "delimiter": "'",
+    "example": "MATCH_RECOGNIZE (PATTERN (<INPUT>) DEFINE ...)",
+    "evidence": "E4"
+  },
+  {
+    "id": "CTX-56",
+    "name": "Serverless PostgREST URL Query Operator",
+    "delimiter": "",
+    "example": "GET /users?age=gte.<INPUT>&role=eq.admin",
+    "evidence": "E5"
+  }
+]

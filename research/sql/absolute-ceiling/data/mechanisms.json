@@ -1,0 +1,114 @@
+[
+  {
+    "id": "MECH-CEIL-01",
+    "code": "LEXICAL_BOUNDARY_BREAKOUT",
+    "name": "Lexical Boundary Breakout",
+    "description": "Premature termination of string, identifier, or literal boundaries via quotes, backticks, brackets, or dollar tags.",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-02",
+    "code": "PREDICATE_LOGIC_MUTATION",
+    "name": "Relational Predicate Logic Mutation",
+    "description": "Mutating boolean evaluation trees in WHERE, HAVING, and JOIN ON clauses via boolean operators (AND, OR, NOT, XOR).",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-03",
+    "code": "SET_OPERATION_UNION",
+    "name": "Relational Set Operations (UNION/EXCEPT/MINUS/INTERSECT)",
+    "description": "Appending independent relation sets to primary queries using UNION, UNION ALL, EXCEPT, MINUS, or INTERSECT.",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-04",
+    "code": "SCALAR_EXPRESSION_INJECTION",
+    "name": "Scalar Expression & Function Injection",
+    "description": "Injecting scalar subqueries, arithmetic expressions, type casts, and built-in functions into scalar evaluation slots.",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-05",
+    "code": "STATEMENT_BATCHING_STACKED",
+    "name": "Statement Batching & Stacked Execution",
+    "description": "Semicolon statement chaining executing secondary DDL, DML, DCL, or procedural blocks.",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-06",
+    "code": "DML_ASSIGNMENT_MUTATION",
+    "name": "DML Assignment & Tuple Mutation",
+    "description": "Injecting column assignments in UPDATE SET or row tuples in INSERT VALUES.",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-07",
+    "code": "STRUCTURAL_CLAUSE_MANIPULATION",
+    "name": "Structural Clause Manipulation",
+    "description": "Mutating structural query modifier clauses (ORDER BY, GROUP BY, LIMIT, OFFSET, WINDOW, TABLESAMPLE).",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-08",
+    "code": "TRANSACTION_AND_PROCEDURAL_CONTROL",
+    "name": "Transaction & Procedural Control",
+    "description": "Injecting transaction boundaries (COMMIT, ROLLBACK, SAVEPOINT) or procedural concurrency locks.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-09",
+    "code": "SCHEMA_DDL_DCL_MUTATION",
+    "name": "Dynamic Schema DDL & DCL Mutation",
+    "description": "Injecting structural schema definitions (CREATE TABLE AS, GRANT, REVOKE, TRUNCATE) in dynamic execution slots.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-10",
+    "code": "CTE_RECURSIVE_CHAINING",
+    "name": "Common Table Expression (CTE) Recursion Chaining",
+    "description": "Injecting recursive WITH clauses or anchor queries to traverse relational hierarchies or cause computational exhaustion.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-11",
+    "code": "DATABASE_OBJECT_IDENTIFIER_HIJACKING",
+    "name": "Database Object & Search Path Hijacking",
+    "description": "Manipulating dynamic schema resolution paths (SET search_path) or fully qualified object identifiers.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-12",
+    "code": "DATA_TYPE_COERCION_OPERATOR",
+    "name": "Custom Type Coercion & Operator Override",
+    "description": "Injecting custom user-defined operators (OPERATOR(schema.op)) or complex domain casting rules.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-13",
+    "code": "LATERAL_CORRELATION_INJECTION",
+    "name": "Lateral & Correlated Subquery Grafting",
+    "description": "Injecting LATERAL / CROSS APPLY subqueries to evaluate row-by-row expressions without explicit table joins.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-14",
+    "code": "PROJECTION_RETURNING_EXFILTRATION",
+    "name": "Returning Projection Exfiltration",
+    "description": "Injecting RETURNING / OUTPUT clauses into non-reflecting DML statements to force data output.",
+    "evidence": "E5"
+  },
+  {
+    "id": "MECH-CEIL-15",
+    "code": "ROW_LEVEL_SECURITY_SUBVERSION",
+    "name": "Row-Level Security (RLS) Policy Subversion",
+    "description": "Injecting conditions that subvert tenant RLS security policies by evaluating before security barrier views.",
+    "evidence": "E4"
+  },
+  {
+    "id": "MECH-CEIL-16",
+    "code": "VECTOR_DISTANCE_METRIC_MANIPULATION",
+    "name": "Vector Similarity & Distance Operator Injection",
+    "description": "Injecting high-dimensional vector literal strings or metric operators (<=>, <->, <#>, <+>) into AI similarity searches.",
+    "evidence": "E5"
+  }
+]
