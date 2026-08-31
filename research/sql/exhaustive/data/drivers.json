@@ -1,0 +1,50 @@
+[
+  {
+    "id": "DRV-01",
+    "name": "node-postgres (pg)",
+    "ecosystem": "Node.js",
+    "multiStatements": "Supported in raw query()"
+  },
+  {
+    "id": "DRV-02",
+    "name": "mysql2",
+    "ecosystem": "Node.js",
+    "multiStatements": "multipleStatements: false (Default)"
+  },
+  {
+    "id": "DRV-03",
+    "name": "tedious (MSSQL)",
+    "ecosystem": "Node.js",
+    "multiStatements": "Native TDS batching enabled"
+  },
+  {
+    "id": "DRV-04",
+    "name": "psycopg2",
+    "ecosystem": "Python",
+    "multiStatements": "Allowed in raw execute()"
+  },
+  {
+    "id": "DRV-05",
+    "name": "PyMySQL",
+    "ecosystem": "Python",
+    "multiStatements": "CLIENT_MULTI_STATEMENTS required"
+  },
+  {
+    "id": "DRV-06",
+    "name": "MySQL Connector/J",
+    "ecosystem": "Java",
+    "multiStatements": "allowMultiQueries=false (Default)"
+  },
+  {
+    "id": "DRV-07",
+    "name": "PDO_MYSQL",
+    "ecosystem": "PHP",
+    "multiStatements": "PDO::ATTR_EMULATE_PREPARES=true (Default)"
+  },
+  {
+    "id": "DRV-08",
+    "name": "go-sql-driver/mysql",
+    "ecosystem": "Go",
+    "multiStatements": "multiStatements=false (Default)"
+  }
+]

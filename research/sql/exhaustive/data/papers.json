@@ -1,0 +1,45 @@
+[
+  {
+    "id": "PAPER-01",
+    "title": "Testing Database Engines via Ternary Logic Partitioning",
+    "authors": [
+      "Manuel Rigger",
+      "Zhendong Su"
+    ],
+    "venue": "ACM OOPSLA 2020"
+  },
+  {
+    "id": "PAPER-02",
+    "title": "Detecting Optimization Bugs through Non-Optimizing Reference Comparison",
+    "authors": [
+      "Manuel Rigger",
+      "Zhendong Su"
+    ],
+    "venue": "ACM ESEC/FSE 2020"
+  },
+  {
+    "id": "PAPER-03",
+    "title": "Squirrel: Testing DBMSs with Language Validity and Coverage Feedback",
+    "authors": [
+      "Rui Zhong et al."
+    ],
+    "venue": "ACM CCS 2020"
+  },
+  {
+    "id": "PAPER-04",
+    "title": "SQLRight: Syntax-directed Differential Testing of DBMSs",
+    "authors": [
+      "Jinsheng Ba",
+      "Manuel Rigger"
+    ],
+    "venue": "USENIX Security 2022"
+  },
+  {
+    "id": "PAPER-05",
+    "title": "Sequential Tests of Statistical Hypotheses",
+    "authors": [
+      "Abraham Wald"
+    ],
+    "venue": "Annals of Mathematical Statistics 1945"
+  }
+]

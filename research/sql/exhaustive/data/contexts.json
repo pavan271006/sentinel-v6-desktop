@@ -1,0 +1,230 @@
+[
+  {
+    "id": "CTX-01",
+    "name": "Single-Quote String",
+    "delimiter": "'",
+    "example": "WHERE name = '<INPUT>'"
+  },
+  {
+    "id": "CTX-02",
+    "name": "Double-Quote String / ID",
+    "delimiter": "\"",
+    "example": "WHERE name = \"<INPUT>\""
+  },
+  {
+    "id": "CTX-03",
+    "name": "PostgreSQL Dollar-Quote",
+    "delimiter": "$$",
+    "example": "WHERE body = $$<INPUT>$$"
+  },
+  {
+    "id": "CTX-04",
+    "name": "Oracle Q-Quote Literal",
+    "delimiter": "Q'['",
+    "example": "WHERE note = Q'[<INPUT>]'"
+  },
+  {
+    "id": "CTX-05",
+    "name": "Unicode String Literal",
+    "delimiter": "N'",
+    "example": "WHERE label = N'<INPUT>'"
+  },
+  {
+    "id": "CTX-06",
+    "name": "MySQL Backtick Identifier",
+    "delimiter": "`",
+    "example": "SELECT `<INPUT>` FROM tbl"
+  },
+  {
+    "id": "CTX-07",
+    "name": "Direct Numeric Literal",
+    "delimiter": "",
+    "example": "WHERE id = <INPUT>"
+  },
+  {
+    "id": "CTX-08",
+    "name": "Parenthesized Numeric",
+    "delimiter": "))",
+    "example": "WHERE (id = (<INPUT>))"
+  },
+  {
+    "id": "CTX-09",
+    "name": "Bitwise Arithmetic",
+    "delimiter": "",
+    "example": "WHERE (flags & <INPUT>) > 0"
+  },
+  {
+    "id": "CTX-10",
+    "name": "Hexadecimal Literal",
+    "delimiter": "0x",
+    "example": "WHERE token = 0x<INPUT>"
+  },
+  {
+    "id": "CTX-11",
+    "name": "Scientific Notation",
+    "delimiter": "e0",
+    "example": "WHERE val = <INPUT>e0"
+  },
+  {
+    "id": "CTX-12",
+    "name": "ORDER BY Expression",
+    "delimiter": "",
+    "example": "ORDER BY (CASE WHEN (<INPUT>) THEN 1 ELSE 2 END)"
+  },
+  {
+    "id": "CTX-13",
+    "name": "ORDER BY Direction",
+    "delimiter": "",
+    "example": "ORDER BY name <INPUT>"
+  },
+  {
+    "id": "CTX-14",
+    "name": "GROUP BY Expression",
+    "delimiter": "",
+    "example": "GROUP BY <INPUT>"
+  },
+  {
+    "id": "CTX-15",
+    "name": "HAVING Aggregate Predicate",
+    "delimiter": "",
+    "example": "HAVING COUNT(*) > <INPUT>"
+  },
+  {
+    "id": "CTX-16",
+    "name": "LIMIT Row Count",
+    "delimiter": "",
+    "example": "LIMIT <INPUT>"
+  },
+  {
+    "id": "CTX-17",
+    "name": "OFFSET Row Skip",
+    "delimiter": "",
+    "example": "OFFSET <INPUT>"
+  },
+  {
+    "id": "CTX-18",
+    "name": "Window Partitioning",
+    "delimiter": "",
+    "example": "OVER (PARTITION BY <INPUT>)"
+  },
+  {
+    "id": "CTX-19",
+    "name": "Window Ordering",
+    "delimiter": "",
+    "example": "OVER (ORDER BY <INPUT>)"
+  },
+  {
+    "id": "CTX-20",
+    "name": "FETCH NEXT Clause",
+    "delimiter": "",
+    "example": "FETCH NEXT <INPUT> ROWS ONLY"
+  },
+  {
+    "id": "CTX-21",
+    "name": "Dynamic Table Name",
+    "delimiter": "",
+    "example": "SELECT * FROM <INPUT>"
+  },
+  {
+    "id": "CTX-22",
+    "name": "Dynamic Column Projection",
+    "delimiter": "",
+    "example": "SELECT <INPUT> FROM tbl"
+  },
+  {
+    "id": "CTX-23",
+    "name": "Dynamic Schema Qualifier",
+    "delimiter": "",
+    "example": "SELECT * FROM <INPUT>.users"
+  },
+  {
+    "id": "CTX-24",
+    "name": "Optimizer Index Hint",
+    "delimiter": "",
+    "example": "FROM tbl USE INDEX (<INPUT>)"
+  },
+  {
+    "id": "CTX-25",
+    "name": "INSERT VALUES Tuple",
+    "delimiter": "')",
+    "example": "VALUES ('a', '<INPUT>')"
+  },
+  {
+    "id": "CTX-26",
+    "name": "INSERT INTO SELECT",
+    "delimiter": "",
+    "example": "INSERT INTO tbl SELECT <INPUT> FROM s"
+  },
+  {
+    "id": "CTX-27",
+    "name": "UPDATE SET Assignment",
+    "delimiter": "'",
+    "example": "UPDATE tbl SET col = '<INPUT>'"
+  },
+  {
+    "id": "CTX-28",
+    "name": "DELETE WHERE Condition",
+    "delimiter": "",
+    "example": "DELETE FROM tbl WHERE id = <INPUT>"
+  },
+  {
+    "id": "CTX-29",
+    "name": "UPSERT ON CONFLICT SET",
+    "delimiter": "",
+    "example": "ON CONFLICT (id) DO UPDATE SET c=<INPUT>"
+  },
+  {
+    "id": "CTX-30",
+    "name": "MERGE ON Join Condition",
+    "delimiter": "",
+    "example": "MERGE INTO tgt ON (tgt.id = <INPUT>)"
+  },
+  {
+    "id": "CTX-31",
+    "name": "Dynamic SQL EXECUTE String",
+    "delimiter": "'",
+    "example": "EXECUTE IMMEDIATE '<INPUT>'"
+  },
+  {
+    "id": "CTX-32",
+    "name": "Stored Proc Parameter",
+    "delimiter": "'",
+    "example": "EXEC sp_executesql N'<INPUT>'"
+  },
+  {
+    "id": "CTX-33",
+    "name": "CTE Recursive WITH Anchor",
+    "delimiter": "",
+    "example": "WITH RECURSIVE cte AS (SELECT <INPUT>)"
+  },
+  {
+    "id": "CTX-34",
+    "name": "JSONB Path Key Expression",
+    "delimiter": "'",
+    "example": "WHERE data->>'<INPUT>' = 'val'"
+  },
+  {
+    "id": "CTX-35",
+    "name": "Vector Distance Operator",
+    "delimiter": "]",
+    "example": "WHERE embedding <=> '<INPUT>'::vector"
+  },
+  {
+    "id": "CTX-36",
+    "name": "Array Subscript Index",
+    "delimiter": "]",
+    "example": "WHERE tags[<INPUT>] = 'val'"
+  },
+  {
+    "id": "CTX-37",
+    "name": "Full-Text Search Predicate",
+    "delimiter": "'",
+    "example": "WHERE MATCH(body) AGAINST('<INPUT>')"
+  },
+  {
+    "id": "CTX-38",
+    "name": "Regular Expression Pattern",
+    "delimiter": "'",
+    "example": "WHERE name ~ '<INPUT>'"
+  }
+]

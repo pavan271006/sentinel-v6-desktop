@@ -1,0 +1,62 @@
+[
+  {
+    "id": "INF-01",
+    "name": "Linear ASCII Search",
+    "complexity": "O(|Sigma|)"
+  },
+  {
+    "id": "INF-02",
+    "name": "Standard Binary Search",
+    "complexity": "O(log2 |Sigma|)"
+  },
+  {
+    "id": "INF-03",
+    "name": "Bitwise Extraction",
+    "complexity": "O(8)"
+  },
+  {
+    "id": "INF-04",
+    "name": "Shannon Entropy Search",
+    "complexity": "O(H(Sigma)) ~ 4.2 reqs"
+  },
+  {
+    "id": "INF-05",
+    "name": "Multi-Byte UTF-8 Search",
+    "complexity": "O(log2 |Sigma_UTF8|)"
+  },
+  {
+    "id": "INF-06",
+    "name": "Wald SPRT Sequential Test",
+    "complexity": "2-5 samples"
+  },
+  {
+    "id": "INF-07",
+    "name": "Mann-Whitney U Rank Test",
+    "complexity": "N >= 8 samples"
+  },
+  {
+    "id": "INF-08",
+    "name": "Bayesian Belief Updating",
+    "complexity": "Dynamic"
+  },
+  {
+    "id": "INF-09",
+    "name": "Expected Information Gain (EIG)",
+    "complexity": "Dynamic"
+  },
+  {
+    "id": "INF-10",
+    "name": "Majority Triplicate Voting",
+    "complexity": "3x cost"
+  },
+  {
+    "id": "INF-11",
+    "name": "Backtracking State Recovery",
+    "complexity": "O(Backtrack)"
+  },
+  {
+    "id": "INF-12",
+    "name": "Dictionary Range Narrowing",
+    "complexity": "~3.1 reqs"
+  }
+]

@@ -1,0 +1,218 @@
+[
+  {
+    "id": "DBMS-PG",
+    "name": "PostgreSQL",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-MYSQL",
+    "name": "MySQL",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "SLEEP(N)",
+    "cast": "EXTRACTVALUE()"
+  },
+  {
+    "id": "DBMS-MARIADB",
+    "name": "MariaDB",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "SLEEP(N)",
+    "cast": "EXTRACTVALUE()"
+  },
+  {
+    "id": "DBMS-MSSQL",
+    "name": "Microsoft SQL Server",
+    "family": "Relational",
+    "comment": "--",
+    "concat": "+",
+    "sleep": "WAITFOR DELAY",
+    "cast": "CONVERT(int, x)"
+  },
+  {
+    "id": "DBMS-ORACLE",
+    "name": "Oracle Database",
+    "family": "Relational",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "DBMS_LOCK.SLEEP",
+    "cast": "TO_NUMBER(x)"
+  },
+  {
+    "id": "DBMS-SQLITE",
+    "name": "SQLite",
+    "family": "Embedded",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "randomblob(100M)",
+    "cast": "CAST(x AS integer)"
+  },
+  {
+    "id": "DBMS-DB2",
+    "name": "IBM Db2",
+    "family": "Enterprise",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "UDF",
+    "cast": "CAST(x AS integer)"
+  },
+  {
+    "id": "DBMS-HANA",
+    "name": "SAP HANA",
+    "family": "In-Memory",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Proc",
+    "cast": "TO_INTEGER(x)"
+  },
+  {
+    "id": "DBMS-CRDB",
+    "name": "CockroachDB",
+    "family": "NewSQL",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-TIDB",
+    "name": "TiDB",
+    "family": "NewSQL",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "SLEEP(N)",
+    "cast": "CAST(x AS unsigned)"
+  },
+  {
+    "id": "DBMS-YUGABYTE",
+    "name": "YugabyteDB",
+    "family": "NewSQL",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-DUCKDB",
+    "name": "DuckDB",
+    "family": "In-Process OLAP",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "Analytical",
+    "cast": "CAST(x AS integer)"
+  },
+  {
+    "id": "DBMS-SNOWFLAKE",
+    "name": "Snowflake",
+    "family": "Cloud DWH",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "SYSTEM$WAIT",
+    "cast": "TO_NUMBER(x)"
+  },
+  {
+    "id": "DBMS-REDSHIFT",
+    "name": "Amazon Redshift",
+    "family": "Cloud OLAP",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "pg_sleep(N)",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-BIGQUERY",
+    "name": "Google BigQuery",
+    "family": "Cloud DWH",
+    "comment": "-- ",
+    "concat": "CONCAT()",
+    "sleep": "Analytical",
+    "cast": "CAST(x AS INT64)"
+  },
+  {
+    "id": "DBMS-CLICKHOUSE",
+    "name": "ClickHouse",
+    "family": "Columnar OLAP",
+    "comment": "-- ",
+    "concat": "concat()",
+    "sleep": "sleep(N)",
+    "cast": "toInt32(x)"
+  },
+  {
+    "id": "DBMS-DATABRICKS",
+    "name": "Databricks SQL",
+    "family": "Lakehouse",
+    "comment": "-- ",
+    "concat": "concat()",
+    "sleep": "Analytical",
+    "cast": "CAST(x AS INT)"
+  },
+  {
+    "id": "DBMS-TRINO",
+    "name": "Presto / Trino",
+    "family": "Federated SQL",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "Subquery",
+    "cast": "CAST(x AS integer)"
+  },
+  {
+    "id": "DBMS-FIREBIRD",
+    "name": "Firebird",
+    "family": "Relational",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "UDF",
+    "cast": "CAST(x AS integer)"
+  },
+  {
+    "id": "DBMS-H2",
+    "name": "H2 Database",
+    "family": "Embedded Java",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "CALL sleep(N)",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-DERBY",
+    "name": "Apache Derby",
+    "family": "Embedded Java",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Java UDF",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-HSQLDB",
+    "name": "HSQLDB",
+    "family": "Embedded Java",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Java UDF",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-INFORMIX",
+    "name": "Informix",
+    "family": "Enterprise",
+    "comment": "--",
+    "concat": "||",
+    "sleep": "Subquery",
+    "cast": "CAST(x AS int)"
+  },
+  {
+    "id": "DBMS-VERTICA",
+    "name": "Vertica",
+    "family": "Columnar OLAP",
+    "comment": "-- ",
+    "concat": "||",
+    "sleep": "sleep(N)",
+    "cast": "CAST(x AS int)"
+  }
+]

@@ -1,0 +1,170 @@
+[
+  {
+    "id": "ORC-01",
+    "code": "ORC-CANARY-BODY",
+    "name": "Canary Reflection in Body",
+    "confidence": 0.999
+  },
+  {
+    "id": "ORC-02",
+    "code": "ORC-CANARY-JSON",
+    "name": "Canary Reflection in JSON",
+    "confidence": 0.999
+  },
+  {
+    "id": "ORC-03",
+    "code": "ORC-CANARY-XML",
+    "name": "Canary Reflection in XML",
+    "confidence": 0.999
+  },
+  {
+    "id": "ORC-04",
+    "code": "ORC-CAST-ERROR",
+    "name": "Type Conversion Error Leak",
+    "confidence": 0.95
+  },
+  {
+    "id": "ORC-05",
+    "code": "ORC-SYNTAX-ERROR",
+    "name": "Parser Syntax Error Message",
+    "confidence": 0.85
+  },
+  {
+    "id": "ORC-06",
+    "code": "ORC-XPATH-ERROR",
+    "name": "XPath Function Evaluation Failure",
+    "confidence": 0.95
+  },
+  {
+    "id": "ORC-07",
+    "code": "ORC-DIV-ZERO-ERROR",
+    "name": "Arithmetic Division by Zero",
+    "confidence": 0.9
+  },
+  {
+    "id": "ORC-08",
+    "code": "ORC-OVERFLOW-ERROR",
+    "name": "Numeric Overflow Exception",
+    "confidence": 0.9
+  },
+  {
+    "id": "ORC-09",
+    "code": "ORC-REGEX-ERROR",
+    "name": "Regex Backtracking Timeout Error",
+    "confidence": 0.8
+  },
+  {
+    "id": "ORC-10",
+    "code": "ORC-BOOLEAN-DIFF",
+    "name": "Boolean Text Token Differential",
+    "confidence": 0.92
+  },
+  {
+    "id": "ORC-11",
+    "code": "ORC-BOOLEAN-STATUS",
+    "name": "HTTP Status Code Transition",
+    "confidence": 0.92
+  },
+  {
+    "id": "ORC-12",
+    "code": "ORC-DOM-STRUCT-DIFF",
+    "name": "DOM Subtree Structure Divergence",
+    "confidence": 0.94
+  },
+  {
+    "id": "ORC-13",
+    "code": "ORC-HEADER-DIFF",
+    "name": "HTTP Response Header Mutation",
+    "confidence": 0.9
+  },
+  {
+    "id": "ORC-14",
+    "code": "ORC-REDIRECT-DIFF",
+    "name": "Redirect Location URL Mutation",
+    "confidence": 0.95
+  },
+  {
+    "id": "ORC-15",
+    "code": "ORC-TIME-SPRT",
+    "name": "Wald SPRT Sequential Latency Shift",
+    "confidence": 0.99
+  },
+  {
+    "id": "ORC-16",
+    "code": "ORC-TIME-FIXED",
+    "name": "Fixed Threshold Time Delay",
+    "confidence": 0.75
+  },
+  {
+    "id": "ORC-17",
+    "code": "ORC-TIME-COMPUTE",
+    "name": "Computational CPU Lock Latency",
+    "confidence": 0.8
+  },
+  {
+    "id": "ORC-18",
+    "code": "ORC-OOB-DNS",
+    "name": "Authoritative DNS Query Logged",
+    "confidence": 0.999
+  },
+  {
+    "id": "ORC-19",
+    "code": "ORC-OOB-HTTP",
+    "name": "Outbound HTTP Callback Logged",
+    "confidence": 0.999
+  },
+  {
+    "id": "ORC-20",
+    "code": "ORC-OOB-SMB",
+    "name": "Outbound SMB Negotiation Logged",
+    "confidence": 0.999
+  },
+  {
+    "id": "ORC-21",
+    "code": "ORC-OOB-ICMP",
+    "name": "Outbound ICMP Ping Interaction",
+    "confidence": 0.95
+  },
+  {
+    "id": "ORC-22",
+    "code": "ORC-STATE-READ",
+    "name": "Dependent Read State Mutation",
+    "confidence": 0.95
+  },
+  {
+    "id": "ORC-23",
+    "code": "ORC-STATE-ROWCOUNT",
+    "name": "Pagination Total Record Count Delta",
+    "confidence": 0.95
+  },
+  {
+    "id": "ORC-24",
+    "code": "ORC-METAMORPHIC-TLP",
+    "name": "TLP Partition Row Count Sum Invariance",
+    "confidence": 0.96
+  },
+  {
+    "id": "ORC-25",
+    "code": "ORC-METAMORPHIC-NOREC",
+    "name": "NoREC Reference Plan Result Equivalence",
+    "confidence": 0.96
+  },
+  {
+    "id": "ORC-26",
+    "code": "ORC-AST-DIFF",
+    "name": "DOM Token Delta without Text Change",
+    "confidence": 0.92
+  },
+  {
+    "id": "ORC-27",
+    "code": "ORC-SIDE-CACHE",
+    "name": "Database Buffer Pool Cache Timing",
+    "confidence": 0.7
+  },
+  {
+    "id": "ORC-28",
+    "code": "ORC-MULTI-FUSED",
+    "name": "Weighted Bayesian Multi-Oracle Fusion",
+    "confidence": 0.999
+  }
+]

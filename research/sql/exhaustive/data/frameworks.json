@@ -1,0 +1,62 @@
+[
+  {
+    "id": "FW-01",
+    "ecosystem": "Node.js",
+    "name": "TypeORM",
+    "dangerousPattern": "orderBy(req.query.sort)"
+  },
+  {
+    "id": "FW-02",
+    "ecosystem": "Node.js",
+    "name": "Sequelize",
+    "dangerousPattern": "Sequelize.literal(input)"
+  },
+  {
+    "id": "FW-03",
+    "ecosystem": "Node.js",
+    "name": "Prisma",
+    "dangerousPattern": "$queryRawUnsafe(`... ${id}`)"
+  },
+  {
+    "id": "FW-04",
+    "ecosystem": "Python",
+    "name": "Django ORM",
+    "dangerousPattern": ".extra(where=[\"...\"])"
+  },
+  {
+    "id": "FW-05",
+    "ecosystem": "Python",
+    "name": "SQLAlchemy",
+    "dangerousPattern": "text(\"... \" + input)"
+  },
+  {
+    "id": "FW-06",
+    "ecosystem": "Ruby",
+    "name": "ActiveRecord",
+    "dangerousPattern": ".where(\"name = '#{input}'\")"
+  },
+  {
+    "id": "FW-07",
+    "ecosystem": "Java",
+    "name": "Hibernate",
+    "dangerousPattern": "createQuery(\"FROM User WHERE name = '\" + input + \"'\")"
+  },
+  {
+    "id": "FW-08",
+    "ecosystem": "C#",
+    "name": "Entity Framework Core",
+    "dangerousPattern": "FromSqlRaw(\"... \" + input)"
+  },
+  {
+    "id": "FW-09",
+    "ecosystem": "PHP",
+    "name": "Laravel Eloquent",
+    "dangerousPattern": "whereRaw(\"name = '\" . $input . \"'\")"
+  },
+  {
+    "id": "FW-10",
+    "ecosystem": "Go",
+    "name": "GORM",
+    "dangerousPattern": "db.Raw(fmt.Sprintf(\"... %s\", input))"
+  }
+]

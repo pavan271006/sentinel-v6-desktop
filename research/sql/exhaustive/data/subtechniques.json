@@ -1,0 +1,47 @@
+[
+  {
+    "id": "SUB-001",
+    "parentId": "TECH-001",
+    "name": "Single quote with ANSI space comment ('-- )"
+  },
+  {
+    "id": "SUB-002",
+    "parentId": "TECH-001",
+    "name": "Single quote with inline C-style comment ('/* */)"
+  },
+  {
+    "id": "SUB-003",
+    "parentId": "TECH-001",
+    "name": "Single quote with MySQL hash comment ('#)"
+  },
+  {
+    "id": "SUB-004",
+    "parentId": "TECH-001",
+    "name": "Single quote with balancing quote (' OR ''=')"
+  },
+  {
+    "id": "SUB-014",
+    "parentId": "TECH-008",
+    "name": "Direct numeric tautology (OR 1=1)"
+  },
+  {
+    "id": "SUB-026",
+    "parentId": "TECH-013",
+    "name": "NULL-padded column count sweep (UNION SELECT NULL, ...)"
+  },
+  {
+    "id": "SUB-036",
+    "parentId": "TECH-017",
+    "name": "PostgreSQL integer CAST leakage (CAST(... AS int))"
+  },
+  {
+    "id": "SUB-047",
+    "parentId": "TECH-026",
+    "name": "Wald SPRT sequential probability ratio update"
+  },
+  {
+    "id": "SUB-056",
+    "parentId": "TECH-037",
+    "name": "MSSQL xp_dirtree UNC path resolution"
+  }
+]

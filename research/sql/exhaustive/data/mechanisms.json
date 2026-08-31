@@ -1,0 +1,82 @@
+[
+  {
+    "id": "MECH-01",
+    "name": "Syntactic Delimiter Escape & Truncation",
+    "rootCause": "Lack of lexical boundary escaping"
+  },
+  {
+    "id": "MECH-02",
+    "name": "Relational Logic & Predicate Mutation",
+    "rootCause": "Unchecked relational logic operators"
+  },
+  {
+    "id": "MECH-03",
+    "name": "In-Band Projection Set Operations",
+    "rootCause": "Unconstrained UNION/EXCEPT set operations"
+  },
+  {
+    "id": "MECH-04",
+    "name": "Explicit Type Coercion & Error Induction",
+    "rootCause": "Verbose database exception leakage"
+  },
+  {
+    "id": "MECH-05",
+    "name": "Deterministic & Sequential Statistical Delay",
+    "rootCause": "Inline execution of sleep primitives"
+  },
+  {
+    "id": "MECH-06",
+    "name": "Stacked Batch & Procedural Execution",
+    "rootCause": "Driver enabling multiStatements=true"
+  },
+  {
+    "id": "MECH-07",
+    "name": "Out-of-Band (OAST) Protocol Interaction",
+    "rootCause": "Unrestricted database network procedures"
+  },
+  {
+    "id": "MECH-08",
+    "name": "Second-Order & Stored State Ingress",
+    "rootCause": "Conflating database persistence with sanitization"
+  },
+  {
+    "id": "MECH-09",
+    "name": "Metamorphic Relational Partitioning",
+    "rootCause": "Relational logic invariance evaluation"
+  },
+  {
+    "id": "MECH-10",
+    "name": "Structural & Grammar Differential Testing",
+    "rootCause": "Parser differential between WAF and DB"
+  },
+  {
+    "id": "MECH-11",
+    "name": "Side-Channel Cache & Resource Contention",
+    "rootCause": "Computationally unbounded scalar functions"
+  },
+  {
+    "id": "MECH-12",
+    "name": "Binary Protocol & Parameter Smuggling",
+    "rootCause": "Driver protocol parameter framing desync"
+  },
+  {
+    "id": "MECH-13",
+    "name": "Transaction, Savepoint & Lock Manipulation",
+    "rootCause": "Transaction control injection in raw blocks"
+  },
+  {
+    "id": "MECH-14",
+    "name": "AI Text-to-SQL Semantic Projection Hijacking",
+    "rootCause": "LLM prompt injection into dynamic SQL"
+  },
+  {
+    "id": "MECH-15",
+    "name": "ORM Entity & Object Tree Tampering",
+    "rootCause": "Object parameter tampering in criteria builders"
+  },
+  {
+    "id": "MECH-16",
+    "name": "Vector Similarity & Distance Metric Injection",
+    "rootCause": "Unparameterized vector string interpolation"
+  }
+]

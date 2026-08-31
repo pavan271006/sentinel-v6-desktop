@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LIFE-01",
+    "name": "Synchronous First-Order",
+    "latency": "5-500ms"
+  },
+  {
+    "id": "LIFE-02",
+    "name": "Second-Order Stored-and-Retrieved",
+    "latency": "Multi-request"
+  },
+  {
+    "id": "LIFE-03",
+    "name": "Asynchronous Message Queue",
+    "latency": "2-30s"
+  },
+  {
+    "id": "LIFE-04",
+    "name": "Scheduled Batch & Cron Processing",
+    "latency": "Minutes to Hours"
+  },
+  {
+    "id": "LIFE-05",
+    "name": "Multi-Service RPC Mesh",
+    "latency": "50-1000ms"
+  },
+  {
+    "id": "LIFE-06",
+    "name": "Administrative Review & Approval",
+    "latency": "Interactive"
+  }
+]

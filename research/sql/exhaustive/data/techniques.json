@@ -1,0 +1,79 @@
+[
+  {
+    "id": "TECH-001",
+    "name": "Single-Quote Delimiter Breakout",
+    "mechanism": "MECH-01",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-008",
+    "name": "Boolean-Blind Relational Tautology",
+    "mechanism": "MECH-02",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-013",
+    "name": "UNION Projection Column Sweep",
+    "mechanism": "MECH-03",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-017",
+    "name": "PostgreSQL Integer CAST Error Leak",
+    "mechanism": "MECH-04",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-026",
+    "name": "Wald SPRT Latency Shift Delay",
+    "mechanism": "MECH-05",
+    "safety": "TIMING_SENSITIVE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-033",
+    "name": "Semicolon Statement Chaining",
+    "mechanism": "MECH-06",
+    "safety": "STATE_DEPENDENT",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-037",
+    "name": "MSSQL xp_dirtree SMB/DNS Exfiltration",
+    "mechanism": "MECH-07",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-045",
+    "name": "Stored User Profile Workflow",
+    "mechanism": "MECH-08",
+    "safety": "STATE_DEPENDENT",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-049",
+    "name": "Ternary Logic Partitioning (TLP)",
+    "mechanism": "MECH-09",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-064",
+    "name": "TypeORM Unquoted orderBy Injection",
+    "mechanism": "MECH-15",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  },
+  {
+    "id": "TECH-076",
+    "name": "pgvector Cosine Similarity Distance Injection",
+    "mechanism": "MECH-16",
+    "safety": "PARALLEL_SAFE",
+    "status": "CONFIRMED"
+  }
+]

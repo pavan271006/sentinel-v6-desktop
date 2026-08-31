@@ -1,0 +1,86 @@
+[
+  {
+    "id": "CVE-2023-34362",
+    "product": "Progress MOVEit Transfer",
+    "mechanism": "MECH-01",
+    "surface": "SURF-11",
+    "impact": "Full Database Takeover"
+  },
+  {
+    "id": "CVE-2024-21887",
+    "product": "Ivanti Connect Secure",
+    "mechanism": "MECH-01",
+    "surface": "SURF-13",
+    "impact": "Remote Code Execution"
+  },
+  {
+    "id": "CVE-2024-38856",
+    "product": "Apache OFBiz",
+    "mechanism": "MECH-15",
+    "surface": "SURF-02",
+    "impact": "Pre-Auth Remote Code Execution"
+  },
+  {
+    "id": "CVE-2023-22515",
+    "product": "Atlassian Confluence",
+    "mechanism": "MECH-06",
+    "surface": "SURF-13",
+    "impact": "Tenant Configuration Reset"
+  },
+  {
+    "id": "CVE-2022-26134",
+    "product": "Atlassian Confluence",
+    "mechanism": "MECH-01",
+    "surface": "SURF-13",
+    "impact": "OGNL / SQL Injection"
+  },
+  {
+    "id": "CVE-2024-47575",
+    "product": "Fortinet FortiManager",
+    "mechanism": "MECH-12",
+    "surface": "SURF-16",
+    "impact": "FGFM Binary Protocol Execution"
+  },
+  {
+    "id": "CVE-2023-35078",
+    "product": "Ivanti Endpoint Manager",
+    "mechanism": "MECH-01",
+    "surface": "SURF-13",
+    "impact": "Authentication Bypass & SQLi"
+  },
+  {
+    "id": "CVE-2022-1388",
+    "product": "F5 BIG-IP iControl REST",
+    "mechanism": "MECH-02",
+    "surface": "SURF-11",
+    "impact": "Authentication Bypass & SQLi"
+  },
+  {
+    "id": "CVE-2018-7600",
+    "product": "Drupal (Drupalgeddon2)",
+    "mechanism": "MECH-15",
+    "surface": "SURF-06",
+    "impact": "Form API Array Injection"
+  },
+  {
+    "id": "CVE-2014-3704",
+    "product": "Drupal (Drupalgeddon)",
+    "mechanism": "MECH-15",
+    "surface": "SURF-07",
+    "impact": "Database Abstraction Array Injection"
+  },
+  {
+    "id": "CVE-2021-26084",
+    "product": "Atlassian Confluence",
+    "mechanism": "MECH-15",
+    "surface": "SURF-02",
+    "impact": "Template / Dynamic SQL Injection"
+  },
+  {
+    "id": "CVE-2020-0688",
+    "product": "Microsoft Exchange Server",
+    "mechanism": "MECH-06",
+    "surface": "SURF-10",
+    "impact": "ViewState Remote Code Execution"
+  }
+]
