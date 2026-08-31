@@ -1,0 +1,42 @@
+[
+  {
+    "sourceId": "TECH-P0-001",
+    "relationship": "COMPATIBLE_WITH",
+    "targetId": "DBMS-PG"
+  },
+  {
+    "sourceId": "TECH-P0-001",
+    "relationship": "COMPATIBLE_WITH",
+    "targetId": "DBMS-MYSQL"
+  },
+  {
+    "sourceId": "TECH-P0-002",
+    "relationship": "REQUIRES_CONTEXT",
+    "targetId": "CTX-STR-SINGLE"
+  },
+  {
+    "sourceId": "TECH-P0-002",
+    "relationship": "PRODUCES_SIGNAL",
+    "targetId": "SIG-CAST-EXCEPTION"
+  },
+  {
+    "sourceId": "TECH-P0-004",
+    "relationship": "REQUIRES_CONTEXT",
+    "targetId": "CTX-ORDER-BY"
+  },
+  {
+    "sourceId": "TECH-P0-005",
+    "relationship": "PRODUCES_SIGNAL",
+    "targetId": "SIG-SPRT-DELAY"
+  },
+  {
+    "sourceId": "SIG-CAST-EXCEPTION",
+    "relationship": "SUPPORTS_HYPOTHESIS",
+    "targetId": "HYP-VULNERABLE-POSTGRESQL"
+  },
+  {
+    "sourceId": "SIG-CANARY-REFLECT",
+    "relationship": "UNLOCKS_INVESTIGATION",
+    "targetId": "INV-DATABASE-EXPLORER"
+  }
+]

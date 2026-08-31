@@ -1,0 +1,42 @@
+[
+  {
+    "id": "CTX-STR-SINGLE",
+    "name": "Single Quote String Literal",
+    "exampleTemplate": "WHERE name = '<INPUT>'",
+    "delimiterRequired": "'",
+    "commentRequired": true,
+    "compatibleIntents": ["TRUE_FALSE_DIFFERENTIAL", "ERROR_BEHAVIOR_TEST", "UNION_COMPATIBILITY_TEST", "TIMING_BEHAVIOR_TEST"]
+  },
+  {
+    "id": "CTX-NUM-DIRECT",
+    "name": "Direct Numeric Literal",
+    "exampleTemplate": "WHERE id = <INPUT>",
+    "delimiterRequired": "",
+    "commentRequired": false,
+    "compatibleIntents": ["TRUE_FALSE_DIFFERENTIAL", "ERROR_BEHAVIOR_TEST", "UNION_COMPATIBILITY_TEST", "TIMING_BEHAVIOR_TEST"]
+  },
+  {
+    "id": "CTX-ORDER-BY",
+    "name": "Order By Sorting Clause",
+    "exampleTemplate": "ORDER BY <INPUT> ASC",
+    "delimiterRequired": "",
+    "commentRequired": false,
+    "compatibleIntents": ["ORDER_BOUNDARY_TEST", "TIMING_BEHAVIOR_TEST"]
+  },
+  {
+    "id": "CTX-LIKE-PATTERN",
+    "name": "Like Wildcard Pattern",
+    "exampleTemplate": "WHERE title LIKE '%<INPUT>%'",
+    "delimiterRequired": "%'",
+    "commentRequired": true,
+    "compatibleIntents": ["TRUE_FALSE_DIFFERENTIAL", "ERROR_BEHAVIOR_TEST", "UNION_COMPATIBILITY_TEST"]
+  },
+  {
+    "id": "CTX-JSON-OP",
+    "name": "JSONB Key Path Expression",
+    "exampleTemplate": "WHERE data->>'<INPUT>' = 'active'",
+    "delimiterRequired": "'",
+    "commentRequired": false,
+    "compatibleIntents": ["TRUE_FALSE_DIFFERENTIAL", "ERROR_BEHAVIOR_TEST"]
+  }
+]

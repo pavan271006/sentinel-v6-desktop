@@ -1,0 +1,45 @@
+[
+  {
+    "id": "REF-WSTG-INPV05",
+    "type": "standard",
+    "title": "OWASP WSTG v4.2: Testing for SQL Injection",
+    "organization": "OWASP Foundation",
+    "year": 2023,
+    "url": "https://owasp.org/www-project-web-security-testing-guide/"
+  },
+  {
+    "id": "REF-CWE-89",
+    "type": "standard",
+    "title": "CWE-89: Improper Neutralization of Special Elements used in an SQL Command",
+    "organization": "MITRE",
+    "year": 2024,
+    "url": "https://cwe.mitre.org/data/definitions/89.html
+  },
+  {
+    "id": "REF-RIGGER-TLP",
+    "type": "academic_paper",
+    "title": "Testing Database Engines via Ternary Logic Partitioning",
+    "authors": ["Manuel Rigger", "Zhendong Su"],
+    "venue": "ACM OOPSLA",
+    "year": 2020,
+    "doi": "10.1145/3428276"
+  },
+  {
+    "id": "REF-ZHONG-SQUIRREL",
+    "type": "academic_paper",
+    "title": "Squirrel: Testing Database Management Systems with Language Validity and Coverage Feedback",
+    "authors": ["Rui Zhong", "Yongheng Chen", "Huaijin Wang", "Yutian Tang", "Dinghao Wu"],
+    "venue": "ACM CCS",
+    "year": 2020,
+    "doi": "10.1145/3372297.3417865"
+  },
+  {
+    "id": "REF-WALD-SPRT",
+    "type": "academic_paper",
+    "title": "Sequential Tests of Statistical Hypotheses",
+    "authors": ["Abraham Wald"],
+    "venue": "Annals of Mathematical Statistics",
+    "year": 1945,
+    "doi": "10.1214/aoms/1177731118"
+  }
+]

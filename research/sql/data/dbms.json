@@ -1,0 +1,57 @@
+[
+  {
+    "id": "DBMS-PG",
+    "family": "PostgreSQL",
+    "versions": ["9.6", "10", "11", "12", "13", "14", "15", "16", "17"],
+    "concatOperator": "||",
+    "commentStyles": ["-- ", "/* */"],
+    "timingFunction": "pg_sleep(N)",
+    "castTypeSyntax": "CAST(col AS int) / col::int",
+    "systemCatalogTable": "information_schema.tables",
+    "stackedQuerySupport": true
+  },
+  {
+    "id": "DBMS-MYSQL",
+    "family": "MySQL",
+    "versions": ["5.7", "8.0", "8.4", "9.0"],
+    "concatOperator": "CONCAT(a, b)",
+    "commentStyles": ["-- ", "#", "/* */"],
+    "timingFunction": "SLEEP(N)",
+    "castTypeSyntax": "CAST(col AS unsigned)",
+    "systemCatalogTable": "information_schema.tables",
+    "stackedQuerySupport": false
+  },
+  {
+    "id": "DBMS-MSSQL",
+    "family": "Microsoft SQL Server",
+    "versions": ["2012", "2014", "2016", "2017", "2019", "2022"],
+    "concatOperator": "+",
+    "commentStyles": ["--", "/* */"],
+    "timingFunction": "WAITFOR DELAY '0:0:N'",
+    "castTypeSyntax": "CONVERT(int, col)",
+    "systemCatalogTable": "sys.tables",
+    "stackedQuerySupport": true
+  },
+  {
+    "id": "DBMS-ORACLE",
+    "family": "Oracle Database",
+    "versions": ["11g", "12c", "18c", "19c", "21c", "23c"],
+    "concatOperator": "||",
+    "commentStyles": ["--", "/* */"],
+    "timingFunction": "DBMS_LOCK.SLEEP(N)",
+    "castTypeSyntax": "TO_NUMBER(col)",
+    "systemCatalogTable": "all_tables",
+    "stackedQuerySupport": false
+  },
+  {
+    "id": "DBMS-SQLITE",
+    "family": "SQLite",
+    "versions": ["3.x"],
+    "concatOperator": "||",
+    "commentStyles": ["--", "/* */"],
+    "timingFunction": "randomblob(100000000)",
+    "castTypeSyntax": "CAST(col AS integer)",
+    "systemCatalogTable": "sqlite_master",
+    "stackedQuerySupport": true
+  }
+]

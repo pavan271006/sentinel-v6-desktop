@@ -1,0 +1,42 @@
+[
+  {
+    "id": "SIG-CANARY-REFLECT",
+    "name": "Canary Token Reflected",
+    "channel": "ORC-INBAND-CANARY",
+    "baseConfidence": 0.99,
+    "requiresBaselineComparison": false,
+    "echoMaskRequired": true
+  },
+  {
+    "id": "SIG-CAST-EXCEPTION",
+    "name": "Type Conversion Failure Leaking Data",
+    "channel": "ORC-CAST-ERROR",
+    "baseConfidence": 0.95,
+    "requiresBaselineComparison": false,
+    "echoMaskRequired": false
+  },
+  {
+    "id": "SIG-BOOLEAN-DIFF",
+    "name": "True/False Predicate Divergence",
+    "channel": "ORC-BOOLEAN-DIFF",
+    "baseConfidence": 0.90,
+    "requiresBaselineComparison": true,
+    "echoMaskRequired": true
+  },
+  {
+    "id": "SIG-SPRT-DELAY",
+    "name": "Wald SPRT Latency Shift Confirmed",
+    "channel": "ORC-TIME-SPRT",
+    "baseConfidence": 0.99,
+    "requiresBaselineComparison": true,
+    "echoMaskRequired": false
+  },
+  {
+    "id": "SIG-OOB-DNS",
+    "name": "Authoritative DNS Resolution Logged",
+    "channel": "ORC-OOB-DNS",
+    "baseConfidence": 0.99,
+    "requiresBaselineComparison": false,
+    "echoMaskRequired": false
+  }
+]
