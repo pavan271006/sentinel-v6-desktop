@@ -497,5 +497,6 @@ export interface SqlScannerSessionTab {
   orchestrator?: any;
   activeInnerTab: 'dashboard' | 'vulnerabilities' | 'database' | 'evidence' | 'coverage' | 'logs' | 'causal' | 'report';
   engineMode: 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
+  concurrencyLimit?: number;
 }
 

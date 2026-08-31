@@ -29,6 +29,7 @@ export interface SqlScannerState {
   tabs: SqlScannerSessionTab[];
   activeTabId: string;
   engineMode: 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
+  concurrencyLimit: number;
 
   targetConfig: ScanTargetConfig;
   safetyConfig: SafetyConfig;
@@ -56,6 +57,7 @@ export interface SqlScannerState {
   setActiveScanTab: (tabId: string) => void;
   renameScanTab: (tabId: string, title: string) => void;
   setEngineMode: (mode: 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard') => void;
+  setConcurrencyLimit: (limit: number) => void;
   setActiveTab: (tab: SqlScannerTab) => void;
   setSelectedFindingId: (id: string | null) => void;
   setSelectedCatalogTableId: (tableId: string | null) => void;
@@ -161,6 +163,7 @@ const defaultInitialTab: SqlScannerSessionTab = {
   report: null,
   activeInnerTab: 'database',
   engineMode: 'ucmax_causal',
+  concurrencyLimit: 10,
 };
 
 // Helper to update a tab by ID and sync top-level state if active
@@ -194,6 +197,7 @@ const syncTabUpdate = (
           report: active.report,
           dbmsFingerprint: active.dbmsFingerprint,
           engineMode: active.engineMode,
+          concurrencyLimit: active.concurrencyLimit || 10,
           orchestrator: active.orchestrator || null,
         };
       }
@@ -206,6 +210,7 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
   tabs: [defaultInitialTab],
   activeTabId: 'tab-1',
   engineMode: 'ucmax_causal',
+  concurrencyLimit: 10,
 
   targetConfig: defaultInitialTab.targetConfig,
   safetyConfig: defaultInitialTab.safetyConfig,
@@ -465,6 +470,14 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
     }));
   },
 
+  setConcurrencyLimit: (limit: number) => {
+    const { activeTabId } = get();
+    set((state) => ({
+      concurrencyLimit: limit,
+      tabs: state.tabs.map((t) => (t.id === activeTabId ? { ...t, concurrencyLimit: limit } : t)),
+    }));
+  },
+
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   setSelectedFindingId: (id) => set({ selectedFindingId: id }),
@@ -635,7 +648,7 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
           };
         });
       },
-    }, currentTab.engineMode || get().engineMode || 'ucmax_causal', 10);
+    }, currentTab.engineMode || get().engineMode || 'ucmax_causal', currentTab.concurrencyLimit || get().concurrencyLimit || 10);
 
     syncTabUpdate(set, currentTabId, { orchestrator: orch });
 

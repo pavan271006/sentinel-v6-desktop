@@ -42,6 +42,7 @@ export const SqlScannerWorkspaceView: React.FC = () => {
     tabs,
     activeTabId,
     engineMode,
+    concurrencyLimit,
     targetConfig,
     safetyConfig,
     activeTab,
@@ -62,6 +63,7 @@ export const SqlScannerWorkspaceView: React.FC = () => {
     setActiveScanTab,
     renameScanTab,
     setEngineMode,
+    setConcurrencyLimit,
     setActiveTab,
     setSelectedCatalogTableId,
     setSelectedCatalogColumnName,
@@ -582,6 +584,22 @@ export const SqlScannerWorkspaceView: React.FC = () => {
               <option value="bayesian_adaptive" className="bg-[#12151c] text-white">🎯 Bayesian Adaptive Planner</option>
               <option value="sprt_timing" className="bg-[#12151c] text-white">⏱️ SPRT Sequential Timing</option>
               <option value="standard" className="bg-[#12151c] text-white">⚙️ Standard Probing</option>
+            </select>
+          </div>
+
+          {/* Concurrency Selector */}
+          <div className="flex items-center gap-1.5 bg-[#12151c] px-2 py-1 rounded border border-border-subtle text-[11px] font-mono">
+            <span className="text-text-muted">Concurrency:</span>
+            <select
+              value={concurrencyLimit || 10}
+              onChange={(e) => setConcurrencyLimit(Number(e.target.value))}
+              className="bg-transparent text-accent-cyan outline-none text-[11px] font-bold cursor-pointer"
+            >
+              <option value={1} className="bg-[#12151c] text-white">1x (Serial)</option>
+              <option value={5} className="bg-[#12151c] text-white">5x</option>
+              <option value={10} className="bg-[#12151c] text-white">10x (Default)</option>
+              <option value={20} className="bg-[#12151c] text-white">20x (Fast)</option>
+              <option value={50} className="bg-[#12151c] text-white">50x (Max)</option>
             </select>
           </div>
 
