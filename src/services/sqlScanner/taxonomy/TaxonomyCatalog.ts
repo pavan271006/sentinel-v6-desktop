@@ -3,7 +3,7 @@
  * Formal taxonomy representation defining mechanisms, contexts, oracles, lifecycles, and compatibility rules.
  */
 
-import { DbmsType, InjectionContext, ParameterLocation } from '../../types/sqlScanner';
+import { DbmsType, InjectionContext, ParameterLocation } from '../../../types/sqlScanner';
 
 export type TechniqueLifecycle = 'CONFIRMED' | 'CANDIDATE' | 'RESEARCH' | 'DEPRECATED' | 'UNSUPPORTED';
 
@@ -131,6 +131,90 @@ export const MECHANISMS: Record<string, TaxonomyDimensionNode> = {
     applicableTransports: 'ALL',
     researchSource: 'Rigger & Su (USENIX Security 2020)',
   },
+  M10: {
+    id: 'M10',
+    name: 'JSON / XML Structured Document SQL Operator Injection',
+    dimension: 'Mechanism',
+    priority: 'P1',
+    status: 'CONFIRMED',
+    description: 'Exploit JSON/XML query extraction operators (e.g. ->>, JSON_VALUE, OPENXML, xpath) in modern REST APIs.',
+    applicableDbms: ['PostgreSQL', 'MySQL', 'Microsoft SQL Server', 'Oracle', 'SQLite'],
+    applicableContexts: ['json_derived', 'xml_derived', 'where_clause'],
+    applicableTransports: ['body_json', 'body_xml'],
+    researchSource: 'PostgreSQL JSON Path Operators; RFC 8259',
+  },
+  M11: {
+    id: 'M11',
+    name: 'Dynamic Query / Stored Procedure & Exec Parameter Injection',
+    dimension: 'Mechanism',
+    priority: 'P1',
+    status: 'CONFIRMED',
+    description: 'Escape nested dynamic SQL within stored procedures, EXEC(), EXECUTE IMMEDIATE, and sp_executesql contexts.',
+    applicableDbms: ['Microsoft SQL Server', 'Oracle', 'PostgreSQL', 'MySQL'],
+    applicableContexts: ['subquery', 'where_clause', 'numeric', 'single_quote_string'],
+    applicableTransports: 'ALL',
+    researchSource: 'CWE-89; Microsoft T-SQL Dynamic Execution Guide',
+  },
+  M12: {
+    id: 'M12',
+    name: 'Charset / Multi-byte & Encoding Mismatch Injection',
+    dimension: 'Mechanism',
+    priority: 'P1',
+    status: 'CONFIRMED',
+    description: 'Bypass sanitization via multi-byte character eating (GBK %df\', Big5), UTF-8 overlong sequences, and collation differences.',
+    applicableDbms: ['MySQL', 'PostgreSQL', 'SQLite'],
+    applicableContexts: ['single_quote_string', 'double_quote_string'],
+    applicableTransports: 'ALL',
+    researchSource: 'Chris Shiflett GBK Vulnerability; Unicode Security Standard',
+  },
+  M13: {
+    id: 'M13',
+    name: 'Database File System & Operating System Bridge Injection',
+    dimension: 'Mechanism',
+    priority: 'P2',
+    status: 'CONFIRMED',
+    description: 'Execute authorized read/write operations on database server host file systems (e.g. pg_read_file, xp_cmdshell, LOAD_FILE).',
+    applicableDbms: ['PostgreSQL', 'Microsoft SQL Server', 'MySQL'],
+    applicableContexts: ['numeric', 'single_quote_string'],
+    applicableTransports: 'ALL',
+    researchSource: 'CWE-73; Database Privilege Models',
+  },
+  M14: {
+    id: 'M14',
+    name: 'Privilege Escalation & DB Link Lateral Pivot',
+    dimension: 'Mechanism',
+    priority: 'P2',
+    status: 'CANDIDATE',
+    description: 'Traverse database links, OPENQUERY, OPENROWSET, and foreign data wrappers to access adjacent data stores.',
+    applicableDbms: ['Microsoft SQL Server', 'Oracle', 'PostgreSQL'],
+    applicableContexts: 'ALL',
+    applicableTransports: 'ALL',
+    researchSource: 'Database Linking Assessment Research',
+  },
+  M15: {
+    id: 'M15',
+    name: 'NewSQL / Distributed Consensus & Hybrid Engine Injection',
+    dimension: 'Mechanism',
+    priority: 'P2',
+    status: 'CANDIDATE',
+    description: 'Probe distributed NewSQL dialects (CockroachDB, TiDB, YugabyteDB) for parser differentials and Raft partition anomalies.',
+    applicableDbms: 'ALL',
+    applicableContexts: 'ALL',
+    applicableTransports: 'ALL',
+    researchSource: 'NewSQL Dialect Syntactic Matrices 2024-2026',
+  },
+  M16: {
+    id: 'M16',
+    name: 'Vector DB & AI Embedding Query Operator Injection',
+    dimension: 'Mechanism',
+    priority: 'P2',
+    status: 'CANDIDATE',
+    description: 'Manipulate vector similarity search operators (<->, <=>, cosine distances) in pgvector and hybrid retrieval systems.',
+    applicableDbms: ['PostgreSQL', 'SQLite'],
+    applicableContexts: ['where_clause', 'numeric', 'subquery'],
+    applicableTransports: ['body_json', 'query'],
+    researchSource: 'pgvector SQL Operators Spec 2024',
+  },
 };
 
 export const OBSERVATION_ORACLES = [
@@ -152,3 +236,9 @@ export const OBSERVATION_ORACLES = [
 ] as const;
 
 export type ObservationOracleType = typeof OBSERVATION_ORACLES[number];
+
+export const TaxonomyCatalog = {
+  MECHANISMS,
+  OBSERVATION_ORACLES,
+};
+

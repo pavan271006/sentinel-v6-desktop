@@ -85,6 +85,11 @@ pub async fn enforce_pragmas(pool: &SqlitePool) -> Result<(), SentinelError> {
         .await
         .map_err(SentinelError::Database)?;
 
+    sqlx::query("PRAGMA mmap_size = 268435456;")
+        .execute(pool)
+        .await
+        .map_err(SentinelError::Database)?;
+
     Ok(())
 }
 

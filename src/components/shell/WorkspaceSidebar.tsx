@@ -3,6 +3,7 @@ import { useAppShellStore } from '../../stores/appShellStore';
 import { useTrafficStore } from '../../stores/trafficStore';
 import { useToastStore } from '../../stores/toastStore';
 import { useRepeaterStore } from '../../stores/repeaterStore';
+import { useSqlScannerStore } from '../../stores/sqlScannerStore';
 import { WORKSPACES } from './ActivityBar';
 import {
   ChevronLeft,
@@ -22,6 +23,7 @@ export const WorkspaceSidebar: React.FC = () => {
   } = useTrafficStore();
   const { addToast } = useToastStore();
   const { tabs, activeTabId, setActiveTabId } = useRepeaterStore();
+  const { engineMode } = useSqlScannerStore();
 
   const activeWsConfig = WORKSPACES.find((w) => w.id === activeWorkspace);
 
@@ -230,30 +232,63 @@ export const WorkspaceSidebar: React.FC = () => {
           </div>
         );
 
-      case 'sql':
+      case 'sql': {
+        const engineLabel =
+          engineMode === 'god_rail_v3'
+            ? 'Apex Sovereign (L5)'
+            : engineMode === 'autonomous_trigraph'
+            ? 'Autonomous Tri-Graph'
+            : engineMode === 'ucmax_causal'
+            ? 'UC-Max Causal'
+            : engineMode === 'bayesian_adaptive'
+            ? 'Bayesian Adaptive'
+            : engineMode === 'sprt_timing'
+            ? 'SPRT Wald Timing'
+            : 'Standard Direct';
+
         return (
           <div className="p-3 space-y-3 text-xs select-none">
             <div className="space-y-1.5">
-              <label className="text-text-secondary font-semibold text-[11px] uppercase tracking-wider">
-                SQL Security Scanner
+              <div className="flex items-center gap-1.5">
+                <span className="text-accent-cyan font-bold text-xs font-mono">⚡ SENTINEL SQL X</span>
+              </div>
+              <label className="text-white font-bold text-xs">
+                Apex Sovereign Autonomous Engine
               </label>
               <p className="text-[11px] text-text-muted leading-relaxed">
-                Automated non-destructive differential testing across Error-based, Boolean, Time-based, and UNION vectors.
+                Autonomous 8-stage monadic pipeline with bi-directional unified oracles, counterfactual causal verification, and vectorized batch extraction.
               </p>
             </div>
 
-            <div className="p-2.5 rounded bg-bg-panel-elevated border border-border-subtle space-y-1.5 font-mono text-[11px]">
+            <div className="p-2.5 rounded bg-bg-panel-elevated border border-border-subtle space-y-2 font-mono text-[11px]">
               <div className="flex items-center justify-between">
-                <span className="text-text-muted">Safety Policy:</span>
-                <span className="text-emerald-400 font-bold">Non-Destructive</span>
+                <span className="text-text-muted">Engine Core:</span>
+                <span className="text-accent-cyan font-bold">{engineLabel}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-text-muted">Row Harvesting:</span>
-                <span className="text-emerald-400 font-bold">BLOCKED</span>
+                <span className="text-text-muted">Proof System:</span>
+                <span className="text-emerald-400 font-bold">Causal / SMT Invariants</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Causal Gate:</span>
+                <span className="text-purple-400 font-bold">Pearl do-Calculus</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Extraction:</span>
+                <span className="text-amber-400 font-bold">Vectorized Batch</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Transport:</span>
+                <span className="text-blue-400 font-bold">Adaptive Boundary</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border-subtle pt-1.5">
+                <span className="text-text-muted">Safety Policy:</span>
+                <span className="text-emerald-400 font-bold">Strict Non-Destructive</span>
               </div>
             </div>
           </div>
         );
+      }
 
       default:
         return (

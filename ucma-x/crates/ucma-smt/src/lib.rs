@@ -4,4 +4,4 @@ pub mod constraint;
 pub mod solver;
 
 pub use constraint::ConstraintKind;
-pub use solver::{BoundedSmtSolver, SolverResult};
+pub use solver::{calculate_shannon_entropy, BoundedSmtSolver, GrammarTermRewriter, SolverResult};

@@ -28,6 +28,7 @@ import { buildTrafficContextMenu } from '../../utils/contextMenuUtils';
 import { generateRenderablePreviewHtml } from '../../utils/repeaterUtils';
 import { HttpSyntaxHighlighter } from '../common/HttpSyntaxHighlighter';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
+import { BurpEditorToolbar } from '../common/BurpEditorToolbar';
 
 export const ResponseViewerPanel: React.FC = () => {
   const {
@@ -36,12 +37,18 @@ export const ResponseViewerPanel: React.FC = () => {
     setResponseViewMode,
     setBaselineRevision,
     openDiffModal,
+    isInspectorOpen,
+    toggleInspector,
+    setSelectionData,
   } = useRepeaterStore();
 
   const { addToast } = useToastStore();
   const [headerFilter, setHeaderFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [hideBoringHeaders, setHideBoringHeaders] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [showNonPrintable, setShowNonPrintable] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -226,12 +233,23 @@ export const ResponseViewerPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub-View Mode Selector Tabs */}
+      {/* Sub-View Mode Selector Tabs & Toolbar */}
       <div className="flex items-center justify-between border-b border-border-subtle bg-bg-canvas/40 px-2 flex-shrink-0">
         <Tabs
           tabs={responseTabs}
           activeTab={tab.responseViewMode}
           onChange={(mode) => setResponseViewMode(tab.id, mode as ResponseViewerMode)}
+        />
+
+        <BurpEditorToolbar
+          hideBoringHeaders={hideBoringHeaders}
+          onToggleHideBoringHeaders={() => setHideBoringHeaders((prev) => !prev)}
+          wordWrap={wordWrap}
+          onToggleWordWrap={() => setWordWrap((prev) => !prev)}
+          showNonPrintable={showNonPrintable}
+          onToggleShowNonPrintable={() => setShowNonPrintable((prev) => !prev)}
+          inspectorOpen={isInspectorOpen}
+          onToggleInspector={toggleInspector}
         />
       </div>
 
@@ -291,6 +309,10 @@ export const ResponseViewerPanel: React.FC = () => {
               autoFormatJson={true}
               searchQuery={searchQuery}
               activeMatchIndex={activeMatchIndex}
+              wordWrap={wordWrap}
+              hideUninterestingHeaders={hideBoringHeaders}
+              showNonPrintable={showNonPrintable}
+              onSelectionChange={(text) => setSelectionData({ text, start: -1, end: -1 })}
             />
           </div>
         )}
@@ -304,6 +326,10 @@ export const ResponseViewerPanel: React.FC = () => {
               autoFormatJson={false}
               searchQuery={searchQuery}
               activeMatchIndex={activeMatchIndex}
+              wordWrap={wordWrap}
+              hideUninterestingHeaders={hideBoringHeaders}
+              showNonPrintable={showNonPrintable}
+              onSelectionChange={(text) => setSelectionData({ text, start: -1, end: -1 })}
             />
           </div>
         )}

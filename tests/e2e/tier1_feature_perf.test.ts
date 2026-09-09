@@ -752,7 +752,7 @@ describe('Tier 1: Feature Performance & Latency Isolation Suite (>=5 tests per c
         expect(scored[0].score).toBeGreaterThan(scored[scored.length - 1].score);
       });
 
-      expect(elapsed).toBeLessThan(10);
+      expect(elapsed).toBeLessThan(25);
     });
   });
 

@@ -330,6 +330,22 @@ export interface SqlScanFinding {
   cwe: string;
   owaspCategory: string;
   timestamp: number;
+
+  // 8-Layer Defense & Impact Separation
+  sqliDetected?: boolean;
+  sqlStructureControl?: boolean;
+  dataAccessDemonstrated?: boolean;
+  crossTenantAccess?: boolean;
+  writeCapability?: boolean;
+  privilegeCapability?: boolean;
+  osFileCapability?: boolean;
+  impactConstraints?: string[];
+  defenseLayerTrace?: {
+    layer: string;
+    status: string;
+    certainty: string;
+    details?: string;
+  }[];
 }
 
 export interface ScanLogEntry {
@@ -399,6 +415,8 @@ export interface SafetyConfig {
   abortOnConsecutiveErrors: number;
   strictNonDestructiveOnly: boolean;
   autoRedactSensitiveData: boolean;
+  scanAuthTokens?: boolean;
+  maxUnionColumns?: number;
 }
 
 export interface SecondOrderWorkflowConfig {
@@ -425,6 +443,105 @@ export interface OobConfig {
   domain?: string;
 }
 
+export interface IastConfig {
+  enabled: boolean;
+  sensorPort?: number;
+  sharedSecret?: string;
+  tokenPrefix?: string;
+  localSinkListener?: boolean;
+}
+
+export interface HeadlessDomConfig {
+  enabled: boolean;
+  browserDriver?: 'playwright' | 'puppeteer' | 'cdp' | 'simulated';
+  targetFormSelector?: string;
+  inputSelectors?: Record<string, string>;
+  preEncryptHook?: string;
+}
+
+export interface BotBypassConfig {
+  enabled: boolean;
+  bypassHeaders?: Record<string, string>;
+  clearanceCookies?: Record<string, string>;
+  userAgentProfile?: string;
+}
+
+export interface MacroWorkflowStep {
+  id: string;
+  name: string;
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+  isInjectionTarget?: boolean;
+  targetParameter?: string;
+  extractTokens?: {
+    name: string;
+    source: 'body_regex' | 'body_json' | 'header' | 'cookie';
+    pattern: string;
+  }[];
+  authGates?: {
+    type: 'static_otp' | 'totp' | 'recaptcha_token';
+    paramName: string;
+    secretOrToken: string;
+  }[];
+}
+
+export interface MacroWorkflowConfig {
+  enabled: boolean;
+  harContent?: string;
+  steps?: MacroWorkflowStep[];
+  dynamicTokenExtractors?: {
+    name: string;
+    source: 'body_regex' | 'body_json' | 'header' | 'cookie';
+    pattern: string;
+  }[];
+}
+
+export interface GrayBoxConfig {
+  enabled: boolean;
+  mode?: 'hybrid' | 'iast_only' | 'dom_only' | 'macro_only';
+  iastConfig?: IastConfig;
+  headlessDomConfig?: HeadlessDomConfig;
+  botBypassConfig?: BotBypassConfig;
+  macroWorkflowConfig?: MacroWorkflowConfig;
+}
+
+export interface IastTelemetryEvent {
+  id: string;
+  timestamp: number;
+  sinkLocation: string;
+  executedQuery: string;
+  taintedParameter?: string;
+  taintedValue?: string;
+  grammarViolation?: string;
+  isVulnerable: boolean;
+  stackTrace?: string;
+}
+
+export interface IastFinding {
+  id: string;
+  sinkLocation: string;
+  executedQuery: string;
+  taintedParameter: string;
+  taintedValue: string;
+  grammarViolation: string;
+  timestamp: number;
+  severity: FindingSeverity;
+  confidence: ConfidenceLevel;
+}
+
+export interface GrayBoxFinding {
+  id: string;
+  boundarySolved: 'air_gapped_async_sink' | 'client_side_encryption' | 'bot_mitigation' | 'multi_step_state';
+  title: string;
+  description: string;
+  severity: FindingSeverity;
+  confidence: ConfidenceLevel;
+  evidence: Record<string, any>;
+  timestamp: number;
+}
+
 export interface ScanTargetConfig {
   id: string;
   name: string;
@@ -447,6 +564,7 @@ export interface ScanTargetConfig {
   };
   secondOrderConfig?: SecondOrderWorkflowConfig;
   oobConfig?: OobConfig;
+  grayBoxConfig?: GrayBoxConfig;
 }
 
 export interface WafDetectionResult {
@@ -476,6 +594,48 @@ export interface SqlScanReport {
   executionLogs: TestExecutionLogItem[];
   executiveSummary: string;
   technicalDetails: string;
+  safetyCertificate?: {
+    isSafe: boolean;
+    proofs: { reason: string; confidence: number; evidenceLogs: string[] }[];
+  };
+}
+
+export interface InvestigationNode {
+  id: string;
+  label: string;
+  type: 'root_request' | 'surface' | 'context_hypothesis' | 'dbms_hypothesis' | 'experiment_branch' | 'second_order' | 'confirmed_finding';
+  status: 'pending' | 'running' | 'supported' | 'rejected' | 'pruned';
+  depth: number;
+  eig: number;
+  cost: number;
+  priority: number;
+  description: string;
+  evidenceCount: number;
+  details?: Record<string, any>;
+}
+
+export interface InvestigationEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  type?: 'derives' | 'proves' | 'refutes' | 'transitions';
+}
+
+export interface BeliefEntropyItem {
+  name: string;
+  probability: number;
+  shannonBits: number;
+  isLeading: boolean;
+}
+
+export interface AiCopilotReasoningItem {
+  id: string;
+  timestamp: number;
+  hypothesis: string;
+  reasoning: string;
+  suggestedAction: string;
+  confidenceScore: number;
 }
 
 export interface SqlScannerSessionTab {
@@ -495,8 +655,23 @@ export interface SqlScannerSessionTab {
   wafResult?: WafDetectionResult;
   report: SqlScanReport | null;
   orchestrator?: any;
-  activeInnerTab: 'dashboard' | 'vulnerabilities' | 'database' | 'evidence' | 'coverage' | 'logs' | 'causal' | 'report';
-  engineMode: 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
+  activeInnerTab: 'god_rail' | 'dashboard' | 'vulnerabilities' | 'database' | 'evidence' | 'coverage' | 'logs' | 'causal' | 'trigraph' | 'belief' | 'knowledge' | 'ai_copilot' | 'report';
+  engineMode: 'god_rail_v3' | 'autonomous_trigraph' | 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
+  scanProfile?: 'ultra_stealth' | 'fast_triage' | 'deep_forensic' | 'smt_strict' | 'hyper_turbo';
   concurrencyLimit?: number;
+  investigationNodes?: InvestigationNode[];
+  investigationEdges?: InvestigationEdge[];
+  contextBeliefs?: BeliefEntropyItem[];
+  dbmsBeliefs?: BeliefEntropyItem[];
+  aiReasoningLogs?: AiCopilotReasoningItem[];
+  defenseLayers?: {
+    layer: string;
+    name: string;
+    status: string;
+    certainty: string;
+    confidence: number;
+    details?: string;
+  }[];
 }
+
 

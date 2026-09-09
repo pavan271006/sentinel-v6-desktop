@@ -4,3 +4,7 @@ export * from './VirtualTrafficTable';
 export * from './TransactionInspectorPanel';
 export * from './TransactionDiffModal';
 export * from './HttpHistoryFilterModal';
+export * from './ProxyInterceptView';
+export * from './WebSocketHistoryView';
+export * from './MatchReplaceView';
+export * from './BurpInspectorPanel';

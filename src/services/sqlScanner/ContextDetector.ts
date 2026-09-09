@@ -48,29 +48,29 @@ export class ContextDetector {
       return 'update_set';
     }
 
-    // 7. JSON Context
+    // 7. Numeric Context (Pure integers / decimals)
+    if (/^-?\d+(\.\d+)?$/.test(val)) {
+      return 'numeric';
+    }
+
+    // 8. JSON Context
     if (param.location === 'body_json' || param.location === 'graphql' || param.jsonPath) {
       return 'json_derived';
     }
 
-    // 8. XML Context
+    // 9. XML Context
     if (param.location === 'body_xml' || param.xmlPath) {
       return 'xml_derived';
     }
 
-    // 7. Subquery / Parenthesis Context (Explicit Parenthesis in Value)
+    // 10. Subquery / Parenthesis Context (Explicit Parenthesis in Value)
     if ((val.startsWith('(') && val.endsWith(')')) || rawRequest.includes(`(${param.originalValue})`)) {
       return 'parenthesized_string';
     }
 
-    // 8. Double Quote Context
+    // 11. Double Quote Context
     if ((val.startsWith('"') && val.endsWith('"')) || rawRequest.includes(`"${param.originalValue}"`)) {
       return 'double_quote_string';
-    }
-
-    // 9. Numeric Context (Pure integers / decimals)
-    if (/^-?\d+(\.\d+)?$/.test(val)) {
-      return 'numeric';
     }
 
     // 10. Search / LIKE Context

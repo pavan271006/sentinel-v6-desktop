@@ -15,8 +15,19 @@ export interface SyntaxHighlightedEditorProps {
   activeMatchIndex?: number;
   placeholder?: string;
   className?: string;
+  wordWrap?: boolean;
+  hideUninterestingHeaders?: boolean;
+  showNonPrintable?: boolean;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onSelectionChange?: (sel: { text: string; start: number; end: number }) => void;
 }
+
+const renderCrlfBadges = () => (
+  <span className="inline-flex items-center ml-1 select-none font-mono text-[9px] text-[#9da5b4] align-baseline">
+    <span className="bg-[#3c4048]/80 text-[#9da5b4] px-1 py-0.5 rounded font-mono mr-0.5">\r</span>
+    <span className="bg-[#3c4048]/80 text-[#9da5b4] px-1 py-0.5 rounded font-mono">\n</span>
+  </span>
+);
 
 export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, SyntaxHighlightedEditorProps>(
   (
@@ -28,13 +39,27 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
       activeMatchIndex = 0,
       placeholder = '',
       className = '',
+      wordWrap = false,
+      hideUninterestingHeaders: _hideUninterestingHeaders = false,
+      showNonPrintable = false,
       onContextMenu,
+      onSelectionChange,
     },
     ref
   ) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const backdropRef = useRef<HTMLDivElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
+
+    const handleSelection = () => {
+      if (onSelectionChange && textareaRef.current) {
+        const el = textareaRef.current;
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const text = el.value.substring(start, end);
+        onSelectionChange({ text, start, end });
+      }
+    };
 
     useImperativeHandle(ref, () => ({
       focus: () => textareaRef.current?.focus(),
@@ -163,8 +188,15 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
         const proto = parts.slice(2).join(' ');
 
         const qIdx = uri.indexOf('?');
+        const lineStyle: React.CSSProperties = {
+          minHeight: '20px',
+          lineHeight: '20px',
+          whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+          wordBreak: wordWrap ? 'break-all' : 'normal',
+        };
+
         return (
-          <div key={idx} style={{ height: '20px', lineHeight: '20px', whiteSpace: 'pre' }}>
+          <div key={idx} style={lineStyle}>
             <span className="text-[#dfdfdf] font-bold">{renderTokens(method)}</span>
             {parts.length > 1 && ' '}
             {parts.length > 1 && (
@@ -179,9 +211,17 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
             )}
             {parts.length > 2 && ' '}
             {parts.length > 2 && <span className="text-[#8c9099]">{renderTokens(proto)}</span>}
+            {showNonPrintable && renderCrlfBadges()}
           </div>
         );
       }
+
+      const lineStyle: React.CSSProperties = {
+        minHeight: '20px',
+        lineHeight: '20px',
+        whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+        wordBreak: wordWrap ? 'break-all' : 'normal',
+      };
 
       if (!inBody) {
         const colonIdx = line.indexOf(':');
@@ -189,18 +229,20 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
           const hName = line.substring(0, colonIdx);
           const hVal = line.substring(colonIdx + 1);
           return (
-            <div key={idx} style={{ height: '20px', lineHeight: '20px', whiteSpace: 'pre' }}>
+            <div key={idx} style={lineStyle}>
               <span className="text-[#dfdfdf] font-semibold">{renderTokens(hName)}</span>
               <span className="text-[#8c9099]">:</span>
               <span className="text-[#8ea834] font-medium">{renderTokens(hVal)}</span>
+              {showNonPrintable && renderCrlfBadges()}
             </div>
           );
         }
       }
 
       return (
-        <div key={idx} style={{ height: '20px', lineHeight: '20px', whiteSpace: 'pre' }} className="text-[#dfdfdf]">
+        <div key={idx} style={lineStyle} className="text-[#dfdfdf]">
           {renderTokens(line)}
+          {showNonPrintable && renderCrlfBadges()}
         </div>
       );
     };
@@ -209,7 +251,7 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
 
     return (
       <div className={`relative flex w-full h-full bg-[#1e1f22] border border-border-subtle rounded overflow-hidden select-text ${className}`}>
-        {/* Left Gutter: Line Numbers locked to exact 20px per line */}
+        {/* Left Gutter: Line Numbers */}
         <div
           ref={gutterRef}
           className="w-10 bg-[#1a1b1e] border-r border-[#2b2d30] select-none text-right pr-2 text-[#6f737a] font-mono text-[11px] overflow-hidden flex-shrink-0"
@@ -237,7 +279,8 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
               padding: '10px',
               fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               letterSpacing: 'normal',
-              whiteSpace: 'pre',
+              whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+              wordBreak: wordWrap ? 'break-all' : 'normal',
             }}
           >
             {lines.map((line, idx) => {
@@ -254,6 +297,9 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onSelect={handleSelection}
+            onKeyUp={handleSelection}
+            onMouseUp={handleSelection}
             onScroll={syncScroll}
             onContextMenu={onContextMenu}
             placeholder={placeholder}
@@ -264,7 +310,8 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
               fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               lineHeight: '20px',
               letterSpacing: 'normal',
-              whiteSpace: 'pre',
+              whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+              wordBreak: wordWrap ? 'break-all' : 'normal',
               color: 'transparent',
               caretColor: '#ffffff',
               WebkitTextFillColor: 'transparent',

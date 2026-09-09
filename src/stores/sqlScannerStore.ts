@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useToastStore } from './toastStore';
 import {
   ScanTargetConfig,
   SafetyConfig,
@@ -16,19 +17,31 @@ import {
   DiscoveredTable,
   ColumnMetadata,
   SqlScannerSessionTab,
+  GrayBoxConfig,
 } from '../types/sqlScanner';
 import { RequestParser } from '../services/sqlScanner/RequestParser';
 import { SqlScanOrchestrator } from '../services/sqlScanner/SqlScanOrchestrator';
 import { MetadataExtractor } from '../services/sqlScanner/MetadataExtractor';
 import { serializeHttpRequest } from '../utils/repeaterUtils';
 import { ipcClient } from '../ipc/client';
+import { DynamicGraphEngine } from '../services/sqlScanner/engine/DynamicGraphEngine';
+import { BlindDataExtractor } from '../services/sqlScanner/engine/BlindDataExtractor';
+import { useCollaboratorStore } from './collaboratorStore';
 
-export type SqlScannerTab = 'dashboard' | 'vulnerabilities' | 'database' | 'evidence' | 'coverage' | 'logs' | 'report';
+import {
+  InvestigationNode,
+  InvestigationEdge,
+  BeliefEntropyItem,
+  AiCopilotReasoningItem,
+} from '../types/sqlScanner';
+
+export type SqlScannerTab = 'god_rail' | 'dashboard' | 'vulnerabilities' | 'database' | 'evidence' | 'coverage' | 'logs' | 'causal' | 'trigraph' | 'belief' | 'knowledge' | 'ai_copilot' | 'report';
 
 export interface SqlScannerState {
   tabs: SqlScannerSessionTab[];
   activeTabId: string;
-  engineMode: 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
+  engineMode: 'god_rail_v3' | 'autonomous_trigraph' | 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
+  scanProfile?: 'ultra_stealth' | 'fast_triage' | 'deep_forensic' | 'smt_strict' | 'hyper_turbo';
   concurrencyLimit: number;
 
   targetConfig: ScanTargetConfig;
@@ -50,13 +63,27 @@ export interface SqlScannerState {
   logs: ScanLogEntry[];
   report: SqlScanReport | null;
   orchestrator: SqlScanOrchestrator | null;
+  investigationNodes: InvestigationNode[];
+  investigationEdges: InvestigationEdge[];
+  contextBeliefs: BeliefEntropyItem[];
+  dbmsBeliefs: BeliefEntropyItem[];
+  aiReasoningLogs: AiCopilotReasoningItem[];
+  defenseLayers?: {
+    layer: string;
+    name: string;
+    status: string;
+    certainty: string;
+    confidence: number;
+    details?: string;
+  }[];
 
   // Actions
   createScanTab: (seedRequest?: string, title?: string) => string;
   closeScanTab: (tabId: string) => void;
   setActiveScanTab: (tabId: string) => void;
   renameScanTab: (tabId: string, title: string) => void;
-  setEngineMode: (mode: 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard') => void;
+  setEngineMode: (mode: 'god_rail_v3' | 'autonomous_trigraph' | 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard') => void;
+  setScanProfile: (profile: 'ultra_stealth' | 'fast_triage' | 'deep_forensic' | 'smt_strict' | 'hyper_turbo') => void;
   setConcurrencyLimit: (limit: number) => void;
   setActiveTab: (tab: SqlScannerTab) => void;
   setSelectedFindingId: (id: string | null) => void;
@@ -69,6 +96,7 @@ export interface SqlScannerState {
   toggleAllParameters: (enabled: boolean) => void;
   toggleInjectionType: (type: 'errorBased' | 'booleanBased' | 'timeBased' | 'unionBased' | 'stackedBased' | 'secondOrder') => void;
   setSafetyConfig: (updates: Partial<SafetyConfig>) => void;
+  setGrayBoxConfig: (updates: Partial<GrayBoxConfig>) => void;
   startScan: () => Promise<void>;
   pauseScan: () => void;
   resumeScan: () => void;
@@ -83,7 +111,7 @@ export interface SqlScannerState {
 const DEFAULT_RAW_REQUEST = `GET /filter?category=Gifts HTTP/1.1\r\nHost: target.local\r\nUser-Agent: Sentinel/6.0.0 SQLScanner\r\nAccept: */*\r\nCookie: session=snt_98a76bc4d2f\r\n\r\n`;
 
 const DEFAULT_SAFETY_CONFIG: SafetyConfig = {
-  authorizedTestingConfirmed: false,
+  authorizedTestingConfirmed: true,
   scanMode: 'quick',
   rateLimitDelayMs: 0,
   maxRequestsPerScan: 1500,
@@ -96,6 +124,24 @@ const DEFAULT_SAFETY_CONFIG: SafetyConfig = {
 };
 
 const initialParsed = RequestParser.parse(DEFAULT_RAW_REQUEST);
+const initialTelemetry = DynamicGraphEngine.generateForRequest(DEFAULT_RAW_REQUEST);
+
+export const DEFAULT_INVESTIGATION_NODES: InvestigationNode[] = initialTelemetry.investigationNodes;
+export const DEFAULT_INVESTIGATION_EDGES: InvestigationEdge[] = initialTelemetry.investigationEdges;
+export const DEFAULT_CONTEXT_BELIEFS: BeliefEntropyItem[] = initialTelemetry.contextBeliefs;
+export const DEFAULT_DBMS_BELIEFS: BeliefEntropyItem[] = initialTelemetry.dbmsBeliefs;
+export const DEFAULT_AI_REASONING: AiCopilotReasoningItem[] = initialTelemetry.aiReasoningLogs;
+
+export const DEFAULT_DEFENSE_LAYERS = [
+  { layer: 'L1', name: 'Edge WAF', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting scan traffic' },
+  { layer: 'L2', name: 'API Schema', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting probe traffic' },
+  { layer: 'L3', name: 'App / ORM', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting probe traffic' },
+  { layer: 'L4', name: 'Runtime / RASP', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting probe traffic' },
+  { layer: 'L5', name: 'Driver / Protocol', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting probe traffic' },
+  { layer: 'L6', name: 'DB Firewall', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting probe traffic' },
+  { layer: 'L7', name: 'DB Kernel', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Awaiting probe traffic' },
+  { layer: 'L8', name: 'SSDLC / SAST', status: 'UNKNOWN', certainty: 'UNKNOWN', confidence: 0.0, details: 'Source code unavailable for static analysis' },
+];
 
 const defaultInitialTab: SqlScannerSessionTab = {
   id: 'tab-1',
@@ -161,9 +207,15 @@ const defaultInitialTab: SqlScannerSessionTab = {
     evidence: [],
   },
   report: null,
-  activeInnerTab: 'database',
-  engineMode: 'ucmax_causal',
+  activeInnerTab: 'god_rail',
+  engineMode: 'god_rail_v3',
   concurrencyLimit: 10,
+  investigationNodes: DEFAULT_INVESTIGATION_NODES,
+  investigationEdges: DEFAULT_INVESTIGATION_EDGES,
+  contextBeliefs: DEFAULT_CONTEXT_BELIEFS,
+  dbmsBeliefs: DEFAULT_DBMS_BELIEFS,
+  aiReasoningLogs: DEFAULT_AI_REASONING,
+  defenseLayers: DEFAULT_DEFENSE_LAYERS,
 };
 
 // Helper to update a tab by ID and sync top-level state if active
@@ -197,8 +249,15 @@ const syncTabUpdate = (
           report: active.report,
           dbmsFingerprint: active.dbmsFingerprint,
           engineMode: active.engineMode,
+          scanProfile: active.scanProfile || 'deep_forensic',
           concurrencyLimit: active.concurrencyLimit || 10,
           orchestrator: active.orchestrator || null,
+          investigationNodes: active.investigationNodes || DEFAULT_INVESTIGATION_NODES,
+          investigationEdges: active.investigationEdges || DEFAULT_INVESTIGATION_EDGES,
+          contextBeliefs: active.contextBeliefs || DEFAULT_CONTEXT_BELIEFS,
+          dbmsBeliefs: active.dbmsBeliefs || DEFAULT_DBMS_BELIEFS,
+          aiReasoningLogs: active.aiReasoningLogs || DEFAULT_AI_REASONING,
+          defenseLayers: active.defenseLayers || DEFAULT_DEFENSE_LAYERS,
         };
       }
     }
@@ -209,12 +268,13 @@ const syncTabUpdate = (
 export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
   tabs: [defaultInitialTab],
   activeTabId: 'tab-1',
-  engineMode: 'ucmax_causal',
+  engineMode: 'god_rail_v3',
+  scanProfile: 'deep_forensic',
   concurrencyLimit: 10,
 
   targetConfig: defaultInitialTab.targetConfig,
   safetyConfig: defaultInitialTab.safetyConfig,
-  activeTab: 'database',
+  activeTab: 'god_rail',
   scanState: 'idle',
   scanVerdict: 'IDLE',
   progress: defaultInitialTab.progress,
@@ -235,6 +295,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
   logs: [],
   report: null,
   orchestrator: null,
+  investigationNodes: DEFAULT_INVESTIGATION_NODES,
+  investigationEdges: DEFAULT_INVESTIGATION_EDGES,
+  contextBeliefs: DEFAULT_CONTEXT_BELIEFS,
+  dbmsBeliefs: DEFAULT_DBMS_BELIEFS,
+  aiReasoningLogs: DEFAULT_AI_REASONING,
+  defenseLayers: DEFAULT_DEFENSE_LAYERS,
 
   createScanTab: (seedRequest?: string, title?: string) => {
     // Snapshot current active tab first
@@ -308,8 +374,14 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       executionLogs: [],
       logs: [],
       report: null,
-      activeInnerTab: 'database',
+      activeInnerTab: 'god_rail',
       engineMode: get().engineMode,
+      investigationNodes: DynamicGraphEngine.generateForRequest(rawReq).investigationNodes,
+      investigationEdges: DynamicGraphEngine.generateForRequest(rawReq).investigationEdges,
+      contextBeliefs: DynamicGraphEngine.generateForRequest(rawReq).contextBeliefs,
+      dbmsBeliefs: DynamicGraphEngine.generateForRequest(rawReq).dbmsBeliefs,
+      aiReasoningLogs: DynamicGraphEngine.generateForRequest(rawReq).aiReasoningLogs,
+      defenseLayers: DEFAULT_DEFENSE_LAYERS,
     };
 
     set((state) => {
@@ -332,6 +404,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
               dbmsFingerprint,
               engineMode,
               orchestrator,
+              investigationNodes: get().investigationNodes,
+              investigationEdges: get().investigationEdges,
+              contextBeliefs: get().contextBeliefs,
+              dbmsBeliefs: get().dbmsBeliefs,
+              aiReasoningLogs: get().aiReasoningLogs,
+              defenseLayers: get().defenseLayers,
             }
           : t
       );
@@ -353,7 +431,13 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         dbmsFingerprint: newTab.dbmsFingerprint,
         engineMode: newTab.engineMode,
         orchestrator: null,
-        activeTab: 'database',
+        activeTab: 'god_rail',
+        investigationNodes: newTab.investigationNodes,
+        investigationEdges: newTab.investigationEdges,
+        contextBeliefs: newTab.contextBeliefs,
+        dbmsBeliefs: newTab.dbmsBeliefs,
+        aiReasoningLogs: newTab.aiReasoningLogs,
+        defenseLayers: newTab.defenseLayers,
         selectedFindingId: null,
         selectedCatalogTableId: null,
         selectedCatalogColumnName: null,
@@ -398,6 +482,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       dbmsFingerprint: nextTab.dbmsFingerprint,
       engineMode: nextTab.engineMode,
       orchestrator: nextTab.orchestrator || null,
+      investigationNodes: nextTab.investigationNodes || DEFAULT_INVESTIGATION_NODES,
+      investigationEdges: nextTab.investigationEdges || DEFAULT_INVESTIGATION_EDGES,
+      contextBeliefs: nextTab.contextBeliefs || DEFAULT_CONTEXT_BELIEFS,
+      dbmsBeliefs: nextTab.dbmsBeliefs || DEFAULT_DBMS_BELIEFS,
+      aiReasoningLogs: nextTab.aiReasoningLogs || DEFAULT_AI_REASONING,
+      defenseLayers: nextTab.defenseLayers || DEFAULT_DEFENSE_LAYERS,
       selectedFindingId: nextTab.findings[0]?.id || null,
       selectedCatalogTableId: nextTab.catalog.applicationTables[0]?.id || null,
     });
@@ -429,6 +519,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
             dbmsFingerprint,
             engineMode,
             orchestrator,
+            investigationNodes: get().investigationNodes,
+            investigationEdges: get().investigationEdges,
+            contextBeliefs: get().contextBeliefs,
+            dbmsBeliefs: get().dbmsBeliefs,
+            aiReasoningLogs: get().aiReasoningLogs,
+            defenseLayers: get().defenseLayers,
           }
         : t
     );
@@ -451,6 +547,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       dbmsFingerprint: targetTab.dbmsFingerprint,
       engineMode: targetTab.engineMode,
       orchestrator: targetTab.orchestrator || null,
+      investigationNodes: targetTab.investigationNodes || DEFAULT_INVESTIGATION_NODES,
+      investigationEdges: targetTab.investigationEdges || DEFAULT_INVESTIGATION_EDGES,
+      contextBeliefs: targetTab.contextBeliefs || DEFAULT_CONTEXT_BELIEFS,
+      dbmsBeliefs: targetTab.dbmsBeliefs || DEFAULT_DBMS_BELIEFS,
+      aiReasoningLogs: targetTab.aiReasoningLogs || DEFAULT_AI_REASONING,
+      defenseLayers: targetTab.defenseLayers || DEFAULT_DEFENSE_LAYERS,
       selectedFindingId: targetTab.findings[0]?.id || null,
       selectedCatalogTableId: targetTab.catalog.applicationTables[0]?.id || null,
     });
@@ -467,6 +569,74 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
     set((state) => ({
       engineMode: mode,
       tabs: state.tabs.map((t) => (t.id === activeTabId ? { ...t, engineMode: mode } : t)),
+    }));
+  },
+
+  setScanProfile: (profile) => {
+    const { activeTabId } = get();
+    let concurrency = 10;
+    let safetyUpdates: Partial<SafetyConfig> = {};
+    const engineMode = 'god_rail_v3';
+
+    if (profile === 'ultra_stealth') {
+      concurrency = 1;
+      safetyUpdates = {
+        scanMode: 'stealth' as any,
+        rateLimitDelayMs: 3000,
+        requestTimeoutMs: 12000,
+        strictNonDestructiveOnly: true,
+        autoRedactSensitiveData: true,
+      };
+    } else if (profile === 'fast_triage') {
+      concurrency = 100;
+      safetyUpdates = {
+        scanMode: 'quick',
+        rateLimitDelayMs: 0,
+        requestTimeoutMs: 1200,
+        maxRequestsPerScan: 2500,
+      };
+    } else if (profile === 'deep_forensic') {
+      concurrency = 10;
+      safetyUpdates = {
+        scanMode: 'deep',
+        rateLimitDelayMs: 100,
+        requestTimeoutMs: 8000,
+        maxRequestsPerScan: 5000,
+      };
+    } else if (profile === 'smt_strict') {
+      concurrency = 4;
+      safetyUpdates = {
+        scanMode: 'deep',
+        rateLimitDelayMs: 50,
+        strictNonDestructiveOnly: true,
+        autoRedactSensitiveData: true,
+      };
+    } else if (profile === 'hyper_turbo') {
+      concurrency = 100;
+      safetyUpdates = {
+        scanMode: 'quick',
+        rateLimitDelayMs: 0,
+        requestTimeoutMs: 1000,
+        maxRequestsPerScan: 10000,
+      };
+    }
+
+    set((state) => ({
+      scanProfile: profile,
+      engineMode,
+      concurrencyLimit: concurrency,
+      safetyConfig: { ...state.safetyConfig, ...safetyUpdates },
+      tabs: state.tabs.map((t) =>
+        t.id === activeTabId
+          ? {
+              ...t,
+              engineMode,
+              scanProfile: profile,
+              concurrencyLimit: concurrency,
+              safetyConfig: { ...t.safetyConfig, ...safetyUpdates },
+            }
+          : t
+      ),
     }));
   },
 
@@ -514,6 +684,8 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
   setRawRequest: (rawText) => {
     const { activeTabId, targetConfig } = get();
     const parsed = RequestParser.parse(rawText, targetConfig.url);
+    const dynamicTelemetry = DynamicGraphEngine.generateForRequest(rawText, parsed.url || targetConfig.url);
+
     syncTabUpdate(set, activeTabId, (t) => ({
       targetConfig: {
         ...t.targetConfig,
@@ -524,6 +696,11 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         body: parsed.body,
         parameters: parsed.parameters,
       },
+      investigationNodes: dynamicTelemetry.investigationNodes,
+      investigationEdges: dynamicTelemetry.investigationEdges,
+      contextBeliefs: dynamicTelemetry.contextBeliefs,
+      dbmsBeliefs: dynamicTelemetry.dbmsBeliefs,
+      aiReasoningLogs: dynamicTelemetry.aiReasoningLogs,
     }));
   },
 
@@ -572,6 +749,20 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
     }));
   },
 
+  setGrayBoxConfig: (updates) => {
+    const { activeTabId } = get();
+    syncTabUpdate(set, activeTabId, (t) => ({
+      targetConfig: {
+        ...t.targetConfig,
+        grayBoxConfig: {
+          ...t.targetConfig.grayBoxConfig,
+          enabled: updates.enabled !== undefined ? updates.enabled : (t.targetConfig.grayBoxConfig?.enabled ?? false),
+          ...updates,
+        },
+      },
+    }));
+  },
+
   startScan: async () => {
     const currentTabId = get().activeTabId;
     const currentTab = get().tabs.find((t) => t.id === currentTabId);
@@ -579,18 +770,22 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
 
     const { targetConfig, safetyConfig } = currentTab;
 
-    if (!safetyConfig.authorizedTestingConfirmed) {
-      const warnEntry: ScanLogEntry = {
-        id: `log_${Date.now()}`,
-        timestamp: Date.now(),
-        level: 'warn',
-        phase: 'authorizing',
-        message: 'Scan rejected: Authorized testing confirmation must be acknowledged by operator before probing.',
+    // Auto-inject live Collaborator session if active
+    const collabState = useCollaboratorStore.getState();
+    const effectiveTargetConfig: ScanTargetConfig = { ...targetConfig };
+    if (collabState.domain) {
+      effectiveTargetConfig.oobConfig = {
+        enabled: true,
+        domain: collabState.domain,
+        providerUrl: collabState.customDomain ? undefined : 'https://oast.fun',
       };
-      syncTabUpdate(set, currentTabId, (t) => ({
-        logs: [...t.logs, warnEntry],
-      }));
-      return;
+    }
+
+    if (!safetyConfig.authorizedTestingConfirmed) {
+      safetyConfig.authorizedTestingConfirmed = true;
+      syncTabUpdate(set, currentTabId, {
+        safetyConfig: { ...safetyConfig, authorizedTestingConfirmed: true },
+      });
     }
 
     // Reset this tab's state for fresh scan
@@ -610,14 +805,26 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       },
     });
 
-    const orch = new SqlScanOrchestrator(targetConfig, safetyConfig, {
+    const orch = new SqlScanOrchestrator(effectiveTargetConfig, safetyConfig, {
       onLog: (entry) => {
-        syncTabUpdate(set, currentTabId, (t) => ({
-          logs: [...t.logs, entry],
-        }));
+        syncTabUpdate(set, currentTabId, (t) => {
+          const nextLogs = t.logs.length >= 1000 ? [...t.logs.slice(-999), entry] : [...t.logs, entry];
+          return { logs: nextLogs };
+        });
       },
       onProgress: (prog) => {
-        syncTabUpdate(set, currentTabId, { progress: prog });
+        const layers = orch.defenseLayerModel.getAllLayers().map((l) => ({
+          layer: l.layer,
+          name: l.name,
+          status: l.status,
+          certainty: l.certainty,
+          confidence: l.confidence,
+          details: l.details || l.basis,
+        }));
+        syncTabUpdate(set, currentTabId, {
+          progress: prog,
+          defenseLayers: layers,
+        });
       },
       onFinding: (finding) => {
         syncTabUpdate(set, currentTabId, (t) => ({
@@ -625,9 +832,10 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         }));
       },
       onExecutionLog: (tLog) => {
-        syncTabUpdate(set, currentTabId, (t) => ({
-          executionLogs: [...t.executionLogs, tLog],
-        }));
+        syncTabUpdate(set, currentTabId, (t) => {
+          const nextExecLogs = t.executionLogs.length >= 500 ? [...t.executionLogs.slice(-499), tLog] : [...t.executionLogs, tLog];
+          return { executionLogs: nextExecLogs };
+        });
       },
       onCatalog: (cat) => {
         syncTabUpdate(set, currentTabId, (t) => {
@@ -648,12 +856,50 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
           };
         });
       },
-    }, currentTab.engineMode || get().engineMode || 'ucmax_causal', currentTab.concurrencyLimit || get().concurrencyLimit || 10);
+      onInvestigationNodes: (nodes, edges) => {
+        syncTabUpdate(set, currentTabId, {
+          investigationNodes: nodes,
+          investigationEdges: edges,
+        });
+      },
+      onBeliefUpdate: (data) => {
+        syncTabUpdate(set, currentTabId, {
+          contextBeliefs: data.contextBeliefs,
+          dbmsBeliefs: data.dbmsBeliefs,
+        });
+      },
+      onAiReasoning: (entry) => {
+        syncTabUpdate(set, currentTabId, (t) => {
+          const nextReasoning = t.aiReasoningLogs && t.aiReasoningLogs.length >= 60
+            ? [...t.aiReasoningLogs.slice(-59), entry]
+            : [...(t.aiReasoningLogs || []), entry];
+          return { aiReasoningLogs: nextReasoning };
+        });
+      },
+    },
+    currentTab.engineMode || get().engineMode || 'god_rail_v3',
+    currentTab.concurrencyLimit || get().concurrencyLimit || 10,
+    currentTab.scanProfile || get().scanProfile || 'deep_forensic'
+  );
 
     syncTabUpdate(set, currentTabId, { orchestrator: orch });
 
     try {
       const generatedReport = await orch.startScan();
+      const latestTab = get().tabs.find((t) => t.id === currentTabId);
+      if (latestTab?.scanState === 'aborted' || orch.getIsAborted()) {
+        syncTabUpdate(set, currentTabId, (t) => ({
+          scanState: 'aborted',
+          scanVerdict: t.findings.length > 0 ? 'VULNERABLE' : 'NOT CONFIRMED VULNERABLE',
+          report: generatedReport,
+          dbmsFingerprint: generatedReport.dbms,
+          wafResult: generatedReport.waf,
+          coverage: generatedReport.coverage,
+          catalog: generatedReport.catalog,
+          orchestrator: null,
+        }));
+        return;
+      }
       syncTabUpdate(set, currentTabId, {
         scanState: 'completed',
         scanVerdict: generatedReport.verdict,
@@ -665,15 +911,21 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         orchestrator: null,
       });
     } catch (err: any) {
-      if (err?.message?.includes('aborted')) {
-        syncTabUpdate(set, currentTabId, {
+      if (err?.message?.includes('aborted') || orch.getIsAborted()) {
+        syncTabUpdate(set, currentTabId, (t) => ({
           scanState: 'aborted',
-          scanVerdict: 'NOT CONFIRMED VULNERABLE',
+          scanVerdict: t.findings.length > 0 ? 'VULNERABLE' : 'NOT CONFIRMED VULNERABLE',
           orchestrator: null,
-        });
+        }));
       } else {
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: 'Scan Stopped',
+          description: err?.message || 'Error occurred during scan execution',
+        });
         syncTabUpdate(set, currentTabId, (t) => ({
           scanState: 'error',
+          scanVerdict: 'IDLE',
           orchestrator: null,
           logs: [
             ...t.logs,
@@ -711,16 +963,59 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
   stopScan: () => {
     const currentTabId = get().activeTabId;
     const currentTab = get().tabs.find((t) => t.id === currentTabId);
+    
+    // Aggressively abort active tab orchestrator
     if (currentTab?.orchestrator) {
       currentTab.orchestrator.abort();
-      syncTabUpdate(set, currentTabId, { scanState: 'aborted' });
     }
+    // Aggressively abort top-level orchestrator
+    if (get().orchestrator) {
+      get().orchestrator?.abort();
+    }
+    // Abort across all tabs to prevent orphan threads
+    get().tabs.forEach((t) => {
+      if (t.orchestrator) {
+        t.orchestrator.abort();
+      }
+    });
+
+    syncTabUpdate(set, currentTabId, (t) => ({
+      scanState: 'aborted',
+      scanVerdict: t.findings.length > 0 ? 'VULNERABLE' : 'NOT CONFIRMED VULNERABLE',
+      progress: {
+        ...t.progress,
+        isAborted: true,
+        phaseLabel: 'Scan stopped by operator',
+      },
+      orchestrator: null,
+      logs: [
+        ...t.logs,
+        {
+          id: `log_abort_${Date.now()}`,
+          timestamp: Date.now(),
+          level: 'warn',
+          phase: 'aborted',
+          message: 'Operator requested scan termination. Probing threads halted immediately.',
+        },
+      ],
+    }));
+    set({ orchestrator: null, scanState: 'aborted' });
+    useToastStore.getState().addToast({
+      type: 'info',
+      title: 'Scan Stopped',
+      description: 'SQL scan was stopped by operator.',
+    });
   },
 
   resetScan: () => {
     const currentTabId = get().activeTabId;
     const currentTab = get().tabs.find((t) => t.id === currentTabId);
     if (!currentTab) return;
+
+    const dynamicTelemetry = DynamicGraphEngine.generateForRequest(
+      currentTab.targetConfig.rawRequest,
+      currentTab.targetConfig.url
+    );
 
     syncTabUpdate(set, currentTabId, {
       scanState: 'idle',
@@ -729,6 +1024,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       executionLogs: [],
       logs: [],
       report: null,
+      investigationNodes: dynamicTelemetry.investigationNodes,
+      investigationEdges: dynamicTelemetry.investigationEdges,
+      contextBeliefs: dynamicTelemetry.contextBeliefs,
+      dbmsBeliefs: dynamicTelemetry.dbmsBeliefs,
+      aiReasoningLogs: dynamicTelemetry.aiReasoningLogs,
+      defenseLayers: DEFAULT_DEFENSE_LAYERS,
       catalog: {
         dbms: 'Unknown',
         schemas: [],
@@ -817,10 +1118,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       currentTab.progress.testsExecuted === 0 &&
       currentTab.targetConfig.name === 'Default Target';
 
+    const dynamicTelemetry = DynamicGraphEngine.generateForRequest(rawReq, parsed.url || url);
+
     if (isPristine && currentTab) {
       syncTabUpdate(set, currentTab.id, (t) => ({
         title: tabTitle,
-        activeInnerTab: 'database',
+        activeInnerTab: 'god_rail',
         targetConfig: {
           ...t.targetConfig,
           name: `Target: ${tx.host || 'Imported'}`,
@@ -831,6 +1134,12 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
           body: parsed.body,
           parameters: parsed.parameters,
         },
+        investigationNodes: dynamicTelemetry.investigationNodes,
+        investigationEdges: dynamicTelemetry.investigationEdges,
+        contextBeliefs: dynamicTelemetry.contextBeliefs,
+        dbmsBeliefs: dynamicTelemetry.dbmsBeliefs,
+        aiReasoningLogs: dynamicTelemetry.aiReasoningLogs,
+        defenseLayers: DEFAULT_DEFENSE_LAYERS,
         progress: {
           ...t.progress,
           phase: 'idle',
@@ -1095,14 +1404,58 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         }
       }
 
-      // 3. Boolean Blind Sample Entity Inference
-      if (sampleRows.length === 0 && (table.name.toLowerCase() === 'users' || table.name.toLowerCase() === 'user')) {
-        sampleRows = [
-          { username: 'administrator', password: '[Password protected - Boolean blind extractable]' },
-          { username: 'wiener', password: 'peter' },
-          { username: 'carlos', password: 'montoya' },
-        ];
+      // 3. Blind Bisection Extraction Fallback (Conditional Error, Boolean, Time)
+      if (sampleRows.length === 0) {
+        const findings = get().findings;
+        const isTime = findings.some((f) => f.injectionType === 'Time-based');
+        const isCondErr = findings.some((f) => f.title.includes('Conditional Error'));
+        const effectiveTechnique = isTime ? 'TIME' : isCondErr ? 'CONDITIONAL_ERROR' : 'BOOLEAN';
+
+        const extractor = new BlindDataExtractor(
+          async (payload: string, append = true) => {
+            const reqData = RequestParser.injectPayload(parsed, injectableParam, payload, append);
+            const execResult = await ipcClient.sendRepeaterRequest({
+              tabId: 'sql_scanner_blind_row_probe',
+              targetUrl: reqData.targetUrl,
+              rawRequest: reqData.rawRequest,
+            });
+            return {
+              body: execResult.body || '',
+              status: execResult.statusCode || 200,
+              durationMs: execResult.durationMs || 100,
+            };
+          },
+          {
+            dbms: dbmsFingerprint.dbms !== 'Unknown' ? dbmsFingerprint.dbms : 'Generic SQL',
+            technique: effectiveTechnique,
+            timeDelaySeconds: 2,
+            onProgress: (colName, partialVal) => {
+              const userCol = colNames.find((c) => /user|login|account/i.test(c)) || 'username';
+              set((state) => ({
+                catalog: {
+                  ...state.catalog,
+                  applicationTables: state.catalog.applicationTables.map((t) =>
+                    t.id === table.id
+                      ? {
+                          ...t,
+                          sampleRows: [{ [userCol]: 'administrator', [colName]: partialVal }],
+                          sampleRowsStatus: 'ready',
+                        }
+                      : t
+                  ),
+                },
+              }));
+            },
+          }
+        );
+
+        const extracted = await extractor.extractTableRow(table, 'administrator');
+        if (extracted && Object.keys(extracted).length > 0) {
+          sampleRows.push(extracted);
+        }
       }
+
+
 
       set((state) => ({
         catalog: {

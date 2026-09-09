@@ -12,11 +12,8 @@ import { StructuredInspector } from '../../design-system/StructuredInspector';
 import {
   Columns,
   Rows,
-  WrapText,
-  AlignLeft,
   Send,
   GitCompare,
-  Lock,
   ShieldCheck,
   Layers,
   FileText,
@@ -27,6 +24,8 @@ import { buildTrafficContextMenu } from '../../utils/contextMenuUtils';
 import { generateRenderablePreviewHtml } from '../../utils/repeaterUtils';
 import { HttpSyntaxHighlighter } from '../common/HttpSyntaxHighlighter';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
+import { BurpEditorToolbar } from '../common/BurpEditorToolbar';
+import { BurpInspectorPanel } from './BurpInspectorPanel';
 
 export interface TransactionInspectorPanelProps {
   transaction: TrafficSummary | TransactionModel | null;
@@ -58,10 +57,6 @@ export function formatRawHttpResponse(res?: HttpResponseDetails): string {
   return `HTTP/1.1 ${res.statusCode} ${res.statusText || 'OK'}\r\n${headerLines}\r\n\r\n${res.bodyText || ''}`;
 }
 
-
-
-
-
 export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps> = ({
   transaction,
   activeTab: propActiveTab,
@@ -84,10 +79,19 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
 
   const [reqSearch, setReqSearch] = useState('');
   const [reqMatchIdx, setReqMatchIdx] = useState(0);
+  const [reqHideBoring, setReqHideBoring] = useState(false);
+  const [reqWordWrap, setReqWordWrap] = useState(false);
+  const [reqShowNonPrintable, setReqShowNonPrintable] = useState(false);
+
   const [resSearch, setResSearch] = useState('');
   const [resMatchIdx, setResMatchIdx] = useState(0);
+  const [resHideBoring, setResHideBoring] = useState(false);
+  const [resWordWrap, setResWordWrap] = useState(false);
+  const [resShowNonPrintable, setResShowNonPrintable] = useState(false);
+
   const [layoutMode, setLayoutMode] = useState<'sideBySide' | 'stacked'>('sideBySide');
   const [activeRightDrawer, setActiveRightDrawer] = useState<'none' | 'inspector' | 'notes'>('none');
+  const [selectionText, setSelectionText] = useState('');
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -327,30 +331,36 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
               </div>
             </div>
 
-            {/* Request Tools & Actions */}
-            <div className="flex items-center gap-1.5 text-[#9da5b4]">
-              <button
-                onClick={() => onSendToRepeater && onSendToRepeater(transaction)}
-                title="Send to Repeater (Ctrl+R)"
-                className="p-1 hover:text-[#f37021] transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onOpenDiff && onOpenDiff(transaction)}
-                title="Diff Revisions"
-                className="p-1 hover:text-[#38bdf8] transition-colors"
-              >
-                <GitCompare className="w-3.5 h-3.5" />
-              </button>
-              <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
-              <button className="p-1 hover:text-white" title="Auto-decode / word wrap">
-                <WrapText className="w-3.5 h-3.5" />
-              </button>
-              <button className="p-1 hover:text-white" title="Line numbers">
-                <AlignLeft className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            {/* Request Tools & Actions: BurpEditorToolbar */}
+            <BurpEditorToolbar
+              hideBoringHeaders={reqHideBoring}
+              onToggleHideBoringHeaders={() => setReqHideBoring((prev) => !prev)}
+              wordWrap={reqWordWrap}
+              onToggleWordWrap={() => setReqWordWrap((prev) => !prev)}
+              showNonPrintable={reqShowNonPrintable}
+              onToggleShowNonPrintable={() => setReqShowNonPrintable((prev) => !prev)}
+              inspectorOpen={activeRightDrawer === 'inspector'}
+              onToggleInspector={() => setActiveRightDrawer(activeRightDrawer === 'inspector' ? 'none' : 'inspector')}
+              extraActions={
+                <>
+                  <button
+                    onClick={() => onSendToRepeater && onSendToRepeater(transaction)}
+                    title="Send to Repeater (Ctrl+R)"
+                    className="p-1 hover:text-[#f37021] transition-colors"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onOpenDiff && onOpenDiff(transaction)}
+                    title="Diff Revisions"
+                    className="p-1 hover:text-[#38bdf8] transition-colors"
+                  >
+                    <GitCompare className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
+                </>
+              }
+            />
           </div>
 
           {/* 2. Request Content Body */}
@@ -381,6 +391,10 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
                 isResponse={false}
                 searchQuery={reqSearch}
                 activeMatchIndex={reqMatchIdx}
+                wordWrap={reqWordWrap}
+                hideUninterestingHeaders={reqHideBoring}
+                showNonPrintable={reqShowNonPrintable}
+                onSelectionChange={(text) => setSelectionText(text)}
               />
             )}
           </div>
@@ -426,28 +440,33 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
               </div>
             </div>
 
-            {/* Layout Toggle & Tools */}
-            <div className="flex items-center gap-1.5 text-[#9da5b4]">
-              {/* Layout Mode Toggle: Side-by-Side (||) vs Stacked (=) */}
-              <button
-                onClick={() => setLayoutMode(layoutMode === 'sideBySide' ? 'stacked' : 'sideBySide')}
-                className="p-1 hover:text-white transition-colors"
-                title={layoutMode === 'sideBySide' ? 'Switch to Stacked View (=)' : 'Switch to Side-by-Side (||)'}
-              >
-                {layoutMode === 'sideBySide' ? (
-                  <Columns className="w-3.5 h-3.5 text-[#38bdf8]" />
-                ) : (
-                  <Rows className="w-3.5 h-3.5 text-[#38bdf8]" />
-                )}
-              </button>
-              <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
-              <button className="p-1 hover:text-white" title="Auto-decode / word wrap">
-                <WrapText className="w-3.5 h-3.5" />
-              </button>
-              <button className="p-1 hover:text-white" title="Line numbers">
-                <AlignLeft className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            {/* Response Tools & Actions: BurpEditorToolbar */}
+            <BurpEditorToolbar
+              hideBoringHeaders={resHideBoring}
+              onToggleHideBoringHeaders={() => setResHideBoring((prev) => !prev)}
+              wordWrap={resWordWrap}
+              onToggleWordWrap={() => setResWordWrap((prev) => !prev)}
+              showNonPrintable={resShowNonPrintable}
+              onToggleShowNonPrintable={() => setResShowNonPrintable((prev) => !prev)}
+              inspectorOpen={activeRightDrawer === 'inspector'}
+              onToggleInspector={() => setActiveRightDrawer(activeRightDrawer === 'inspector' ? 'none' : 'inspector')}
+              extraActions={
+                <>
+                  <button
+                    onClick={() => setLayoutMode(layoutMode === 'sideBySide' ? 'stacked' : 'sideBySide')}
+                    className="p-1 hover:text-white transition-colors"
+                    title={layoutMode === 'sideBySide' ? 'Switch to Stacked View (=)' : 'Switch to Side-by-Side (||)'}
+                  >
+                    {layoutMode === 'sideBySide' ? (
+                      <Columns className="w-3.5 h-3.5 text-[#38bdf8]" />
+                    ) : (
+                      <Rows className="w-3.5 h-3.5 text-[#38bdf8]" />
+                    )}
+                  </button>
+                  <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
+                </>
+              }
+            />
           </div>
 
           {/* 2. Response Content Body */}
@@ -507,6 +526,10 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
                 isResponse={true}
                 searchQuery={resSearch}
                 activeMatchIndex={resMatchIdx}
+                wordWrap={resWordWrap}
+                hideUninterestingHeaders={resHideBoring}
+                showNonPrintable={resShowNonPrintable}
+                onSelectionChange={(text) => setSelectionText(text)}
               />
             )}
           </div>
@@ -558,12 +581,20 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
       </div>
 
       {/* Slide-over Right Drawer (if Inspector or Notes is clicked) */}
-      {activeRightDrawer !== 'none' && (
+      {activeRightDrawer === 'inspector' && (
+        <div className="w-80 md:w-96 bg-[#1e1f22] border-l border-[#2b2d30] flex flex-col h-full overflow-hidden flex-shrink-0">
+          <BurpInspectorPanel
+            rawRequest={rawReqFullText}
+            rawResponse={rawResFullText}
+            selectionText={selectionText}
+            onClose={() => setActiveRightDrawer('none')}
+          />
+        </div>
+      )}
+      {activeRightDrawer === 'notes' && (
         <div className="w-64 bg-[#1e1f22] border-l border-[#2b2d30] flex flex-col p-3 text-xs overflow-y-auto animate-in slide-in-from-right duration-150">
           <div className="flex items-center justify-between border-b border-[#2b2d30] pb-2 mb-3">
-            <span className="font-bold text-white uppercase tracking-wider text-[10px]">
-              {activeRightDrawer === 'inspector' ? 'Request Inspector' : 'Item Notes'}
-            </span>
+            <span className="font-bold text-white uppercase tracking-wider text-[10px]">Item Notes</span>
             <button
               onClick={() => setActiveRightDrawer('none')}
               className="text-[#8c9099] hover:text-white text-xs"
@@ -571,43 +602,14 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
               ✕
             </button>
           </div>
-
-          {activeRightDrawer === 'inspector' ? (
-            <div className="space-y-3 font-mono text-[11px]">
-              <div>
-                <span className="text-[#8c9099] block text-[10px] font-sans">Request Method</span>
-                <span className="text-[#34d399] font-bold">{reqDetails.method}</span>
-              </div>
-              <div>
-                <span className="text-[#8c9099] block text-[10px] font-sans">Host</span>
-                <span className="text-white break-all">{hostVal}</span>
-              </div>
-              <div>
-                <span className="text-[#8c9099] block text-[10px] font-sans">Status Code</span>
-                <span className="text-[#38bdf8] font-bold">{resDetails.statusCode} {resDetails.statusText}</span>
-              </div>
-              <div>
-                <span className="text-[#8c9099] block text-[10px] font-sans">TLS Security</span>
-                <span className="text-[#34d399] flex items-center gap-1">
-                  <Lock className="w-3 h-3" />
-                  <span>{resDetails.tlsVersion || 'TLSv1.3'}</span>
-                </span>
-              </div>
-              <div>
-                <span className="text-[#8c9099] block text-[10px] font-sans">CAS Hash</span>
-                <span className="text-[#8c9099] text-[10px] break-all">sha256:7f83b1657ff1...</span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <textarea
-                placeholder="Add pentesting notes for this request..."
-                defaultValue=""
-                className="w-full h-32 bg-[#141517] border border-[#3e4249] rounded p-2 text-white font-sans text-xs outline-none focus:border-[#f37021]"
-              />
-              <span className="text-[10px] text-[#6f737a]">Notes are automatically saved with the project database.</span>
-            </div>
-          )}
+          <div className="space-y-2">
+            <textarea
+              placeholder="Add pentesting notes for this request..."
+              defaultValue=""
+              className="w-full h-32 bg-[#141517] border border-[#3e4249] rounded p-2 text-white font-sans text-xs outline-none focus:border-[#f37021]"
+            />
+            <span className="text-[10px] text-[#6f737a]">Notes are automatically saved with the project database.</span>
+          </div>
         </div>
       )}
 

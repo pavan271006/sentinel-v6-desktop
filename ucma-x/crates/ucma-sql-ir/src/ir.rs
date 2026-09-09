@@ -110,6 +110,13 @@ impl ExpressionIr {
             expr: Box::new(expr),
         }
     }
+
+    pub fn cast(expr: ExpressionIr, target_type: impl Into<String>) -> Self {
+        Self::Cast {
+            expr: Box::new(expr),
+            target_type: target_type.into(),
+        }
+    }
 }
 
 /// Column projection in a SELECT statement.
@@ -272,6 +279,257 @@ impl SqlSemanticIr {
     }
 }
 
+/// Type alias aligning with the UCMA-X Revision 5 specification.
+pub type SqlIrExpr = ExpressionIr;
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+pub enum CompilationError {
+    #[error("Unsupported expression: {0}")]
+    Unsupported(String),
+    #[error("Dialect formatting error: {0}")]
+    Formatting(String),
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Abstract contract for compiling dialect-neutral IR to engine-specific SQL.
+pub trait SqlDialectCompiler: Send + Sync {
+    fn compile(&self, ir: &SqlIrExpr) -> Result<String, CompilationError>;
+    fn identify_dialect(&self, sample_queries: &[String]) -> Option<ucma_parameter::SqlDialect>;
+}
+
+pub struct PostgresCompiler;
+impl SqlDialectCompiler for PostgresCompiler {
+    fn compile(&self, ir: &SqlIrExpr) -> Result<String, CompilationError> {
+        match ir {
+            ExpressionIr::Literal(lit) => match lit {
+                LiteralIr::Null => Ok("NULL".to_string()),
+                LiteralIr::Integer(i) => Ok(i.to_string()),
+                LiteralIr::Float(f) => Ok(f.to_string()),
+                LiteralIr::String(s) => Ok(format!("'{}'", s.replace('\'', "''"))),
+                LiteralIr::Boolean(b) => Ok(if *b { "TRUE".to_string() } else { "FALSE".to_string() }),
+                LiteralIr::Blob(b) => Ok(format!("'\\x{}'", bytes_to_hex(b))),
+            },
+            ExpressionIr::Identifier(ident) => Ok(ident.name.clone()),
+            ExpressionIr::BinaryOp { left, op, right } => {
+                let left_str = self.compile(left)?;
+                let right_str = self.compile(right)?;
+                let op_str = match op {
+                    BinaryOpIr::Concat => "||",
+                    BinaryOpIr::ILike => "ILIKE",
+                    _ => op.as_sql_operator(),
+                };
+                Ok(format!("({} {} {})", left_str, op_str, right_str))
+            }
+            ExpressionIr::UnaryOp { op, expr } => {
+                let inner = self.compile(expr)?;
+                if op.is_postfix() {
+                    Ok(format!("({}{})", inner, op.as_sql_operator()))
+                } else {
+                    Ok(format!("({}{})", op.as_sql_operator(), inner))
+                }
+            }
+            ExpressionIr::Function(func) => {
+                let arg_strings: Result<Vec<_>, _> = func.args.iter().map(|arg| self.compile(arg)).collect();
+                Ok(format!("{}({})", func.name, arg_strings?.join(", ")))
+            }
+            ExpressionIr::Cast { expr, target_type } => {
+                let inner = self.compile(expr)?;
+                Ok(format!("{}::{}", inner, target_type))
+            }
+            ExpressionIr::Parenthesized(expr) => {
+                let inner = self.compile(expr)?;
+                Ok(format!("({})", inner))
+            }
+            _ => Err(CompilationError::Unsupported("Expression not supported by Postgres compiler".to_string())),
+        }
+    }
+
+    fn identify_dialect(&self, sample_queries: &[String]) -> Option<ucma_parameter::SqlDialect> {
+        for query in sample_queries {
+            let q_upper = query.to_uppercase();
+            if query.contains("::") || q_upper.contains("ILIKE") || q_upper.contains("PG_SLEEP") {
+                return Some(ucma_parameter::SqlDialect::PostgreSQL);
+            }
+        }
+        None
+    }
+}
+
+pub struct MySqlCompiler;
+impl SqlDialectCompiler for MySqlCompiler {
+    fn compile(&self, ir: &SqlIrExpr) -> Result<String, CompilationError> {
+        match ir {
+            ExpressionIr::Literal(lit) => match lit {
+                LiteralIr::Null => Ok("NULL".to_string()),
+                LiteralIr::Integer(i) => Ok(i.to_string()),
+                LiteralIr::Float(f) => Ok(f.to_string()),
+                LiteralIr::String(s) => Ok(format!("'{}'", s.replace('\'', "''"))),
+                LiteralIr::Boolean(b) => Ok(if *b { "1".to_string() } else { "0".to_string() }),
+                LiteralIr::Blob(b) => Ok(format!("0x{}", bytes_to_hex(b))),
+            },
+            ExpressionIr::Identifier(ident) => Ok(format!("`{}`", ident.name)),
+            ExpressionIr::BinaryOp { left, op, right } => {
+                let left_str = self.compile(left)?;
+                let right_str = self.compile(right)?;
+                let op_str = match op {
+                    BinaryOpIr::Concat => return Ok(format!("CONCAT({}, {})", left_str, right_str)),
+                    _ => op.as_sql_operator(),
+                };
+                Ok(format!("({} {} {})", left_str, op_str, right_str))
+            }
+            ExpressionIr::Function(func) => {
+                let arg_strings: Result<Vec<_>, _> = func.args.iter().map(|arg| self.compile(arg)).collect();
+                Ok(format!("{}({})", func.name, arg_strings?.join(", ")))
+            }
+            ExpressionIr::Parenthesized(expr) => {
+                let inner = self.compile(expr)?;
+                Ok(format!("({})", inner))
+            }
+            _ => Err(CompilationError::Unsupported("Expression not supported by MySQL compiler".to_string())),
+        }
+    }
+
+    fn identify_dialect(&self, sample_queries: &[String]) -> Option<ucma_parameter::SqlDialect> {
+        for query in sample_queries {
+            let q_upper = query.to_uppercase();
+            if query.contains('`') || q_upper.contains("SLEEP(") || q_upper.contains("@@VERSION") {
+                return Some(ucma_parameter::SqlDialect::MySQL);
+            }
+        }
+        None
+    }
+}
+
+pub struct SqliteCompiler;
+impl SqlDialectCompiler for SqliteCompiler {
+    fn compile(&self, ir: &SqlIrExpr) -> Result<String, CompilationError> {
+        match ir {
+            ExpressionIr::Literal(lit) => match lit {
+                LiteralIr::Null => Ok("NULL".to_string()),
+                LiteralIr::Integer(i) => Ok(i.to_string()),
+                LiteralIr::Float(f) => Ok(f.to_string()),
+                LiteralIr::String(s) => Ok(format!("'{}'", s.replace('\'', "''"))),
+                LiteralIr::Boolean(b) => Ok(if *b { "1".to_string() } else { "0".to_string() }),
+                LiteralIr::Blob(b) => Ok(format!("X'{}'", bytes_to_hex(b))),
+            },
+            ExpressionIr::Identifier(ident) => Ok(ident.name.clone()),
+            ExpressionIr::BinaryOp { left, op, right } => {
+                let left_str = self.compile(left)?;
+                let right_str = self.compile(right)?;
+                Ok(format!("({} {} {})", left_str, op.as_sql_operator(), right_str))
+            }
+            ExpressionIr::Function(func) => {
+                let arg_strings: Result<Vec<_>, _> = func.args.iter().map(|arg| self.compile(arg)).collect();
+                Ok(format!("{}({})", func.name, arg_strings?.join(", ")))
+            }
+            ExpressionIr::Parenthesized(expr) => {
+                let inner = self.compile(expr)?;
+                Ok(format!("({})", inner))
+            }
+            _ => Err(CompilationError::Unsupported("Expression not supported by SQLite compiler".to_string())),
+        }
+    }
+
+    fn identify_dialect(&self, sample_queries: &[String]) -> Option<ucma_parameter::SqlDialect> {
+        for query in sample_queries {
+            let q_upper = query.to_uppercase();
+            if q_upper.contains("SQLITE_MASTER") || q_upper.contains("SQLITE_VERSION") {
+                return Some(ucma_parameter::SqlDialect::SQLite);
+            }
+        }
+        None
+    }
+}
+
+pub struct MssqlCompiler;
+impl SqlDialectCompiler for MssqlCompiler {
+    fn compile(&self, ir: &SqlIrExpr) -> Result<String, CompilationError> {
+        match ir {
+            ExpressionIr::Literal(lit) => match lit {
+                LiteralIr::Null => Ok("NULL".to_string()),
+                LiteralIr::Integer(i) => Ok(i.to_string()),
+                LiteralIr::Float(f) => Ok(f.to_string()),
+                LiteralIr::String(s) => Ok(format!("'{}'", s.replace('\'', "''"))),
+                LiteralIr::Boolean(b) => Ok(if *b { "1".to_string() } else { "0".to_string() }),
+                LiteralIr::Blob(b) => Ok(format!("0x{}", bytes_to_hex(b))),
+            },
+            ExpressionIr::Identifier(ident) => Ok(format!("[{}]", ident.name)),
+            ExpressionIr::BinaryOp { left, op, right } => {
+                let left_str = self.compile(left)?;
+                let right_str = self.compile(right)?;
+                let op_str = match op {
+                    BinaryOpIr::Concat => "+",
+                    _ => op.as_sql_operator(),
+                };
+                Ok(format!("({} {} {})", left_str, op_str, right_str))
+            }
+            ExpressionIr::Function(func) => {
+                let arg_strings: Result<Vec<_>, _> = func.args.iter().map(|arg| self.compile(arg)).collect();
+                Ok(format!("{}({})", func.name, arg_strings?.join(", ")))
+            }
+            ExpressionIr::Parenthesized(expr) => {
+                let inner = self.compile(expr)?;
+                Ok(format!("({})", inner))
+            }
+            _ => Err(CompilationError::Unsupported("Expression not supported by MSSQL compiler".to_string())),
+        }
+    }
+
+    fn identify_dialect(&self, sample_queries: &[String]) -> Option<ucma_parameter::SqlDialect> {
+        for query in sample_queries {
+            let q_upper = query.to_uppercase();
+            if q_upper.contains("WAITFOR DELAY") || q_upper.contains("SYSOBJECTS") {
+                return Some(ucma_parameter::SqlDialect::MSSQL);
+            }
+        }
+        None
+    }
+}
+
+pub struct OracleCompiler;
+impl SqlDialectCompiler for OracleCompiler {
+    fn compile(&self, ir: &SqlIrExpr) -> Result<String, CompilationError> {
+        match ir {
+            ExpressionIr::Literal(lit) => match lit {
+                LiteralIr::Null => Ok("NULL".to_string()),
+                LiteralIr::Integer(i) => Ok(i.to_string()),
+                LiteralIr::Float(f) => Ok(f.to_string()),
+                LiteralIr::String(s) => Ok(format!("'{}'", s.replace('\'', "''"))),
+                LiteralIr::Boolean(b) => Ok(if *b { "1".to_string() } else { "0".to_string() }),
+                LiteralIr::Blob(b) => Ok(format!("HEXTORAW('{}')", bytes_to_hex(b))),
+            },
+            ExpressionIr::Identifier(ident) => Ok(ident.name.clone()),
+            ExpressionIr::BinaryOp { left, op, right } => {
+                let left_str = self.compile(left)?;
+                let right_str = self.compile(right)?;
+                Ok(format!("({} {} {})", left_str, op.as_sql_operator(), right_str))
+            }
+            ExpressionIr::Function(func) => {
+                let arg_strings: Result<Vec<_>, _> = func.args.iter().map(|arg| self.compile(arg)).collect();
+                Ok(format!("{}({})", func.name, arg_strings?.join(", ")))
+            }
+            ExpressionIr::Parenthesized(expr) => {
+                let inner = self.compile(expr)?;
+                Ok(format!("({})", inner))
+            }
+            _ => Err(CompilationError::Unsupported("Expression not supported by Oracle compiler".to_string())),
+        }
+    }
+
+    fn identify_dialect(&self, sample_queries: &[String]) -> Option<ucma_parameter::SqlDialect> {
+        for query in sample_queries {
+            let q_upper = query.to_uppercase();
+            if q_upper.contains("FROM DUAL") || q_upper.contains("DBMS_PIPE") || q_upper.contains("UTL_INADDR") {
+                return Some(ucma_parameter::SqlDialect::Oracle);
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,4 +557,28 @@ mod tests {
             _ => panic!("Expected Select statement"),
         }
     }
+
+    #[test]
+    fn test_postgres_compiler_binary_op_and_casting() {
+        let compiler = PostgresCompiler;
+        let ir = ExpressionIr::cast(
+            ExpressionIr::binary(ExpressionIr::int(1), BinaryOpIr::Add, ExpressionIr::int(1)),
+            "text",
+        );
+        let compiled = compiler.compile(&ir).expect("Postgres compilation should succeed");
+        assert_eq!(compiled, "(1 + 1)::text");
+    }
+
+    #[test]
+    fn test_mysql_compiler_concat_and_identifiers() {
+        let compiler = MySqlCompiler;
+        let ir = ExpressionIr::binary(
+            ExpressionIr::string("a"),
+            BinaryOpIr::Concat,
+            ExpressionIr::string("b"),
+        );
+        let compiled = compiler.compile(&ir).expect("MySQL compilation should succeed");
+        assert_eq!(compiled, "CONCAT('a', 'b')");
+    }
 }
+

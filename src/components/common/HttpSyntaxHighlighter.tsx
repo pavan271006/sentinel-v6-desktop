@@ -10,8 +10,37 @@ export interface HttpSyntaxHighlighterProps {
   fontSize?: string;
   showLineNumbers?: boolean;
   autoFormatJson?: boolean;
+  wordWrap?: boolean;
+  hideUninterestingHeaders?: boolean;
+  showNonPrintable?: boolean;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onSelectionChange?: (selectedText: string) => void;
 }
+
+const UNINTERESTING_HEADERS = new Set([
+  'sec-ch-ua',
+  'sec-ch-ua-mobile',
+  'sec-ch-ua-platform',
+  'sec-ch-ua-arch',
+  'sec-ch-ua-bitness',
+  'sec-ch-ua-model',
+  'sec-ch-ua-full-version-list',
+  'sec-fetch-site',
+  'sec-fetch-mode',
+  'sec-fetch-user',
+  'sec-fetch-dest',
+  'upgrade-insecure-requests',
+  'accept-language',
+  'accept-encoding',
+  'priority',
+]);
+
+const renderCrlfBadges = () => (
+  <span className="inline-flex items-center ml-1 select-none font-mono text-[9px] text-[#9da5b4] align-baseline">
+    <span className="bg-[#3c4048]/80 text-[#9da5b4] px-1 py-0.5 rounded font-mono mr-0.5">\r</span>
+    <span className="bg-[#3c4048]/80 text-[#9da5b4] px-1 py-0.5 rounded font-mono">\n</span>
+  </span>
+);
 
 let activeSearchContext: {
   query: string;
@@ -520,7 +549,11 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
   fontSize = 'text-[11px]',
   showLineNumbers = true,
   autoFormatJson = true,
+  wordWrap = false,
+  hideUninterestingHeaders = false,
+  showNonPrintable = false,
   onContextMenu,
+  onSelectionChange,
 }) => {
   // Initialize match counter for this render cycle
   activeSearchContext = {
@@ -532,7 +565,7 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
   useEffect(() => {
     if (searchQuery && searchQuery.trim()) {
       const el = document.getElementById('active-burp-search-match');
-      if (el) {
+      if (el && typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     }
@@ -608,9 +641,21 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
   let isUrlEncodedBody = false;
   let isHtmlBody = false;
 
+  const lineWrapClass = wordWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre';
+
+  const handleMouseUp = () => {
+    if (onSelectionChange) {
+      const sel = window.getSelection()?.toString() || '';
+      if (sel) {
+        onSelectionChange(sel);
+      }
+    }
+  };
+
   return (
     <div
       onContextMenu={onContextMenu}
+      onMouseUp={handleMouseUp}
       className={`table w-full font-mono select-text leading-5 ${fontSize} text-[#dfdfdf] ${className}`}
       style={{ fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}
     >
@@ -623,11 +668,13 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
           return (
             <div key={idx} className="table-row hover:bg-[#282b30]/50">
               {showLineNumbers && (
-                <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px]">
+                <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px] align-top">
                   {lineNum}
                 </span>
               )}
-              <span className="table-cell whitespace-pre">&nbsp;</span>
+              <span className={`table-cell ${lineWrapClass}`}>
+                {showNonPrintable ? renderCrlfBadges() : '\u00A0'}
+              </span>
             </div>
           );
         }
@@ -644,14 +691,15 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
             return (
               <div key={idx} className="table-row hover:bg-[#282b30]/50">
                 {showLineNumbers && (
-                  <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px]">
+                  <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px] align-top">
                     {lineNum}
                   </span>
                 )}
-                <span className="table-cell whitespace-pre">
+                <span className={`table-cell ${lineWrapClass}`}>
                   <span className="text-[#dfdfdf] font-bold">{highlightSearch(method, searchQuery)}</span>{' '}
                   {renderUriWithQueryParams(uri, searchQuery)}{' '}
                   <span className="text-[#8c9099]">{highlightSearch(proto, searchQuery)}</span>
+                  {showNonPrintable && renderCrlfBadges()}
                 </span>
               </div>
             );
@@ -675,14 +723,15 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
             return (
               <div key={idx} className="table-row hover:bg-[#282b30]/50">
                 {showLineNumbers && (
-                  <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px]">
+                  <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px] align-top">
                     {lineNum}
                   </span>
                 )}
-                <span className="table-cell whitespace-pre">
+                <span className={`table-cell ${lineWrapClass}`}>
                   <span className="text-[#8c9099]">{highlightSearch(proto, searchQuery)}</span>{' '}
                   <span className={`${codeColor} font-bold`}>{highlightSearch(code, searchQuery)}</span>{' '}
                   <span className="text-[#dfdfdf] font-medium">{highlightSearch(reason, searchQuery)}</span>
+                  {showNonPrintable && renderCrlfBadges()}
                 </span>
               </div>
             );
@@ -695,6 +744,11 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
           if (colonIdx !== -1) {
             const hName = line.substring(0, colonIdx);
             const hVal = line.substring(colonIdx + 1);
+
+            // Hide boilerplate/uninteresting headers if toggled on
+            if (hideUninterestingHeaders && UNINTERESTING_HEADERS.has(hName.toLowerCase().trim())) {
+              return null;
+            }
 
             // Detect content-type for body parser
             const lowerName = hName.toLowerCase();
@@ -709,14 +763,15 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
             return (
               <div key={idx} className="table-row hover:bg-[#282b30]/50">
                 {showLineNumbers && (
-                  <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px]">
+                  <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px] align-top">
                     {lineNum}
                   </span>
                 )}
-                <span className="table-cell whitespace-pre">
+                <span className={`table-cell ${lineWrapClass}`}>
                   <span className="text-[#dfdfdf] font-semibold">{highlightSearch(hName, searchQuery)}</span>
                   <span className="text-[#8c9099]">: </span>
                   <span className="text-[#abb2bf]">{valContent}</span>
+                  {showNonPrintable && renderCrlfBadges()}
                 </span>
               </div>
             );
@@ -740,11 +795,14 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
         return (
           <div key={idx} className="table-row hover:bg-[#282b30]/50">
             {showLineNumbers && (
-              <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px]">
+              <span className="table-cell select-none text-right pr-3 text-[#6f737a] w-8 font-mono text-[10px] align-top">
                 {lineNum}
               </span>
             )}
-            <span className="table-cell whitespace-pre">{line === '' ? '\u00A0' : bodyLineNode}</span>
+            <span className={`table-cell ${lineWrapClass}`}>
+              {line === '' ? '\u00A0' : bodyLineNode}
+              {showNonPrintable && renderCrlfBadges()}
+            </span>
           </div>
         );
       })}

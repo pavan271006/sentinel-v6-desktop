@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. OWASP Juice Shop (Modern SPA & WebCrypto)
+  # ==========================================
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: sentinel-lab-juiceshop
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+  # ==========================================
+  # 2. DVWA (Classic Vulnerability Archetypes)
+  # ==========================================
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: sentinel-lab-dvwa
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+
+  # ==========================================
+  # 3. PostgreSQL 16 Target Database
+  # ==========================================
+  postgres-target:
+    image: postgres:16-alpine
+    container_name: sentinel-lab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: labpassword123
+      POSTGRES_DB: vuln_app
+    ports:
+      - "5432:5432"
+
+  # ==========================================
+  # 4. MySQL 8.0 Target Database
+  # ==========================================
+  mysql-target:
+    image: mysql:8.0
+    container_name: sentinel-lab-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: labpassword123
+      MYSQL_DATABASE: vuln_app
+    ports:
+      - "3306:3306"
+
+  # ==========================================
+  # 5. DVGA (Damn Vulnerable GraphQL App)
+  # ==========================================
+  dvga:
+    image: dolevf/dvga:latest
+    container_name: sentinel-lab-dvga
+    restart: unless-stopped
+    ports:
+      - "5013:5013"
+
+  # ==========================================
+  # 6. ClickHouse Server (OLAP Columnar Target)
+  # ==========================================
+  clickhouse-target:
+    image: clickhouse/clickhouse-server:latest
+    container_name: sentinel-lab-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: vuln_olap
+      CLICKHOUSE_USER: sentinel
+      CLICKHOUSE_PASSWORD: labpassword123
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144

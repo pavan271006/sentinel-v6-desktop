@@ -101,7 +101,7 @@ impl AppState {
             id: uuid::Uuid::new_v4().to_string(),
             version: 1,
             timestamp: chrono::Utc::now().to_rfc3339(),
-            includes: vec!["target.local".to_string(), "https://api.target.local/*".to_string()],
+            includes: vec!["*".to_string()],
             excludes: vec![
                 "169.254.169.254/32".to_string(),
                 "10.0.0.0/8".to_string(),
@@ -113,17 +113,9 @@ impl AppState {
                     id: "rule-01".to_string(),
                     rule_type: "INCLUDE".to_string(),
                     pattern_type: "HOST".to_string(),
-                    pattern: "target.local".to_string(),
+                    pattern: "*".to_string(),
                     enabled: true,
-                    notes: Some("Primary target domain".to_string()),
-                },
-                ScopeRuleDef {
-                    id: "rule-02".to_string(),
-                    rule_type: "INCLUDE".to_string(),
-                    pattern_type: "URL_PREFIX".to_string(),
-                    pattern: "https://api.target.local/*".to_string(),
-                    enabled: true,
-                    notes: Some("API endpoints".to_string()),
+                    notes: Some("All authorized target domains".to_string()),
                 },
                 ScopeRuleDef {
                     id: "rule-03".to_string(),

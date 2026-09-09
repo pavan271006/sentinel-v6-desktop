@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { HeaderBar } from './HeaderBar';
-import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { MainCanvas } from './MainCanvas';
 import { BottomDrawer } from './BottomDrawer';
 import { StatusBar } from './StatusBar';
@@ -48,11 +47,8 @@ export const AppShell: React.FC = () => {
       {/* 1. Header Bar with Burp Menu & Primary Horizontal Tabs */}
       <HeaderBar />
 
-      {/* 2. Main Middle Workspace Area (Sidebar + Full Canvas) */}
+      {/* 2. Main Middle Workspace Area (Full Canvas) */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
-        {/* Workspace Context Sidebar (Collapsible) */}
-        <WorkspaceSidebar />
-
         {/* Center Main Canvas (Takes Full Workspace Width & Height) */}
         <main className="flex-1 min-w-0 min-h-0 overflow-hidden relative bg-[#141517]">
           <MainCanvas />

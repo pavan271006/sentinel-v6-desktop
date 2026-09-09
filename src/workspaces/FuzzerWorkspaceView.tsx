@@ -67,6 +67,13 @@ import {
 export const FuzzerWorkspaceView: React.FC = () => {
   const { addToast } = useToastStore();
   const {
+    tabs,
+    activeTabId,
+    createTab,
+    closeTab,
+    setActiveTabId,
+    renameTab,
+    updateTab,
     targetUrl,
     setTargetUrl,
     requestText,
@@ -79,9 +86,35 @@ export const FuzzerWorkspaceView: React.FC = () => {
     setPayloadSetForPosition,
   } = useIntruderStore();
 
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  const isAttackRunning = activeTab?.isAttackRunning || false;
+  const showAttackModal = activeTab?.showAttackModal || false;
+  const windowState = activeTab?.windowState || 'normal';
+  const attackResults = activeTab?.attackResults || [];
+  const selectedResultId = activeTab?.selectedResultId || null;
+  const activeResultsSubtab = activeTab?.activeResultsSubtab || 'Results';
+  const captureFilter = activeTab?.captureFilter || DEFAULT_INTRUDER_CAPTURE_FILTER;
+  const applyCaptureFilter = activeTab?.applyCaptureFilter !== false;
+  const concurrency = activeTab?.concurrency || 100;
+  const delayMs = activeTab?.delayMs || 0;
+  const updateHostHeader = activeTab?.updateHostHeader !== false;
+  const updateContentLength = activeTab?.updateContentLength !== false;
+
+  const setIsAttackRunning = (val: boolean) => updateTab(activeTabId, { isAttackRunning: val });
+  const setShowAttackModal = (val: boolean) => updateTab(activeTabId, { showAttackModal: val });
+  const setWindowState = (val: 'normal' | 'maximized' | 'minimized') => updateTab(activeTabId, { windowState: val });
+  const setAttackResults = (val: AttackResultItem[]) => updateTab(activeTabId, { attackResults: val });
+  const setSelectedResultId = (val: number | null) => updateTab(activeTabId, { selectedResultId: val });
+  const setActiveResultsSubtab = (val: 'Results' | 'Positions') => updateTab(activeTabId, { activeResultsSubtab: val });
+  const setCaptureFilter = (val: IntruderCaptureFilterState) => updateTab(activeTabId, { captureFilter: val });
+  const setApplyCaptureFilter = (val: boolean) => updateTab(activeTabId, { applyCaptureFilter: val });
+  const setConcurrency = (val: number) => updateTab(activeTabId, { concurrency: val });
+  const setDelayMs = (val: number) => updateTab(activeTabId, { delayMs: val });
+  const setUpdateHostHeader = (val: boolean) => updateTab(activeTabId, { updateHostHeader: val });
+  const setUpdateContentLength = (val: boolean) => updateTab(activeTabId, { updateContentLength: val });
+
   const editorRef = useRef<SyntaxHighlightedEditorRef>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [updateHostHeader, setUpdateHostHeader] = useState(true);
   const [editorSearch, setEditorSearch] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
 
@@ -109,30 +142,17 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const [accPayloadEncoding, setAccPayloadEncoding] = useState(true);
 
   // Settings Panel Config
-  const [updateContentLength, setUpdateContentLength] = useState(true);
   const [setConnectionHeader, setSetConnectionHeader] = useState(true);
 
-  // Resource Pool Config
-  const [concurrency, setConcurrency] = useState(10);
-  const [delayMs, setDelayMs] = useState(0);
-
-  // Attack Execution Modal & Results
-  const [isAttackRunning, setIsAttackRunning] = useState(false);
-  const [showAttackModal, setShowAttackModal] = useState(false);
-  const [windowState, setWindowState] = useState<'normal' | 'maximized' | 'minimized'>('normal');
+  // Attack Execution Modal UI
   const [showAttackMenu, setShowAttackMenu] = useState(false);
   const [showSaveMenu, setShowSaveMenu] = useState(false);
-  const [attackResults, setAttackResults] = useState<AttackResultItem[]>([]);
-  const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
-  const [activeResultsSubtab, setActiveResultsSubtab] = useState<'Results' | 'Positions'>('Results');
   const [requestTabMode, setRequestTabMode] = useState<'Pretty' | 'Raw' | 'Hex'>('Pretty');
   const [responseTabMode, setResponseTabMode] = useState<'Pretty' | 'Raw' | 'Hex' | 'Render'>('Pretty');
   const abortAttackRef = useRef(false);
 
   // Capture Filter State
   const [showCaptureFilterModal, setShowCaptureFilterModal] = useState(false);
-  const [captureFilter, setCaptureFilter] = useState<IntruderCaptureFilterState>(DEFAULT_INTRUDER_CAPTURE_FILTER);
-  const [applyCaptureFilter, setApplyCaptureFilter] = useState(true);
 
   // Filter attack results based on capture filter settings
   const filteredAttackResults = useMemo(() => {
@@ -308,6 +328,51 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const payloadPositionCount = detectedPositions.length;
   const currentPayloadList = payloadSets[selectedPosition] || payloadSets[1] || [];
 
+  // Dynamically compute total request count based on Attack Type & Payload sets
+  const computedRequestCount = useMemo(() => {
+    const numPositions = detectedPositions.length;
+    if (numPositions === 0) {
+      return (payloadSets[1] || []).length || 0;
+    }
+
+    if (attackType === 'Sniper attack') {
+      const set1Len =
+        payloadSets[1] && payloadSets[1].length > 0
+          ? payloadSets[1].length
+          : (payloadSets[selectedPosition] || []).length;
+      return numPositions * (set1Len || 0);
+    }
+
+    if (attackType === 'Battering ram attack') {
+      const set1Len =
+        payloadSets[1] && payloadSets[1].length > 0
+          ? payloadSets[1].length
+          : (payloadSets[selectedPosition] || []).length;
+      return set1Len || 0;
+    }
+
+    if (attackType === 'Pitchfork attack') {
+      const counts = detectedPositions.map((p) => (payloadSets[p.index] || []).length).filter((len) => len > 0);
+      if (counts.length === 0) return 0;
+      return Math.min(...counts);
+    }
+
+    if (attackType === 'Cluster bomb attack') {
+      let product = 1;
+      let hasAny = false;
+      for (const p of detectedPositions) {
+        const count = (payloadSets[p.index] || []).length;
+        if (count > 0) {
+          product *= count;
+          hasAny = true;
+        }
+      }
+      return hasAny ? product : 0;
+    }
+
+    return currentPayloadList.length;
+  }, [attackType, detectedPositions, payloadSets, selectedPosition, currentPayloadList]);
+
   // Context Menu state
   const [editorContextMenu, setEditorContextMenu] = useState<{
     x: number;
@@ -363,7 +428,6 @@ export const FuzzerWorkspaceView: React.FC = () => {
               bodyText: val.split(/\r?\n\r?\n/)[1] || '',
             },
           } as any);
-          useAppShellStore.getState().setActiveWorkspace('repeater');
           addToast({ type: 'success', title: 'Sent to Repeater', description: targetUrl });
         },
       },
@@ -486,7 +550,6 @@ export const FuzzerWorkspaceView: React.FC = () => {
               bodyText: r.rawRequest.split(/\r?\n\r?\n/)[1] || '',
             },
           } as any);
-          useAppShellStore.getState().setActiveWorkspace('repeater');
           addToast({ type: 'success', title: `Sent Request #${r.id} to Repeater` });
         },
       },
@@ -599,7 +662,6 @@ export const FuzzerWorkspaceView: React.FC = () => {
               bodyText: text.split(/\r?\n\r?\n/)[1] || '',
             },
           } as any);
-          useAppShellStore.getState().setActiveWorkspace('repeater');
           addToast({ type: 'success', title: 'Sent to Repeater' });
         },
       },
@@ -750,12 +812,14 @@ export const FuzzerWorkspaceView: React.FC = () => {
     addToast({ type: 'success', title: 'Auto-placed § payload markers' });
   };
 
-  // Execute Real HTTP Attack
   const handleStartAttack = async () => {
-    setShowAttackModal(true);
-    setIsAttackRunning(true);
-    setAttackResults([]);
-    setSelectedResultId(null);
+    const currentTabId = activeTabId;
+    updateTab(currentTabId, {
+      showAttackModal: true,
+      isAttackRunning: true,
+      attackResults: [],
+      selectedResultId: null,
+    });
     abortAttackRef.current = false;
 
     // 1. Extract position matches
@@ -779,7 +843,10 @@ export const FuzzerWorkspaceView: React.FC = () => {
     if (numPositions === 0) {
       permutations.push({ payloads: [] });
     } else if (attackType === 'Sniper attack') {
-      const set1 = payloadSets[1] && payloadSets[1].length > 0 ? payloadSets[1] : (payloadSets[selectedPosition] || ['admin', 'test']);
+      const set1 =
+        payloadSets[1] && payloadSets[1].length > 0
+          ? payloadSets[1]
+          : (payloadSets[selectedPosition] || ['admin', 'test']);
       for (let posI = 0; posI < numPositions; posI++) {
         for (const item of set1) {
           const rowPayloads = posList.map((p, idx) => (idx === posI ? item : p.defaultVal));
@@ -787,13 +854,18 @@ export const FuzzerWorkspaceView: React.FC = () => {
         }
       }
     } else if (attackType === 'Battering ram attack') {
-      const set1 = payloadSets[1] && payloadSets[1].length > 0 ? payloadSets[1] : (payloadSets[selectedPosition] || ['admin', 'test']);
+      const set1 =
+        payloadSets[1] && payloadSets[1].length > 0
+          ? payloadSets[1]
+          : (payloadSets[selectedPosition] || ['admin', 'test']);
       for (const item of set1) {
         permutations.push({ payloads: posList.map(() => item) });
       }
     } else if (attackType === 'Pitchfork attack') {
-      const maxLen = Math.max(...posList.map((p) => (payloadSets[p.index] || []).length), 1);
-      for (let step = 0; step < maxLen; step++) {
+      const counts = posList.map((p) => (payloadSets[p.index] || []).length);
+      const minLen = Math.min(...counts.map((c) => c || 0));
+      const effectiveLen = minLen > 0 ? minLen : Math.max(...counts, 1);
+      for (let step = 0; step < effectiveLen; step++) {
         const rowPayloads = posList.map((p) => {
           const pSet = payloadSets[p.index] || payloadSets[1] || [];
           return pSet[step] !== undefined ? pSet[step] : p.defaultVal;
@@ -803,9 +875,10 @@ export const FuzzerWorkspaceView: React.FC = () => {
     } else if (attackType === 'Cluster bomb attack') {
       let combos: string[][] = [[]];
       for (let i = 0; i < numPositions; i++) {
-        const pSet = payloadSets[posList[i].index] && payloadSets[posList[i].index].length > 0
-          ? payloadSets[posList[i].index]
-          : [posList[i].defaultVal];
+        const pSet =
+          payloadSets[posList[i].index] && payloadSets[posList[i].index].length > 0
+            ? payloadSets[posList[i].index]
+            : [posList[i].defaultVal];
         const nextCombos: string[][] = [];
         for (const prevCombo of combos) {
           for (const item of pSet) {
@@ -822,10 +895,8 @@ export const FuzzerWorkspaceView: React.FC = () => {
     addToast({
       type: 'info',
       title: 'Intruder Attack Launched',
-      description: `Sending ${permutations.length} HTTP requests against ${targetUrl}...`,
+      description: `Dispatching ${permutations.length} HTTP requests against ${targetUrl}...`,
     });
-
-    const collector: AttackResultItem[] = [];
 
     const buildReplacedRequest = (rowPayloads: string[]) => {
       let replaced = requestText;
@@ -851,80 +922,211 @@ export const FuzzerWorkspaceView: React.FC = () => {
         }
       }
 
+      // Ensure Connection: keep-alive is active for maximum socket reuse and pipeline throughput
+      if (!replaced.toLowerCase().includes('connection:')) {
+        const headerEnd = replaced.indexOf('\r\n\r\n');
+        if (headerEnd !== -1) {
+          replaced = replaced.slice(0, headerEnd) + '\r\nConnection: keep-alive' + replaced.slice(headerEnd);
+        }
+      }
+
       return replaced;
     };
 
-    for (let reqIndex = 0; reqIndex < permutations.length; reqIndex++) {
-      if (abortAttackRef.current) break;
+    const totalPermutations = permutations.length;
+    const resultsBuffer: AttackResultItem[] = new Array(totalPermutations);
+    const poolSize = Math.max(1, Math.min(concurrency || 100, 1000));
+    const attackStartTime = Date.now();
+    let completedCount = 0;
+    let nextIndex = 0;
+    let dirty = false;
+    let lastFlushTime = Date.now();
 
-      const perm = permutations[reqIndex];
-      const wireReq = buildReplacedRequest(perm.payloads);
-      const startMs = Date.now();
-      let execResult;
+    const flushResults = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastFlushTime < 33) return; // 30 FPS throttle to protect React rendering loop
+      lastFlushTime = now;
+      dirty = false;
 
-      try {
-        execResult = await ipcClient.sendRepeaterRequest({
-          tabId: `intruder-${Date.now()}-${reqIndex}`,
-          targetUrl,
-          rawRequest: wireReq,
-        });
-      } catch (err: any) {
-        execResult = {
-          statusCode: 0,
-          statusText: 'Socket Error',
-          durationMs: Date.now() - startMs,
-          rawResponse: `HTTP/1.1 000 Network Error\r\n\r\n${String(err)}`,
-          sizeBytes: 0,
-          error: String(err),
-        };
+      // Extract results in natural ID-sorted order in O(N) without O(N log N) sorting
+      const activeList: AttackResultItem[] = [];
+      for (let i = 0; i < totalPermutations; i++) {
+        if (resultsBuffer[i] !== undefined) {
+          activeList.push(resultsBuffer[i]);
+        }
       }
 
-      const dur = execResult.durationMs || (Date.now() - startMs);
-      const rawRes = execResult.rawResponse || '';
-      const status = execResult.statusCode || (rawRes.match(/HTTP\/[0-9.]+\s+(\d+)/)?.[1] ? parseInt(RegExp.$1, 10) : 0);
-      const length = execResult.sizeBytes || rawRes.length || 0;
+      updateTab(currentTabId, (prev) => ({
+        attackResults: activeList,
+        selectedResultId: prev.selectedResultId ?? (activeList[0]?.id ?? null),
+      }));
+    };
 
-      const item: AttackResultItem = {
-        id: reqIndex + 1,
-        payloads: perm.payloads,
-        payloadSummary: perm.payloads.join(' | ') || '(default)',
-        statusCode: status,
-        error: execResult.error || (status === 0 ? 'Network Error' : ''),
-        timeout: !!execResult.error?.includes('timed out'),
-        lengthBytes: length,
-        timeMs: dur,
-        comment: status === 302 ? 'Redirect' : status === 200 ? 'OK' : '',
-        rawRequest: wireReq,
-        rawResponse: rawRes,
-      };
+    const flushInterval = setInterval(() => {
+      if (dirty && !abortAttackRef.current) {
+        flushResults();
+      }
+    }, 40);
 
-      collector.push(item);
-      setAttackResults([...collector]);
-      if (reqIndex === 0) setSelectedResultId(item.id);
+    const worker = async () => {
+      while (nextIndex < totalPermutations && !abortAttackRef.current) {
+        const reqIndex = nextIndex++;
+        const perm = permutations[reqIndex];
+        const wireReq = buildReplacedRequest(perm.payloads);
+        const startMs = Date.now();
+        let execResult;
 
-      await new Promise((r) => setTimeout(r, Math.max(delayMs, 10)));
-    }
+        try {
+          execResult = await ipcClient.sendRepeaterRequest({
+            tabId: `intruder-${currentTabId}-${reqIndex}`,
+            targetUrl,
+            rawRequest: wireReq,
+          });
+        } catch (err: any) {
+          execResult = {
+            statusCode: 0,
+            statusText: 'Socket Error',
+            durationMs: Date.now() - startMs,
+            rawResponse: `HTTP/1.1 000 Network Error\r\n\r\n${String(err)}`,
+            sizeBytes: 0,
+            error: String(err),
+          };
+        }
 
-    setIsAttackRunning(false);
+        const dur = execResult.durationMs || (Date.now() - startMs);
+        const rawRes = execResult.rawResponse || '';
+        const status =
+          execResult.statusCode ||
+          (rawRes.match(/HTTP\/[0-9.]+\s+(\d+)/)?.[1] ? parseInt(RegExp.$1, 10) : 0);
+        const length = execResult.sizeBytes || rawRes.length || 0;
+
+        const item: AttackResultItem = {
+          id: reqIndex + 1,
+          payloads: perm.payloads,
+          payloadSummary: perm.payloads.join(' | ') || '(default)',
+          statusCode: status,
+          error: execResult.error || (status === 0 ? 'Network Error' : ''),
+          timeout: !!execResult.error?.includes('timed out'),
+          lengthBytes: length,
+          timeMs: dur,
+          comment: status === 302 ? 'Redirect' : status === 200 ? 'OK' : status === 401 ? 'Unauthorized' : '',
+          rawRequest: wireReq,
+          rawResponse: rawRes,
+        };
+
+        resultsBuffer[reqIndex] = item;
+        completedCount++;
+        dirty = true;
+
+        if (Date.now() - lastFlushTime >= 33) {
+          flushResults();
+        }
+
+        if (delayMs > 0) {
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
+      }
+    };
+
+    const workers = Array.from({ length: poolSize }, () => worker());
+    await Promise.all(workers);
+
+    clearInterval(flushInterval);
+    flushResults(true);
+
+    const totalSeconds = Math.max(0.01, (Date.now() - attackStartTime) / 1000);
+    const avgRps = Math.round(completedCount / totalSeconds);
+
+    updateTab(currentTabId, { isAttackRunning: false });
     addToast({
       type: 'success',
       title: 'Intruder Attack Finished',
-      description: `Completed ${collector.length} requests.`,
+      description: `Dispatched ${completedCount} requests in ${totalSeconds.toFixed(1)}s (~${avgRps.toLocaleString()} RPS).`,
     });
   };
 
   const selectedResult = attackResults.find((r) => r.id === selectedResultId) || attackResults[0];
 
+  // Attack Results Modal Search Bar State
+  const [modalRequestSearch, setModalRequestSearch] = useState('');
+  const [modalRequestActiveMatch, setModalRequestActiveMatch] = useState(0);
+  const [modalResponseSearch, setModalResponseSearch] = useState('');
+  const [modalResponseActiveMatch, setModalResponseActiveMatch] = useState(0);
+
+  const modalRequestTotalMatches = useMemo(
+    () => countSearchMatches(selectedResult?.rawRequest || requestText, modalRequestSearch),
+    [selectedResult?.rawRequest, requestText, modalRequestSearch]
+  );
+
+  const modalResponseTotalMatches = useMemo(
+    () => countSearchMatches(selectedResult?.rawResponse || '', modalResponseSearch),
+    [selectedResult?.rawResponse, modalResponseSearch]
+  );
+
+  const handleModalRequestPrevMatch = () => {
+    if (modalRequestTotalMatches === 0) return;
+    setModalRequestActiveMatch((prev) => (prev > 0 ? prev - 1 : modalRequestTotalMatches - 1));
+  };
+
+  const handleModalRequestNextMatch = () => {
+    if (modalRequestTotalMatches === 0) return;
+    setModalRequestActiveMatch((prev) => (prev < modalRequestTotalMatches - 1 ? prev + 1 : 0));
+  };
+
+  const handleModalResponsePrevMatch = () => {
+    if (modalResponseTotalMatches === 0) return;
+    setModalResponseActiveMatch((prev) => (prev > 0 ? prev - 1 : modalResponseTotalMatches - 1));
+  };
+
+  const handleModalResponseNextMatch = () => {
+    if (modalResponseTotalMatches === 0) return;
+    setModalResponseActiveMatch((prev) => (prev < modalResponseTotalMatches - 1 ? prev + 1 : 0));
+  };
+
   return (
     <div className="flex flex-col w-full h-full bg-[#1e1f22] text-[#dfdfdf] font-sans select-none overflow-hidden text-xs">
-      {/* 1. Intruder Subtabs Strip: [ 1 × ] [ + ] */}
+      {/* 1. Intruder Subtabs Strip: [ 1 × ] [ 2 × ] [ + ] */}
       <div className="h-7 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 flex-shrink-0">
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#1e1f22] border-b-2 border-[#f37021] text-[#f37021] font-semibold text-xs cursor-pointer">
-            <span>1</span>
-            <X className="w-3 h-3 hover:text-white" />
-          </div>
-          <button className="p-1 text-[#9da5b4] hover:text-white hover:bg-[#35383f] rounded transition-colors" title="New Intruder Tab">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {tabs.map((t, idx) => {
+            const isActive = t.id === activeTabId;
+            return (
+              <div
+                key={t.id}
+                onClick={() => setActiveTabId(t.id)}
+                onDoubleClick={() => {
+                  const newName = prompt('Rename Intruder tab:', t.title);
+                  if (newName && newName.trim()) {
+                    renameTab(t.id, newName.trim());
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1 text-xs cursor-pointer border-r border-[#1e1f22] transition-colors max-w-[200px] truncate ${
+                  isActive
+                    ? 'bg-[#1e1f22] border-b-2 border-[#f37021] text-[#f37021] font-semibold'
+                    : 'bg-[#2b2d30] hover:bg-[#35383f] text-[#9da5b4] hover:text-white'
+                }`}
+              >
+                <span className="truncate">{t.title || `${idx + 1}`}</span>
+                {tabs.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(t.id);
+                    }}
+                    className="p-0.5 rounded hover:bg-[#43474e] text-[#8c9099] hover:text-white"
+                    title="Close tab"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <button
+            onClick={() => createTab()}
+            className="p-1 text-[#9da5b4] hover:text-white hover:bg-[#35383f] rounded transition-colors ml-1"
+            title="New Intruder Tab"
+          >
             <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -1009,6 +1211,42 @@ export const FuzzerWorkspaceView: React.FC = () => {
           </button>
         </div>
 
+        {/* Right Drawer Toggle Buttons */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveRightDrawer('payloads')}
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center gap-1.5 ${
+              activeRightDrawer === 'payloads'
+                ? 'bg-[#3e4249] text-white'
+                : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+            }`}
+          >
+            <List className="w-3.5 h-3.5" />
+            <span>Payloads</span>
+          </button>
+          <button
+            onClick={() => setActiveRightDrawer('resource_pool')}
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center gap-1.5 ${
+              activeRightDrawer === 'resource_pool'
+                ? 'bg-[#3e4249] text-white'
+                : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Resource pool</span>
+          </button>
+          <button
+            onClick={() => setActiveRightDrawer('settings')}
+            className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center gap-1.5 ${
+              activeRightDrawer === 'settings'
+                ? 'bg-[#3e4249] text-white'
+                : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+            }`}
+          >
+            <SettingsIcon className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+        </div>
       </div>
 
       {/* 5. Main Center Area: Request Editor + Right Sidebar Drawer */}
@@ -1116,7 +1354,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
                     <div className="flex justify-between text-[11px] text-[#9da5b4] pt-1 font-mono">
                       <span>Payload count: <strong className="text-white">{currentPayloadList.length}</strong></span>
-                      <span>Request count: <strong className="text-white">{currentPayloadList.length}</strong></span>
+                      <span>Request count: <strong className="text-white">{computedRequestCount}</strong></span>
                     </div>
                   </div>
 
@@ -1180,8 +1418,10 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       <span>Maximum concurrent requests:</span>
                       <input
                         type="number"
+                        min="1"
+                        max="1000"
                         value={concurrency}
-                        onChange={(e) => setConcurrency(parseInt(e.target.value, 10) || 1)}
+                        onChange={(e) => setConcurrency(Math.min(1000, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                         className="w-20 bg-[#141517] text-white px-2 py-0.5 rounded border border-[#3e4249] text-xs font-mono"
                       />
                     </label>
@@ -1189,11 +1429,61 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       <span>Throttle delay (ms):</span>
                       <input
                         type="number"
+                        min="0"
                         value={delayMs}
-                        onChange={(e) => setDelayMs(parseInt(e.target.value, 10) || 0)}
+                        onChange={(e) => setDelayMs(Math.max(0, parseInt(e.target.value, 10) || 0))}
                         className="w-20 bg-[#141517] text-white px-2 py-0.5 rounded border border-[#3e4249] text-xs font-mono"
                       />
                     </label>
+
+                    {/* Quick Throughput Presets */}
+                    <div className="pt-2 border-t border-[#3e4249]/50 space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-[#8c9099] block">Execution Presets:</span>
+                      <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(1000); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 1000 Workers (Turbo Engine / 30k RPS)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#ef4444]/20 hover:border-[#ef4444] border border-[#3e4249] rounded text-red-400 font-bold text-left transition-colors"
+                        >
+                          🔥 1000 Workers (Turbo)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(500); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 500 Workers (High Turbo)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#f37021]/20 hover:border-[#f37021] border border-[#3e4249] rounded text-orange-400 font-bold text-left transition-colors"
+                        >
+                          ⚡ 500 Workers (0ms)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(100); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 100 Workers (Fast)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-emerald-400 font-bold text-left transition-colors"
+                        >
+                          🚀 100 Workers (0ms)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(50); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 50 Workers (Standard)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-amber-400 font-bold text-left transition-colors"
+                        >
+                          ⚡ 50 Workers (0ms)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(15); setDelayMs(50); addToast({ type: 'info', title: 'Intruder: 15 Workers (Balanced)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-[#9da5b4] text-left transition-colors"
+                        >
+                          ⚖️ 15 Workers (50ms)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(1); setDelayMs(2000); addToast({ type: 'info', title: 'Intruder: 1 Worker (Stealth / Anti-Ban)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-purple-400 text-left transition-colors"
+                        >
+                          🥷 1 Worker (Stealth)
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1597,12 +1887,22 @@ export const FuzzerWorkspaceView: React.FC = () => {
                     <HttpSyntaxHighlighter
                       content={selectedResult?.rawRequest || requestText}
                       isResponse={false}
+                      searchQuery={modalRequestSearch}
+                      activeMatchIndex={modalRequestActiveMatch}
                     />
                   </div>
-                  <div className="h-6 bg-[#232529] border-t border-[#2b2d30] flex items-center justify-between px-2 text-[10px] text-[#9da5b4]">
-                    <span>0 highlights</span>
-                    <span>Length: {(selectedResult?.rawRequest || '').length}</span>
-                  </div>
+                  <BurpSearchBar
+                    searchQuery={modalRequestSearch}
+                    onSearchChange={(val) => {
+                      setModalRequestSearch(val);
+                      setModalRequestActiveMatch(0);
+                    }}
+                    activeMatchIndex={modalRequestActiveMatch}
+                    totalMatches={modalRequestTotalMatches}
+                    onPrevMatch={handleModalRequestPrevMatch}
+                    onNextMatch={handleModalRequestNextMatch}
+                    selectionInfo={`Length: ${(selectedResult?.rawRequest || requestText || '').length} bytes`}
+                  />
                 </div>
 
                 {/* Right: Response Pane */}
@@ -1642,13 +1942,23 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       <HttpSyntaxHighlighter
                         content={selectedResult?.rawResponse || 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nNo response captured'}
                         isResponse={true}
+                        searchQuery={modalResponseSearch}
+                        activeMatchIndex={modalResponseActiveMatch}
                       />
                     </div>
                   )}
-                  <div className="h-6 bg-[#232529] border-t border-[#2b2d30] flex items-center justify-between px-2 text-[10px] text-[#9da5b4]">
-                    <span>0 highlights</span>
-                    <span>Length: {(selectedResult?.rawResponse || '').length} bytes</span>
-                  </div>
+                  <BurpSearchBar
+                    searchQuery={modalResponseSearch}
+                    onSearchChange={(val) => {
+                      setModalResponseSearch(val);
+                      setModalResponseActiveMatch(0);
+                    }}
+                    activeMatchIndex={modalResponseActiveMatch}
+                    totalMatches={modalResponseTotalMatches}
+                    onPrevMatch={handleModalResponsePrevMatch}
+                    onNextMatch={handleModalResponseNextMatch}
+                    selectionInfo={`Length: ${(selectedResult?.rawResponse || '').length} bytes`}
+                  />
                 </div>
               </div>
             </div>

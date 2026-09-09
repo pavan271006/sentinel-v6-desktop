@@ -47,6 +47,7 @@ pub async fn handle_connection(
     client_addr: SocketAddr,
     state: HandlerState,
 ) -> Result<(), ProxyError> {
+    let _ = client_stream.set_nodelay(true);
     let mut initial_buf = vec![0u8; 8192];
     let n = client_stream.read(&mut initial_buf).await?;
     if n == 0 {
@@ -109,7 +110,10 @@ async fn handle_connect_tunnel(
     // 5. Establish Upstream TLS connection
     let upstream_addr = format!("{}:{}", target_host, target_port);
     let upstream_tcp = match TcpStream::connect(&upstream_addr).await {
-        Ok(s) => s,
+        Ok(s) => {
+            let _ = s.set_nodelay(true);
+            s
+        },
         Err(e) => {
             warn!(
                 "Failed to connect to upstream TLS target {}: {}",
@@ -382,18 +386,43 @@ async fn handle_plain_http(
         return Err(e);
     }
 
-    let ctx = RequestContext::new(client_addr, false, target_uri.clone());
-
     // Check for WebSocket upgrade
     let is_ws = parsed_req
         .headers
         .iter()
         .any(|(n, v)| n.eq_ignore_ascii_case(b"upgrade") && v.eq_ignore_ascii_case(b"websocket"));
 
+    let ctx = RequestContext::new(client_addr, false, target_uri.clone());
+
+    // Execute Request Interceptors
+    let mut parsed_req = parsed_req;
+    let req_action = state
+        .pipeline
+        .execute_on_request(&mut parsed_req, &ctx)
+        .await
+        .map_err(|e| ProxyError::Interceptor(e.to_string()))?;
+
+    match req_action {
+        InterceptAction::Drop { .. } => {
+            return Ok(());
+        }
+        InterceptAction::RespondWith(synthetic_res) => {
+            let wire_res = state.parser.serialize_response(&synthetic_res)?;
+            client_stream.write_all(&wire_res).await?;
+            return Ok(());
+        }
+        InterceptAction::Continue | InterceptAction::Modified => {}
+    }
+
+    let wire_req = state.parser.serialize_request(&parsed_req)?;
+
     // Connect to upstream HTTP target
     let upstream_addr = format!("{}:{}", target_host, target_port);
     let mut upstream_stream = match TcpStream::connect(&upstream_addr).await {
-        Ok(s) => s,
+        Ok(s) => {
+            let _ = s.set_nodelay(true);
+            s
+        },
         Err(e) => {
             return Err(ProxyError::UpstreamConnection {
                 target: upstream_addr,
@@ -404,7 +433,6 @@ async fn handle_plain_http(
 
     if is_ws {
         // Forward WS handshake request
-        let wire_req = state.parser.serialize_request(&parsed_req)?;
         upstream_stream.write_all(&wire_req).await?;
 
         // Read 101 response
@@ -420,15 +448,51 @@ async fn handle_plain_http(
         return Ok(());
     }
 
-    // Forward initial request
-    upstream_stream.write_all(initial_buf).await?;
+    // Forward request
+    upstream_stream.write_all(&wire_req).await?;
+
+    // Read upstream response
+    let mut res_buf = vec![0u8; 65536];
+    let n = upstream_stream.read(&mut res_buf).await?;
+    if n == 0 {
+        return Ok(());
+    }
+
+    let mut parsed_res = match state.parser.parse_response(&res_buf[..n]) {
+        Ok(r) => r,
+        Err(_) => {
+            client_stream.write_all(&res_buf[..n]).await?;
+            return Ok(());
+        }
+    };
+
+    // Execute Response Interceptors
+    let res_action = state
+        .pipeline
+        .execute_on_response(&parsed_req, &mut parsed_res, &ctx)
+        .await
+        .map_err(|e| ProxyError::Interceptor(e.to_string()))?;
+
+    let wire_res = match res_action {
+        InterceptAction::Drop { .. } => {
+            return Ok(());
+        }
+        InterceptAction::RespondWith(synthetic) => {
+            state.parser.serialize_response(&synthetic)?
+        }
+        InterceptAction::Continue | InterceptAction::Modified => {
+            state.parser.serialize_response(&parsed_res)?
+        }
+    };
+
+    client_stream.write_all(&wire_res).await?;
 
     // Record the transaction for HTTP history
     state.recorder.record(PendingTransactionRecord {
-        raw_request: initial_buf.to_vec(),
+        raw_request: wire_req,
         parsed_request: parsed_req.clone(),
-        raw_response: None,
-        parsed_response: None,
+        raw_response: Some(wire_res),
+        parsed_response: Some(parsed_res.clone()),
         timing: start_time.elapsed(),
         tls_info: None,
         scope_id: ctx.scope_id,
@@ -441,7 +505,7 @@ async fn handle_plain_http(
                 id: format!("tx-{:06}", seq),
                 method: parsed_req.method.as_str().to_string(),
                 url: target_uri.clone(),
-                status: 200,
+                status: parsed_res.status_code,
                 duration_ms: start_time.elapsed().as_millis() as u64,
                 in_scope: true,
                 req_headers: None,
@@ -452,8 +516,6 @@ async fn handle_plain_http(
         ));
     }
 
-    // Full-duplex stream forwarding
-    let _ = tokio::io::copy_bidirectional(&mut client_stream, &mut upstream_stream).await;
     Ok(())
 }
 
@@ -469,13 +531,15 @@ async fn verify_scope_and_audit(
             let uri_decision = engine.is_in_scope(target_uri);
             if !uri_decision.allowed {
                 (false, uri_decision.reason.clone(), uri_decision)
-            } else {
+            } else if let Ok(_) = target_host.parse::<std::net::IpAddr>() {
                 let ip_decision = engine.is_ip_in_scope(target_host);
                 if !ip_decision.allowed {
                     (false, ip_decision.reason.clone(), ip_decision)
                 } else {
                     (true, "".to_string(), uri_decision)
                 }
+            } else {
+                (true, "".to_string(), uri_decision)
             }
         };
 

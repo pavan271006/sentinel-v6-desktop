@@ -1,4 +1,4 @@
-﻿import { SafetyConfig } from '../../types/sqlScanner';
+import { SafetyConfig } from '../../types/sqlScanner';
 
 export class SafetyViolationError extends Error {
   constructor(message: string) {
@@ -78,6 +78,8 @@ export class SafetyController {
     this.requestsCount++;
   }
 
+  private adaptiveDelayMs: number = 0;
+
   public recordResponseSuccess(): void {
     this.consecutiveErrors = 0;
   }
@@ -87,11 +89,28 @@ export class SafetyController {
   }
 
   /**
-   * Enforces minimum throttle delay between test requests
+   * Evaluates response telemetry and adapts pacing to protect target server health
+   */
+  public recordResponseMetrics(statusCode: number, latencyMs: number): void {
+    if (statusCode === 429 || statusCode === 503) {
+      // Back off significantly on rate-limiting or server strain
+      this.adaptiveDelayMs = Math.min(this.adaptiveDelayMs + 750, 4000);
+    } else if (latencyMs > 3000) {
+      // Back off moderately if target server response latency is degrading
+      this.adaptiveDelayMs = Math.min(this.adaptiveDelayMs + 250, 2500);
+    } else if (statusCode >= 200 && statusCode < 400 && latencyMs < 800 && this.adaptiveDelayMs > 0) {
+      // Gradually recover throughput when server is responding cleanly
+      this.adaptiveDelayMs = Math.max(0, this.adaptiveDelayMs - 50);
+    }
+  }
+
+  /**
+   * Enforces minimum throttle delay + dynamic adaptive backoff between test requests
    */
   public async throttle(): Promise<void> {
-    if (this.config.rateLimitDelayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, this.config.rateLimitDelayMs));
+    const totalDelay = (this.config.rateLimitDelayMs || 0) + this.adaptiveDelayMs;
+    if (totalDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, totalDelay));
     }
   }
 

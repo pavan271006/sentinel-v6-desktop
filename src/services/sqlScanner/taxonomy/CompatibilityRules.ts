@@ -3,7 +3,7 @@
  * Prunes the 20,445,300 theoretical configuration space down to valid, executable experiments.
  */
 
-import { DbmsType, InjectionContext, ParameterLocation } from '../../types/sqlScanner';
+import { DbmsType, InjectionContext, ParameterLocation } from '../../../types/sqlScanner';
 import { ObservationOracleType, PriorityLevel, TechniqueLifecycle } from './TaxonomyCatalog';
 import { SemanticIntentType, TestSafetyClass } from '../engine/SemanticTestIntent';
 
@@ -33,7 +33,7 @@ export class CompatibilityRules {
     intent: SemanticIntentType,
     context: InjectionContext,
     dbms: DbmsType,
-    transport: ParameterLocation
+    _transport: ParameterLocation
   ): boolean {
     // 1. ORDER BY intent is only compatible with sorting/identifier contexts
     if (intent === 'ORDER_BOUNDARY_TEST' || intent === 'ORDER_DIRECTION_TEST') {

@@ -7,5 +7,7 @@ pub enum ConstraintKind {
     IntegerRange { min: i64, max: i64 },
     StringLength { min_len: usize, max_len: usize },
     DisallowedCharacters { chars: Vec<char> },
+    DisallowedKeywords { keywords: Vec<String> },
+    MaxEntropy { max_entropy: f64 },
     TypeBoundary { sql_type: String },
 }

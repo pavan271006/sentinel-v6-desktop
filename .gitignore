@@ -5,10 +5,20 @@
 *.pem
 *.pfx
 
+# Local databases & runtime caches
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+sentinel_storage.db
+out.txt
+--help
+
 # Rust build artifacts
 target/
+src-tauri/target/
 **/*.rs.bk
-Cargo.lock
 
 # Node / Web artifacts
 node_modules/
@@ -21,3 +31,4 @@ build/
 .DS_Store
 Thumbs.db
 *.log
+sentinel_desktop_debug.log

@@ -156,6 +156,23 @@ pub enum UnaryOpIr {
     BitwiseNot,
 }
 
+impl UnaryOpIr {
+    pub fn as_sql_operator(&self) -> &'static str {
+        match self {
+            Self::Not => "NOT ",
+            Self::Neg => "-",
+            Self::Plus => "+",
+            Self::IsNull => " IS NULL",
+            Self::IsNotNull => " IS NOT NULL",
+            Self::BitwiseNot => "~",
+        }
+    }
+
+    pub fn is_postfix(&self) -> bool {
+        matches!(self, Self::IsNull | Self::IsNotNull)
+    }
+}
+
 /// Join types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum JoinTypeIr {

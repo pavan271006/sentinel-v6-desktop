@@ -3,7 +3,7 @@
  * Compiles high-level SemanticTestIntent structures into concrete SQL dialect AST/payloads.
  */
 
-import { CandidateParameter, DbmsType, InjectionContext } from '../../types/sqlScanner';
+import { CandidateParameter, DbmsType, InjectionContext } from '../../../types/sqlScanner';
 import { SemanticIntentType } from './SemanticTestIntent';
 
 export interface CompiledPayloadPair {
@@ -38,7 +38,6 @@ export class DialectCompiler {
     switch (intent) {
       case 'ORDER_BOUNDARY_TEST': {
         const col = options?.targetIndex || 1;
-        const comment = dbms === 'Oracle' ? '--' : '-- ';
         return {
           truePayload: `(CASE WHEN (1=1) THEN ${col} ELSE 1 END)`,
           falsePayload: `(CASE WHEN (1=2) THEN ${col} ELSE 1 END)`,

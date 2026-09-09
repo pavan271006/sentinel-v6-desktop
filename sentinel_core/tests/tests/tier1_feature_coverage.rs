@@ -428,7 +428,7 @@ fn test_t1_proxy_dynamic_leaf_cert_generation() {
     let server_config = generator.generate_server_config("api.target.com").unwrap();
     assert_eq!(
         server_config.alpn_protocols,
-        vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        vec![b"http/1.1".to_vec()]
     );
 }
 

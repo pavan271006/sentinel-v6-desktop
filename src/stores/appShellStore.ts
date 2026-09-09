@@ -42,7 +42,7 @@ interface AppShellState {
 }
 
 export const useAppShellStore = create<AppShellState>((set) => ({
-  activeWorkspace: 'traffic',
+  activeWorkspace: 'sql',
   sidebarCollapsed: false,
   inspectorCollapsed: false,
   bottomDrawerOpen: false,

@@ -161,7 +161,10 @@ async fn test_repeater_sec01_out_of_scope_enforcement() {
     );
 
     // Critical audit event must be published
-    let event = crit_rx.recv().await.unwrap();
+    let event = tokio::time::timeout(tokio::time::Duration::from_secs(2), crit_rx.recv())
+        .await
+        .expect("Timeout waiting for critical event")
+        .unwrap();
     if let CriticalEvent::ScopeViolationAttempt { source, target, .. } = event {
         assert_eq!(source, "RepeaterEngine");
         assert_eq!(target, out_of_scope_url);

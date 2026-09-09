@@ -39,7 +39,8 @@ describe('useRepeaterStore Zustand Unit Tests', () => {
       expect(created?.url).toBe('https://target.local/api/v1/custom');
     });
 
-    it('creates a tab from transaction and switches active workspace to repeater', () => {
+    it('creates a tab from transaction in background without disrupting current workspace', () => {
+      useAppShellStore.setState({ activeWorkspace: 'traffic' });
       const tx = {
         id: 'tx-001',
         method: 'PUT',
@@ -62,7 +63,8 @@ describe('useRepeaterStore Zustand Unit Tests', () => {
       expect(tab?.method).toBe('PUT');
       expect(tab?.url).toBe('https://api.target.local/orders/99');
       expect(tab?.body).toBe('{"status":"paid"}');
-      expect(useAppShellStore.getState().activeWorkspace).toBe('repeater');
+      // Preserves current workspace (Burp Suite non-disruptive behavior)
+      expect(useAppShellStore.getState().activeWorkspace).toBe('traffic');
     });
 
     it('closes a tab and pushes it to closedTabsStack', () => {

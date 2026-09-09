@@ -1,7 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTrafficStore } from '../stores/trafficStore';
 import { useToastStore } from '../stores/toastStore';
 import { useRepeaterStore } from '../stores/repeaterStore';
+import { useInterceptStore } from '../stores/interceptStore';
 import {
   TrafficQuickFilters,
   VirtualTrafficTable,
@@ -10,9 +11,11 @@ import {
   HttpHistoryFilterModal,
   HttpHistoryFilterConfig,
   DEFAULT_FILTER_CONFIG,
+  ProxyInterceptView,
+  WebSocketHistoryView,
+  MatchReplaceView,
 } from '../components/traffic';
 import { SplitPane } from '../design-system/SplitPane';
-import { Button } from '../design-system/Button';
 import {
   Search,
   Play,
@@ -21,9 +24,9 @@ import {
   GitCompare,
   Trash2,
   CornerDownLeft,
-  Globe,
+  Settings,
+  X,
 } from 'lucide-react';
-import { ipcClient } from '../ipc/client';
 
 import { TrafficSummary } from '../types/traffic';
 
@@ -270,7 +273,9 @@ export const TrafficWorkspaceView: React.FC = () => {
     [createTabFromTransaction, addToast]
   );
 
-  const [proxySubTab, setProxySubTab] = React.useState<'history' | 'intercept' | 'websockets' | 'options'>('history');
+  const { isInterceptOn, interceptedQueue } = useInterceptStore();
+  const [proxySubTab, setProxySubTab] = useState<'history' | 'intercept' | 'websockets' | 'options'>('history');
+  const [isProxySettingsOpen, setIsProxySettingsOpen] = useState(false);
 
   return (
     <div className="flex flex-col w-full h-full bg-[#1e1f22] overflow-hidden">
@@ -278,13 +283,16 @@ export const TrafficWorkspaceView: React.FC = () => {
       <div className="h-7 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center px-2 gap-1 select-none flex-shrink-0 text-xs font-sans">
         <button
           onClick={() => setProxySubTab('intercept')}
-          className={`px-3 py-1 font-medium rounded-t transition-colors ${
+          className={`px-3 py-1 font-medium rounded-t transition-colors flex items-center gap-1.5 ${
             proxySubTab === 'intercept'
               ? 'bg-[#1e1f22] text-[#f37021] border-b-2 border-[#f37021] font-semibold'
               : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
           }`}
         >
-          Intercept
+          <span>Intercept</span>
+          {(isInterceptOn || interceptedQueue.length > 0) && (
+            <span className="w-2 h-2 rounded-full bg-[#f37021] animate-pulse" title="Intercept active" />
+          )}
         </button>
         <button
           onClick={() => setProxySubTab('history')}
@@ -317,86 +325,24 @@ export const TrafficWorkspaceView: React.FC = () => {
           Match and replace
         </button>
         <button
-          onClick={() => setProxySubTab('options')}
-          className={`px-3 py-1 font-medium rounded-t transition-colors ml-auto text-[#9da5b4] hover:text-white flex items-center gap-1`}
+          onClick={() => setIsProxySettingsOpen(true)}
+          className="px-3 py-1 font-medium rounded-t transition-colors ml-auto text-[#9da5b4] hover:text-white flex items-center gap-1"
         >
-          <span>⚙</span>
+          <Settings className="w-3.5 h-3.5" />
           <span>Proxy settings</span>
         </button>
       </div>
 
+      {/* 2. Subtab Content Views */}
       {proxySubTab === 'intercept' ? (
-        /* Burp Suite Live Intercept Mode View */
-        <div className="flex-1 flex flex-col bg-[#141517] p-3 overflow-hidden">
-          {/* Intercept Action Toolbar */}
-          <div className="flex items-center gap-2 pb-3 border-b border-[#2b2d30] select-none">
-            <Button
-              variant="primary"
-              size="sm"
-              className="bg-[#f37021] hover:bg-[#e05d06] text-white font-bold px-4"
-              onClick={() => addToast({ type: 'success', title: 'Forwarded Request' })}
-            >
-              Forward
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              className="bg-[#7f1d1d] hover:bg-[#991b1b] text-white font-bold px-4"
-              onClick={() => addToast({ type: 'warning', title: 'Dropped Request' })}
-            >
-              Drop
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="bg-[#2b2d30] hover:bg-[#35383f] text-[#dfdfdf] border border-[#3e4249]"
-              onClick={toggleStreaming}
-            >
-              {isPaused ? 'Intercept is off' : 'Intercept is on'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="bg-[#2b2d30] hover:bg-[#35383f] text-[#dfdfdf] border border-[#3e4249]"
-              onClick={() => {
-                if (activeTransaction) handleSendToRepeater(activeTransaction);
-              }}
-            >
-              Action ▾
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="bg-[#2b2d30] hover:bg-[#35383f] text-[#dfdfdf] border border-[#3e4249] flex items-center gap-1.5 ml-auto"
-              onClick={async () => {
-                try {
-                  await ipcClient.launchSystemBrowser('https://www.google.com', 8085);
-                  addToast({ type: 'success', title: 'Proxy Browser Launched (127.0.0.1:8085)' });
-                } catch {
-                  addToast({ type: 'info', title: 'Proxy Browser Active (127.0.0.1:8085)' });
-                }
-              }}
-            >
-              <Globe className="w-3.5 h-3.5 text-[#f37021]" />
-              <span>Open browser</span>
-            </Button>
-          </div>
-
-          {/* Intercepted Raw Request Editor */}
-          <div className="flex-1 flex flex-col pt-3 min-h-0">
-            <div className="text-xs font-mono text-[#9da5b4] pb-1.5 flex items-center justify-between">
-              <span>Intercepted Request: {activeTransaction?.url || 'https://target.local/api/v1/auth/login'}</span>
-              <span className="text-[11px] text-[#f37021] font-bold">127.0.0.1:8085 (Listening)</span>
-            </div>
-            <textarea
-              className="flex-1 w-full bg-[#1e1f22] text-[#34d399] font-mono text-xs p-3 rounded border border-[#313438] focus:border-[#f37021] focus:outline-none resize-none"
-              defaultValue={`POST /api/v1/auth/login HTTP/1.1\r\nHost: target.local\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: 48\r\n\r\n{"username": "admin@target.local", "pass": "admin123"}`}
-            />
-          </div>
-        </div>
+        <ProxyInterceptView />
+      ) : proxySubTab === 'websockets' ? (
+        <WebSocketHistoryView />
+      ) : proxySubTab === 'options' ? (
+        <MatchReplaceView />
       ) : (
         <>
-          {/* 2. Burp Suite Iconic Filter Bar */}
+          {/* HTTP History Filter Bar */}
           <div className="h-9 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 gap-2 select-none flex-shrink-0 text-xs font-sans">
             {/* Filter Summary Pill */}
             <div
@@ -492,7 +438,7 @@ export const TrafficWorkspaceView: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Filter Presets (Hidden/Collapsible) */}
+          {/* Quick Filter Presets */}
           <div className="hidden">
             <TrafficQuickFilters
               scopeOnly={filterScopeOnly}
@@ -558,6 +504,60 @@ export const TrafficWorkspaceView: React.FC = () => {
         config={filterConfig}
         onApply={(newCfg) => setFilterConfig(newCfg)}
       />
+
+      {/* Proxy Settings Modal */}
+      {isProxySettingsOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1e1f22] border border-[#3e4249] rounded-lg shadow-2xl w-full max-w-md p-5 space-y-4 text-xs font-sans">
+            <div className="flex items-center justify-between border-b border-[#313438] pb-2">
+              <span className="font-bold text-white text-sm">Proxy Settings & Listeners</span>
+              <button onClick={() => setIsProxySettingsOpen(false)} className="text-[#9da5b4] hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-[#9da5b4] font-medium block mb-1">Proxy Listeners</label>
+                <div className="bg-[#141517] p-2.5 rounded border border-[#313438] space-y-1.5 font-mono text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white">127.0.0.1:8085 (HTTP/S)</span>
+                    <span className="text-[#34d399] font-bold">RUNNING</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white">127.0.0.1:8080 (WS)</span>
+                    <span className="text-[#34d399] font-bold">RUNNING</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[#9da5b4] font-medium block mb-1">CA Certificate</label>
+                <div className="bg-[#141517] p-2.5 rounded border border-[#313438] flex items-center justify-between">
+                  <span className="text-[#c4c7c5]">PortSwigger / Sentinel CA</span>
+                  <span className="text-[#38bdf8] font-bold">INSTALLED</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-[#9da5b4] font-medium block mb-1">Intercept Client Requests</label>
+                <div className="text-[#8c9099] leading-relaxed">
+                  Automatically pause client requests for inspection and tamper before forwarding upstream.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-[#313438]">
+              <button
+                onClick={() => setIsProxySettingsOpen(false)}
+                className="px-4 py-1.5 rounded bg-[#f37021] hover:bg-[#e05d06] text-white font-bold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

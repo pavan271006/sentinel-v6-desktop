@@ -102,6 +102,7 @@ export interface RepeaterSendRequestPayload {
   rawRequest: string;
   envVars?: Record<string, string>;
   interpolate?: boolean;
+  proxy?: any;
 }
 
 export interface RepeaterExecutionResult {

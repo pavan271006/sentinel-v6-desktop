@@ -17,10 +17,23 @@ export class ConcurrentExecutor {
   private activeWorkers: number = 0;
   private queue: Array<() => void> = [];
   private timingLaneLock: Promise<void> = Promise.resolve();
+  private isAborted: boolean = false;
 
-  constructor(defaultConcurrency: number = 10, maxConcurrency: number = 50) {
+  constructor(defaultConcurrency: number = 10, maxConcurrency: number = 100) {
     this.concurrencyLimit = Math.min(Math.max(1, defaultConcurrency), maxConcurrency);
     this.maxLimit = maxConcurrency;
+  }
+
+  public abort(): void {
+    this.isAborted = true;
+    const queuedResolvers = [...this.queue];
+    this.queue = [];
+    queuedResolvers.forEach((resolve) => resolve());
+  }
+
+  public reset(): void {
+    this.isAborted = false;
+    this.queue = [];
   }
 
   public getConcurrency(): number {
@@ -35,6 +48,10 @@ export class ConcurrentExecutor {
    * Submits a task to the executor according to its safety class.
    */
   public async submit<T>(task: ExecutionTask<T>): Promise<T> {
+    if (this.isAborted) {
+      throw new Error('Concurrent execution aborted');
+    }
+
     if (task.safetyClass === 'TIMING_SENSITIVE') {
       // Route to dedicated sequential timing lane to prevent network jitter cross-contamination
       return this.executeInTimingLane(task.run);
@@ -53,28 +70,44 @@ export class ConcurrentExecutor {
    * Executes a batch of PARALLEL_SAFE tasks concurrently with bounded worker pool.
    */
   public async mapParallel<T, R>(items: T[], fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+    if (this.isAborted) {
+      return [];
+    }
     const results: R[] = new Array(items.length);
     const tasks = items.map((item, idx) => ({
       id: `task_${idx}`,
       safetyClass: 'PARALLEL_SAFE' as TestSafetyClass,
       run: async () => {
+        if (this.isAborted) return undefined as unknown as R;
         const res = await fn(item, idx);
         results[idx] = res;
         return res;
       },
     }));
 
-    await Promise.all(tasks.map((t) => this.submit(t)));
+    await Promise.all(tasks.map((t) => this.submit(t).catch((err) => {
+      if (this.isAborted) return undefined;
+      throw err;
+    })));
     return results;
   }
 
   private async executeInParallelPool<T>(runFn: () => Promise<T>): Promise<T> {
+    if (this.isAborted) {
+      throw new Error('Execution aborted');
+    }
     if (this.activeWorkers >= this.concurrencyLimit) {
       await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+    if (this.isAborted) {
+      throw new Error('Execution aborted');
     }
 
     this.activeWorkers++;
     try {
+      if (this.isAborted) {
+        throw new Error('Execution aborted');
+      }
       return await runFn();
     } finally {
       this.activeWorkers--;
@@ -86,6 +119,9 @@ export class ConcurrentExecutor {
   }
 
   private async executeInTimingLane<T>(runFn: () => Promise<T>): Promise<T> {
+    if (this.isAborted) {
+      throw new Error('Execution aborted');
+    }
     // Chain sequentially onto the timing lane lock
     let releaseLock: () => void;
     const currentLock = new Promise<void>((resolve) => {
@@ -97,6 +133,9 @@ export class ConcurrentExecutor {
 
     await previousLock;
     try {
+      if (this.isAborted) {
+        throw new Error('Execution aborted');
+      }
       return await runFn();
     } finally {
       releaseLock!();

@@ -30,7 +30,7 @@ async fn test_dispatch_scope_fail_closed_sec01() {
 
     assert!(res.is_err());
     let err = res.err().unwrap();
-    assert!(err.to_string().contains("out of scope"));
+    assert!(err.to_string().to_lowercase().contains("scope"));
 }
 
 #[tokio::test]

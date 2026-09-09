@@ -7,6 +7,7 @@ import { useToastStore } from '../stores/toastStore';
 import { useScannerStore } from '../stores/scannerStore';
 import { useTrafficStore } from '../stores/trafficStore';
 import { useAppShellStore } from '../stores/appShellStore';
+import { useRepeaterStore } from '../stores/repeaterStore';
 import { useEventBusStore } from '../stores/eventBusStore';
 import { ipcClient } from '../ipc/client';
 import {
@@ -712,8 +713,12 @@ export const ScannerWorkspaceView: React.FC = () => {
                       size="sm"
                       leftIcon={<ExternalLink className="w-3.5 h-3.5" />}
                       onClick={() => {
-                        setActiveWorkspace('repeater');
-                        addToast({ type: 'info', title: `Loaded ${selectedCand.targetUri} into Repeater` });
+                        useRepeaterStore.getState().createTabFromTransaction({
+                          url: selectedCand.targetUri,
+                          method: 'GET',
+                          rawRequest: `GET ${selectedCand.targetUri} HTTP/1.1\r\nHost: target\r\n\r\n`,
+                        } as any);
+                        addToast({ type: 'success', title: `Sent ${selectedCand.targetUri} to Repeater` });
                       }}
                     >
                       Send to Repeater

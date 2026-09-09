@@ -155,6 +155,17 @@ export class SentinelIpcClient {
           estimated_cost: 2,
           reason: 'Information gain optimization',
         } as unknown as T;
+      case 'cmd_launch_wireshark':
+        return `Launched Wireshark (filter: ${(args?.filter as string) || 'default'})` as unknown as T;
+      case 'cmd_check_packet_capture_status':
+        return {
+          wireshark: true,
+          tshark: true,
+          npcap: true,
+          wireshark_version: '4.6.8',
+          npcap_version: '1.88',
+          default_filter: 'tcp.port == 8085 or tcp.port == 8080',
+        } as unknown as T;
       default:
         throw new Error(`Unhandled IPC command in fallback: ${command}`);
     }
@@ -319,6 +330,22 @@ export class SentinelIpcClient {
     reason: string;
   }> {
     return this.invoke('cmd_ucmax_plan_next_step', params);
+  }
+
+  // Wireshark & Npcap Native Forensics
+  public async launchWireshark(filter?: string): Promise<string> {
+    return this.invoke<string>('cmd_launch_wireshark', { filter });
+  }
+
+  public async checkPacketCaptureStatus(): Promise<{
+    wireshark: boolean;
+    tshark: boolean;
+    npcap: boolean;
+    wireshark_version: string;
+    npcap_version: string;
+    default_filter: string;
+  }> {
+    return this.invoke('cmd_check_packet_capture_status');
   }
 }
 

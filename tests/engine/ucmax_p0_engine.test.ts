@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TaxonomyCatalog, MECHANISMS } from '../../src/services/sqlScanner/taxonomy/TaxonomyCatalog';
+import { MECHANISMS } from '../../src/services/sqlScanner/taxonomy/TaxonomyCatalog';
 import { CompatibilityRules } from '../../src/services/sqlScanner/taxonomy/CompatibilityRules';
-import { ShannonEntropy, BeliefState } from '../../src/services/sqlScanner/engine/BeliefState';
+import { ShannonEntropy } from '../../src/services/sqlScanner/engine/BeliefState';
 import { HypothesisEngine } from '../../src/services/sqlScanner/engine/HypothesisEngine';
 import { DialectCompiler } from '../../src/services/sqlScanner/engine/DialectCompiler';
 import { EarlyStoppingPolicy } from '../../src/services/sqlScanner/engine/EarlyStoppingPolicy';
@@ -217,9 +217,6 @@ describe('UCMA-X P0 Dynamic Engine — Complete Verification Suite', () => {
 
   describe('7. In-Process Wald Sequential Probability Ratio Test (SPRT)', () => {
     it('accepts H1 (Vulnerable) when sequential samples exhibit genuine sleep delay', () => {
-      const baselineMean = 50;
-      const baselineStdDev = 10;
-      const delayMs = 3000;
       const samples = [3050, 3020]; // 2 samples of ~3s delay
 
       const decision = TimeBasedTester.evaluateWithSprt(samples, [45, 55, 50], 3);

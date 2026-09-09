@@ -336,35 +336,26 @@ impl ScopeEngine for DefaultScopeEngine {
             }
         }
 
-        // 3. If no inclusion rules are configured, default to ALLOW (unrestricted mode)
-        if self.include_rules.is_empty() {
-            return ScopeDecision::allow(
-                uri_trimmed,
-                self.scope_version,
-                None,
-                "Scope is unrestricted: all targets permitted",
-            );
-        }
-
-        // Default: Allow all targets in unrestricted mode
-        ScopeDecision::allow(
-            uri_trimmed,
-            self.scope_version,
-            None,
-            "Target allowed: unrestricted scope",
-        )
+        // 3. If no inclusion rules are configured, default to DENY (fail-closed)
+        ScopeDecision::default_deny(uri_trimmed, self.scope_version)
     }
 
     fn is_ip_in_scope(&self, ip_str: &str) -> ScopeDecision {
         let ip_trimmed = ip_str.trim();
         let parsed_ip = match IpAddr::from_str(ip_trimmed) {
-            Ok(ip) => Some(ip),
-            Err(_) => None,
+            Ok(ip) => ip,
+            Err(_) => {
+                return ScopeDecision::malformed_fail_closed(
+                    ip_str,
+                    self.scope_version,
+                    "Fail-closed: Invalid IP address format",
+                );
+            }
         };
 
         // 1. Check EXCLUSION rules first
         for rule in &self.exclude_rules {
-            let res = rule.matches(ip_trimmed, None, parsed_ip);
+            let res = rule.matches(ip_trimmed, None, Some(parsed_ip));
             if res.is_matched() {
                 return ScopeDecision::exclude_deny(
                     ip_trimmed,
@@ -377,7 +368,7 @@ impl ScopeEngine for DefaultScopeEngine {
 
         // 2. Check INCLUSION rules
         for rule in &self.include_rules {
-            let res = rule.matches(ip_trimmed, None, parsed_ip);
+            let res = rule.matches(ip_trimmed, None, Some(parsed_ip));
             if res.is_matched() {
                 return ScopeDecision::allow_rule(
                     ip_trimmed,
@@ -388,13 +379,8 @@ impl ScopeEngine for DefaultScopeEngine {
             }
         }
 
-        // 3. Default: Allow all targets in unrestricted mode
-        ScopeDecision::allow(
-            ip_trimmed,
-            self.scope_version,
-            None,
-            "IP allowed: unrestricted scope",
-        )
+        // 3. If no inclusion rules are configured, default to DENY (fail-closed)
+        ScopeDecision::default_deny(ip_trimmed, self.scope_version)
     }
 
     fn update_scope(&mut self, scope: Scope) -> Result<(), SentinelError> {

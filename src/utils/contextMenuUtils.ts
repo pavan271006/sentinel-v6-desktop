@@ -109,7 +109,6 @@ export function buildTrafficContextMenu(
           options.onSendToIntruder(tx);
         } else {
           sendToIntruder(tx);
-          setActiveWorkspace('fuzzer');
           addToast({ type: 'success', title: 'Sent to Intruder', description: `${method} ${targetUrl}` });
         }
       },
@@ -122,7 +121,6 @@ export function buildTrafficContextMenu(
           options.onSendToRepeater(tx);
         } else {
           createTabFromTransaction(tx);
-          setActiveWorkspace('repeater');
         }
       },
     },

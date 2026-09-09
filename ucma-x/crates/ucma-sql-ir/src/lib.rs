@@ -7,8 +7,10 @@ pub mod types;
 pub mod visitor;
 
 pub use ir::{
-    DeleteIr, ExpressionIr, FunctionIr, InsertIr, LimitOffsetIr, OrderByIr, ProjectionIr,
-    SelectIr, SqlSemanticIr, StatementIr, TableRefIr, UnionIr, UpdateIr,
+    CompilationError, DeleteIr, ExpressionIr, FunctionIr, InsertIr, LimitOffsetIr, MssqlCompiler,
+    MySqlCompiler, OracleCompiler, OrderByIr, PostgresCompiler, ProjectionIr, SelectIr,
+    SqlDialectCompiler, SqlIrExpr, SqlSemanticIr, SqliteCompiler, StatementIr, TableRefIr,
+    UnionIr, UpdateIr,
 };
 pub use mutation::{MutationPoint, MutationScanner, SemanticMutator};
 pub use types::{

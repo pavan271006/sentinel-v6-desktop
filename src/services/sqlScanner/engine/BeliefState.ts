@@ -3,7 +3,7 @@
  * Represents the multi-dimensional probability distribution and Shannon entropy of parameter hypotheses.
  */
 
-import { DbmsType, InjectionContext } from '../../types/sqlScanner';
+import { DbmsType, InjectionContext } from '../../../types/sqlScanner';
 
 export interface ProbabilityDistribution<T extends string> {
   probabilities: Record<T, number>;

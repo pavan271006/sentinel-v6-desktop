@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 1420 --strictPort",
+    "dev:desktop": "tauri dev",
     "build": "tsc && vite build",
+    "build:release": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "launch": "Launch-Sentinel.bat",
+    "rebuild:launch": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml && Launch-Sentinel.bat",
+    "tauri": "tauri",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -21,6 +26,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@types/node": "^22.13.4",

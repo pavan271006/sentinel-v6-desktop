@@ -24,6 +24,7 @@ import { buildTrafficContextMenu } from '../../utils/contextMenuUtils';
 import { SyntaxHighlightedEditor } from '../common/SyntaxHighlightedEditor';
 import { RawByteInspector } from '../../design-system/RawByteInspector';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
+import { BurpEditorToolbar } from '../common/BurpEditorToolbar';
 
 
 const HTTP_METHODS: { label: string; value: HttpMethod }[] = [
@@ -72,11 +73,17 @@ export const RequestEditorPanel: React.FC = () => {
     cancelRequest,
     toggleVariablesModal,
     interpolateRequest,
+    isInspectorOpen,
+    toggleInspector,
+    setSelectionData,
   } = useRepeaterStore();
 
   const tab = tabs.find((t) => t.id === activeTabId) || tabs[0];
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [hideBoringHeaders, setHideBoringHeaders] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [showNonPrintable, setShowNonPrintable] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -291,7 +298,7 @@ export const RequestEditorPanel: React.FC = () => {
         )}
       </div>
 
-      {/* Sub-View Mode Selector Tabs */}
+      {/* Sub-View Mode Selector Tabs & Toolbar */}
       <div className="flex items-center justify-between border-b border-border-subtle bg-bg-canvas/40 px-2 flex-shrink-0">
         <Tabs
           tabs={viewTabs}
@@ -299,9 +306,9 @@ export const RequestEditorPanel: React.FC = () => {
           onChange={(tabId) => setRequestViewMode(tab.id, tabId as RequestEditorMode)}
         />
 
-        {/* Auto Content-Length toggle */}
-        <div className="flex items-center gap-2 pr-2 text-xs text-text-muted select-none">
-          <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-primary">
+        <div className="flex items-center gap-3 pr-1">
+          {/* Auto Content-Length toggle */}
+          <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-primary text-xs text-text-muted select-none">
             <input
               type="checkbox"
               checked={tab.autoContentLength}
@@ -310,6 +317,17 @@ export const RequestEditorPanel: React.FC = () => {
             />
             <span className="text-[11px] font-mono">Auto Content-Length</span>
           </label>
+
+          <BurpEditorToolbar
+            hideBoringHeaders={hideBoringHeaders}
+            onToggleHideBoringHeaders={() => setHideBoringHeaders((prev) => !prev)}
+            wordWrap={wordWrap}
+            onToggleWordWrap={() => setWordWrap((prev) => !prev)}
+            showNonPrintable={showNonPrintable}
+            onToggleShowNonPrintable={() => setShowNonPrintable((prev) => !prev)}
+            inspectorOpen={isInspectorOpen}
+            onToggleInspector={toggleInspector}
+          />
         </div>
       </div>
 
@@ -323,6 +341,10 @@ export const RequestEditorPanel: React.FC = () => {
               onChange={(val) => updateTabRawRequest(tab.id, val)}
               searchQuery={searchQuery}
               activeMatchIndex={activeMatchIndex}
+              wordWrap={wordWrap}
+              hideUninterestingHeaders={hideBoringHeaders}
+              showNonPrintable={showNonPrintable}
+              onSelectionChange={(sel) => setSelectionData(sel)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, isOpen: true });
@@ -350,8 +372,36 @@ export const RequestEditorPanel: React.FC = () => {
             <textarea
               value={tab.rawRequest}
               onChange={(e) => updateTabRawRequest(tab.id, e.target.value)}
+              onSelect={(e) => {
+                const el = e.currentTarget;
+                setSelectionData({
+                  text: el.value.substring(el.selectionStart, el.selectionEnd),
+                  start: el.selectionStart,
+                  end: el.selectionEnd,
+                });
+              }}
+              onKeyUp={(e) => {
+                const el = e.currentTarget;
+                setSelectionData({
+                  text: el.value.substring(el.selectionStart, el.selectionEnd),
+                  start: el.selectionStart,
+                  end: el.selectionEnd,
+                });
+              }}
+              onMouseUp={(e) => {
+                const el = e.currentTarget;
+                setSelectionData({
+                  text: el.value.substring(el.selectionStart, el.selectionEnd),
+                  start: el.selectionStart,
+                  end: el.selectionEnd,
+                });
+              }}
               placeholder="GET /api/v1/ HTTP/1.1&#10;Host: target.local&#10;User-Agent: Sentinel/6.0.0 Repeater&#10;&#10;"
-              style={{ fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}
+              style={{
+                fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                wordBreak: wordWrap ? 'break-all' : 'normal',
+              }}
               className="flex-1 w-full bg-[#1e1f22] border border-border-subtle rounded p-2.5 font-mono text-[11px] text-[#dfdfdf] resize-none outline-none focus:border-[#f37021] transition-colors leading-5 selection:bg-[#f37021]/30"
               spellCheck={false}
             />

@@ -1,0 +1,11 @@
+{
+  "useMarkdownLinks": true,
+  "newFileLocation": "root",
+  "attachmentFolderPath": "attachments",
+  "showLineNumber": true,
+  "foldHeading": true,
+  "foldIndent": true,
+  "showFrontmatter": true,
+  "livePreview": true,
+  "autoConvertHtml": true
+}

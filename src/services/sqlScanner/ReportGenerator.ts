@@ -1,6 +1,22 @@
-import { SqlScanReport } from '../../types/sqlScanner';
+import { SqlScanReport, SqlScanFinding } from '../../types/sqlScanner';
+import { ComplianceMapper } from './engine/ComplianceMapper';
+import { WafRuleGenerator } from './engine/WafRuleGenerator';
+import { BountyTemplateExporter } from './engine/BountyTemplateExporter';
 
 export class ReportGenerator {
+  /**
+   * Generates a 1-Click HackerOne formatted bug bounty submission report
+   */
+  public static generateHackerOneReport(finding: SqlScanFinding, report: SqlScanReport): string {
+    return BountyTemplateExporter.exportHackerOne(finding, report);
+  }
+
+  /**
+   * Generates a 1-Click Bugcrowd formatted bug bounty submission report
+   */
+  public static generateBugcrowdReport(finding: SqlScanFinding, report: SqlScanReport): string {
+    return BountyTemplateExporter.exportBugcrowd(finding, report);
+  }
   /**
    * Generates comprehensive technical report in Markdown format
    */
@@ -23,6 +39,18 @@ export class ReportGenerator {
     lines.push(`## Vulnerability Summary`);
     if (report.findings.length === 0) {
       lines.push(`> No SQL injection vulnerabilities were confirmed on the tested parameters.`);
+      if (report.safetyCertificate && report.safetyCertificate.isSafe) {
+        lines.push(``);
+        lines.push(`### Formal Safety Certificate (Negative Proof of Immunity)`);
+        lines.push(`- **Status:** **MATHEMATICALLY VERIFIED IMMUNE** (Zero Relational Control Demonstrated)`);
+        lines.push(`- **Total Verified Invariant Proofs:** ${report.safetyCertificate.proofs.length}`);
+        lines.push(``);
+        lines.push(`| Immunity Theorem | Confidence | Evidence Basis |`);
+        lines.push(`| :--- | :--- | :--- |`);
+        for (const proof of report.safetyCertificate.proofs) {
+          lines.push(`| **${proof.reason}** | ${(proof.confidence * 100).toFixed(0)}% | ${proof.evidenceLogs.join(' ')} |`);
+        }
+      }
     } else {
       lines.push(`| Severity | Finding | Parameter | Injection Type | Confidence | CWE |`);
       lines.push(`| :--- | :--- | :--- | :--- | :--- | :--- |`);
@@ -55,6 +83,25 @@ export class ReportGenerator {
         }
         lines.push(``);
 
+        lines.push(`#### 8-Layer Defense Resilience & Operational Impact`);
+        lines.push(`- **AST Structure Control:** ${f.sqlStructureControl ? 'CONFIRMED' : 'UNCONFIRMED'}`);
+        lines.push(`- **Cross-Tenant Access:** ${f.crossTenantAccess ? 'BREACHED' : 'CONSTRAINED (RLS/PoLP)'}`);
+        lines.push(`- **Data Access Demonstrated:** ${f.dataAccessDemonstrated ? 'YES' : 'NO'}`);
+        lines.push(`- **Write Capability:** ${f.writeCapability ? 'YES' : 'NO'}`);
+        lines.push(`- **Privilege Capability:** ${f.privilegeCapability ? 'ELEVATED' : 'CONSTRAINED'}`);
+        if (f.impactConstraints && f.impactConstraints.length > 0) {
+          lines.push(`- **Active Kernel Impact Constraints:** \`${f.impactConstraints.join(', ')}\``);
+        }
+        if (f.defenseLayerTrace && f.defenseLayerTrace.length > 0) {
+          lines.push(``);
+          lines.push(`| Layer | Status | Certainty | Evaluation Basis |`);
+          lines.push(`| :--- | :--- | :--- | :--- |`);
+          for (const lt of f.defenseLayerTrace) {
+            lines.push(`| **${lt.layer}** | \`${lt.status}\` | ${lt.certainty} | ${lt.details || 'N/A'} |`);
+          }
+        }
+        lines.push(``);
+
         if (f.evidence.length > 0) {
           lines.push(`#### Reproduction Evidence & Probes`);
           for (const ev of f.evidence) {
@@ -71,6 +118,33 @@ export class ReportGenerator {
 
         lines.push(`#### Remediation Guidance`);
         lines.push(f.remediation);
+        lines.push(``);
+
+        // Compliance & Standards Mapping
+        const compliance = ComplianceMapper.mapFinding(f);
+        lines.push(`#### Regulatory & Compliance Mapping`);
+        lines.push(`- **CVSS v3.1 Score:** **${compliance.cvssV31.baseScore} (${compliance.cvssV31.severity})** — \`${compliance.cvssV31.vectorString}\``);
+        lines.push(`- **OWASP Top 10:** \`${compliance.owasp.code} - ${compliance.owasp.name}\``);
+        lines.push(`- **MITRE CWE:** [${compliance.cwe.name}](${compliance.cwe.url})`);
+        lines.push(`- **PCI-DSS v4.0:** ${compliance.pciDssV4.requirements.join(', ')} — ${compliance.pciDssV4.guidance}`);
+        lines.push(`- **NIST SP 800-53:** Controls \`${compliance.nistSp80053.controls.join(', ')}\` (${compliance.nistSp80053.name})`);
+        lines.push(`- **ISO/IEC 27001:2022:** Controls \`${compliance.iso27001.controls.join(', ')}\` (${compliance.iso27001.title})`);
+        lines.push(``);
+
+        // Automated WAF Virtual Patches
+        let urlPath = '/';
+        try {
+          urlPath = new URL(report.targetUrl).pathname || '/';
+        } catch {}
+        const patches = WafRuleGenerator.generateVirtualPatches(f, urlPath);
+
+        lines.push(`#### Immediate WAF Virtual Patches`);
+        lines.push(`**Cloudflare WAF Custom Rule:**`);
+        lines.push(`\`\`\`text\n${patches.cloudflareWaf}\n\`\`\``);
+        lines.push(`**ModSecurity (OWASP CRS SecRule):**`);
+        lines.push(`\`\`\`apache\n${patches.modSecuritySecRule}\n\`\`\``);
+        lines.push(`**AWS WAF v2 JSON Rule:**`);
+        lines.push(`\`\`\`json\n${patches.awsWafJson}\n\`\`\``);
         lines.push(``);
         lines.push(`---`);
         lines.push(``);

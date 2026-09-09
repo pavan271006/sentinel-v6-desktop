@@ -113,7 +113,7 @@ export const BurpSearchBar: React.FC<BurpSearchBarProps> = ({
       <div className="flex items-center gap-3 text-[10px] text-[#9da5b4] font-mono ml-2">
         <span className="text-[#dfdfdf]">
           {!searchQuery || totalMatches === 0
-            ? '0 matches'
+            ? '0 highlights'
             : `${activeMatchIndex + 1}/${totalMatches} matches`}
         </span>
         {selectionInfo && <span className="text-[#6f737a]">{selectionInfo}</span>}

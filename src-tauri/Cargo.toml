@@ -61,3 +61,11 @@ ucma-db = { path = "../ucma-x/crates/ucma-db" }
 ucma-explorer = { path = "../ucma-x/crates/ucma-explorer" }
 ucma-state = { path = "../ucma-x/crates/ucma-state" }
 ucma-second-order = { path = "../ucma-x/crates/ucma-second-order" }
+mimalloc = { version = "0.1", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

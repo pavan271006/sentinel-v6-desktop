@@ -16,6 +16,45 @@ export interface ParsedHttpRequest {
   isGraphQL?: boolean;
 }
 
+export function isAntiCsrfOrSecurityToken(name: string, scanAuthTokens = false): boolean {
+  const lower = name.toLowerCase();
+  if (scanAuthTokens) {
+    return (
+      lower.startsWith('xsrf') ||
+      lower.startsWith('csrf') ||
+      lower.includes('_csrf') ||
+      lower.includes('_xsrf') ||
+      lower.includes('antiforgery') ||
+      lower.includes('requestverificationtoken') ||
+      lower.includes('authenticity_token')
+    );
+  }
+  return (
+    lower.startsWith('xsrf') ||
+    lower.startsWith('csrf') ||
+    lower.includes('_csrf') ||
+    lower.includes('_xsrf') ||
+    lower.includes('antiforgery') ||
+    lower.includes('requestverificationtoken') ||
+    lower.includes('authenticity_token') ||
+    lower.startsWith('_ga') ||
+    lower.startsWith('_gid') ||
+    lower.startsWith('_gat') ||
+    lower.startsWith('cf_') ||
+    lower.startsWith('__cf') ||
+    lower.startsWith('_clck') ||
+    lower.startsWith('_clsk') ||
+    lower.startsWith('intercom') ||
+    lower.startsWith('ajs_') ||
+    lower.startsWith('mp_') ||
+    lower.startsWith('hubspot') ||
+    lower.startsWith('sb-') ||
+    lower === 'connect.sid' ||
+    lower === '__cfduid' ||
+    lower === 'authorization'
+  );
+}
+
 /**
  * Parses raw HTTP text into structured request components and candidate parameters across:
  * - Query Parameters
@@ -29,7 +68,7 @@ export interface ParsedHttpRequest {
  * - Custom Request Headers
  */
 export class RequestParser {
-  public static parse(rawHttp: string, fallbackUrl?: string): ParsedHttpRequest {
+  public static parse(rawHttp: string, fallbackUrl?: string, scanAuthTokens = false): ParsedHttpRequest {
     if (!rawHttp || !rawHttp.trim()) {
       const cleanUrl = fallbackUrl || 'https://target.local/';
       let host = 'target.local';
@@ -136,13 +175,14 @@ export class RequestParser {
         if (eqIdx !== -1) {
           const k = pair.substring(0, eqIdx).trim();
           const v = pair.substring(eqIdx + 1).trim();
-          if (k && !k.toLowerCase().startsWith('_ga') && !k.toLowerCase().startsWith('_gid')) {
+          if (k) {
+            const isSecurityOrTrackingToken = isAntiCsrfOrSecurityToken(k, scanAuthTokens);
             parameters.push({
               id: `cookie_${k}`,
               name: k,
               location: 'cookie',
               originalValue: v,
-              enabled: true,
+              enabled: !isSecurityOrTrackingToken,
             });
           }
         }
@@ -243,15 +283,55 @@ export class RequestParser {
           // Fallback
         }
       }
-      // 4C. XML Payloads
+      // 4C. XML Payloads (Enhanced: handles attributes, CDATA sections, and nested elements)
       else if (contentTypeHeader.includes('xml') || bodySection.trim().startsWith('<')) {
         isXml = true;
+        
+        // Extract XML attributes e.g. <user id="123" role="admin">
+        const attrRegex = /<([a-zA-Z0-9_\-:]+)([^>]+)>/g;
+        let attrMatch: RegExpExecArray | null;
+        while ((attrMatch = attrRegex.exec(bodySection)) !== null) {
+          const tagName = attrMatch[1];
+          const attrBlock = attrMatch[2];
+          const attrKvRegex = /([a-zA-Z0-9_\-:]+)=["']([^"']*)["']/g;
+          let kvMatch: RegExpExecArray | null;
+          while ((kvMatch = attrKvRegex.exec(attrBlock)) !== null) {
+            const attrName = kvMatch[1];
+            const attrValue = kvMatch[2];
+            parameters.push({
+              id: `xml_attr_${tagName}_${attrName}`,
+              name: `@${attrName} (${tagName})`,
+              location: 'body_xml',
+              originalValue: attrValue,
+              xmlPath: `${tagName}/@${attrName}`,
+              enabled: true,
+            });
+          }
+        }
+
+        // Extract CDATA sections e.g. <data><![CDATA[value]]></data>
+        const cdataRegex = /<([a-zA-Z0-9_\-:]+)[^>]*>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/\1>/g;
+        let cdataMatch: RegExpExecArray | null;
+        while ((cdataMatch = cdataRegex.exec(bodySection)) !== null) {
+          const tagName = cdataMatch[1];
+          const cdataValue = cdataMatch[2];
+          parameters.push({
+            id: `xml_cdata_${tagName}`,
+            name: `${tagName} (CDATA)`,
+            location: 'body_xml',
+            originalValue: cdataValue,
+            xmlPath: tagName,
+            enabled: true,
+          });
+        }
+
+        // Extract Standard Tag Text Nodes
         const tagRegex = /<([a-zA-Z0-9_\-:]+)([^>]*)>([^<]*)<\/\1>/g;
-        let match;
+        let match: RegExpExecArray | null;
         while ((match = tagRegex.exec(bodySection)) !== null) {
           const tagName = match[1];
           const tagValue = match[3];
-          if (tagValue.trim()) {
+          if (tagValue.trim() && !tagValue.includes('<![CDATA[')) {
             parameters.push({
               id: `xml_${tagName}`,
               name: tagName,
@@ -285,7 +365,8 @@ export class RequestParser {
     const testableHeaderNames = [
       'x-forwarded-for', 'x-real-ip', 'x-custom-token', 'user-agent', 'referer',
       'origin', 'true-client-ip', 'client-ip', 'x-client-ip', 'x-remote-ip',
-      'x-remote-addr', 'x-originating-ip', 'authorization'
+      'x-remote-addr', 'x-originating-ip', 'cf-connecting-ip', 'x-original-url',
+      'x-rewrite-url', 'x-host', 'forwarded', 'authorization'
     ];
     headers.forEach((h) => {
       if (testableHeaderNames.includes(h.name.toLowerCase())) {
@@ -401,6 +482,12 @@ export class RequestParser {
       const tagRegex = new RegExp(`(<${tag}[^>]*>)([^<]*)(<\\/${tag}>)`, 'i');
       newBody = parsed.body.replace(tagRegex, `$1${injectedValue}$3`);
     } else if (param.location === 'cookie') {
+      // 1. Semicolons in cookie values MUST be encoded as %3b to avoid truncating or splitting cookies
+      let cookieSafeValue = injectedValue.replace(/;/g, '%3b');
+      // 2. Protect unencoded '%' from causing Java Tomcat URLDecoder IllegalArgumentException (e.g. %remote -> %25remote)
+      cookieSafeValue = cookieSafeValue.replace(/%(?![0-9a-fA-F]{2})/g, '%25');
+      // 3. In HTTP cookies, spaces are invalid per RFC 6265 and cause truncation/rejection in Tomcat/Java; encode as '+'
+      cookieSafeValue = cookieSafeValue.replace(/ /g, '+');
       const cookieIdx = newHeaders.findIndex((h) => h.name.toLowerCase() === 'cookie');
       if (cookieIdx !== -1) {
         const oldVal = newHeaders[cookieIdx].value;
@@ -414,18 +501,18 @@ export class RequestParser {
               const k = trimmed.substring(0, eq).trim();
               if (k.toLowerCase() === param.name.toLowerCase()) {
                 found = true;
-                return `${k}=${injectedValue}`;
+                return `${k}=${cookieSafeValue}`;
               }
             }
             return trimmed;
           })
           .filter(Boolean);
         if (!found) {
-          pairs.push(`${param.name}=${injectedValue}`);
+          pairs.push(`${param.name}=${cookieSafeValue}`);
         }
         newHeaders[cookieIdx].value = pairs.join('; ');
       } else {
-        newHeaders.push({ name: 'Cookie', value: `${param.name}=${injectedValue}` });
+        newHeaders.push({ name: 'Cookie', value: `${param.name}=${cookieSafeValue}` });
       }
     } else if (param.location === 'header') {
       const hIdx = newHeaders.findIndex((h) => h.name.toLowerCase() === param.name.toLowerCase());
@@ -435,6 +522,37 @@ export class RequestParser {
         newHeaders.push({ name: param.name, value: injectedValue });
       }
     }
+
+    // Strip all 24 internal, scanner, and reverse-proxy leakage headers unless explicitly targeted
+    const LEAKAGE_HEADERS = [
+      'x-scanner',
+      'x-sentinel-worker',
+      'x-sentinel-id',
+      'x-sentinel-trace',
+      'postman-token',
+      'x-wap-profile',
+      'x-forwarded-for',
+      'x-real-ip',
+      'client-ip',
+      'x-client-ip',
+      'x-originating-ip',
+      'true-client-ip',
+      'cf-connecting-ip',
+      'fastly-client-ip',
+      'x-cluster-client-ip',
+      'forwarded-for',
+      'forwarded',
+      'x-forwarded',
+      'x-custom-ip-authorization',
+      'x-remote-ip',
+      'x-remote-addr',
+      'x-proxyuser-ip',
+      'x-original-url',
+      'x-rewrite-url',
+    ];
+    newHeaders = newHeaders.filter(
+      (h) => !LEAKAGE_HEADERS.includes(h.name.toLowerCase()) || (param.location === 'header' && param.name.toLowerCase() === h.name.toLowerCase())
+    );
 
     // Auto update Content-Length if body changed
     if (newBody !== parsed.body) {

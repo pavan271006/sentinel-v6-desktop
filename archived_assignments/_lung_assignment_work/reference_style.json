@@ -1,0 +1,93 @@
+{
+  "input": "C:\\Users\\Legion 5 pro\\Downloads\\Assignment_5_Text_to_Speech_Transcription_ML_Style.docx",
+  "fonts_by_char_count": {
+    "Courier New": 1519
+  },
+  "direct_run_formatting_runs": 22,
+  "direct_paragraph_formatting_paragraphs": 0,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "ASSIGNMENT 5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 2,
+      "text": "TEXT TO SPEECH TRANSCRIPTION",
+      "style": "Normal"
+    },
+    {
+      "para_index": 63,
+      "text": "Experiment",
+      "style": "Normal"
+    },
+    {
+      "para_index": 65,
+      "text": "Language",
+      "style": "Normal"
+    },
+    {
+      "para_index": 67,
+      "text": "Primary Library",
+      "style": "Normal"
+    },
+    {
+      "para_index": 69,
+      "text": "Output",
+      "style": "Normal"
+    },
+    {
+      "para_index": 71,
+      "text": "Epoch",
+      "style": "Normal"
+    },
+    {
+      "para_index": 72,
+      "text": "Train Loss",
+      "style": "Normal"
+    },
+    {
+      "para_index": 73,
+      "text": "Val Loss",
+      "style": "Normal"
+    },
+    {
+      "para_index": 116,
+      "text": "ASSIGNMENT 5  |  TEXT TO SPEECH TRANSCRIPTION",
+      "style": "Header"
+    }
+  ],
+  "examples": {
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "ASSIGNMENT 5",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "run_text": "TEXT TO SPEECH TRANSCRIPTION",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "run_text": "Machine Learning / Natural Language Processing Mini Project",
+        "style": "Normal"
+      },
+      {
+        "para_index": 32,
+        "run_text": "import pyttsx3\nimport numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.io ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 36,
+        "run_text": "Figure 1: Training and validation loss across 15 epochs.",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

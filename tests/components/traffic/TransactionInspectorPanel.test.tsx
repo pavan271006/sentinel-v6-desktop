@@ -91,9 +91,9 @@ describe('TransactionInspectorPanel Component', () => {
 
     const searchInputs = screen.getAllByPlaceholderText('Search');
     expect(searchInputs.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('0 matches').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('0 highlights').length).toBeGreaterThanOrEqual(1);
 
-    fireEvent.change(searchInputs[0], { target: { value: '200' } });
+    fireEvent.change(searchInputs[0], { target: { value: 'POST' } });
     expect(screen.getAllByText(/matches/i).length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -19,7 +19,14 @@ describe('Empirical Scanner Runtime Validation Suite', () => {
       const cookies: Record<string, string> = {};
       cookieHeader.split(';').forEach((p) => {
         const eq = p.indexOf('=');
-        if (eq !== -1) cookies[p.substring(0, eq).trim()] = p.substring(eq + 1).trim();
+        if (eq !== -1) {
+          const rawVal = p.substring(eq + 1).trim();
+          try {
+            cookies[p.substring(0, eq).trim()] = decodeURIComponent(rawVal.replace(/\+/g, ' '));
+          } catch {
+            cookies[p.substring(0, eq).trim()] = rawVal;
+          }
+        }
       });
 
       // 1. Positive Test Cases

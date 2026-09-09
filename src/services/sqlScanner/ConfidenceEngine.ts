@@ -1,4 +1,4 @@
-﻿import { ConfidenceBreakdown, ConfidenceLevel } from '../../types/sqlScanner';
+import { ConfidenceBreakdown, ConfidenceLevel } from '../../types/sqlScanner';
 
 export class ConfidenceEngine {
   /**
@@ -11,10 +11,20 @@ export class ConfidenceEngine {
     hasTimeDifferential?: boolean;
     hasUnionCanary?: boolean;
     hasRepeatedConfirmation?: boolean;
+    hasOobInteraction?: boolean;
     customFactors?: { name: string; points: number; description: string }[];
   }): ConfidenceBreakdown {
     const factors: { name: string; points: number; description: string }[] = [];
     let rawScore = 0;
+
+    if (evidence.hasOobInteraction) {
+      factors.push({
+        name: 'Out-of-Band (OAST) Interaction',
+        points: 95,
+        description: 'Verified external DNS/HTTP interaction triggered by database backend',
+      });
+      rawScore += 95;
+    }
 
     if (evidence.hasUnionCanary) {
       factors.push({

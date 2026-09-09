@@ -1,0 +1,96 @@
+{
+  "nodes": [
+    {
+      "id": "ingress",
+      "type": "text",
+      "text": "## 🌐 1. Ingress & Wire Normalization\n- **RequestParser**: RFC 7230 parser (Headers, JSON, XML, Form)\n- **ContextDetector**: AST context inference\n- **BaselineProfiling**: $\\mu, \\sigma$ latency characterization",
+      "x": -600,
+      "y": -200,
+      "width": 360,
+      "height": 220,
+      "color": "1"
+    },
+    {
+      "id": "oracles",
+      "type": "text",
+      "text": "## 🎯 2. Multi-Oracle Discovery\n- **Error Oracle**: Cast exceptions (Postgres/MSSQL/MySQL/Oracle)\n- **Boolean Invariant**: Deterministic TRUE vs FALSE diffs\n- **UNION Canary**: Nonce reflection at column index\n- **SPRT Timing**: Wald sequential probability ratio ($T = \\mu + 3\\sigma$)\n- **OAST Oracle**: Asynchronous out-of-band DNS/HTTP",
+      "x": -150,
+      "y": -200,
+      "width": 420,
+      "height": 260,
+      "color": "2"
+    },
+    {
+      "id": "causal",
+      "type": "text",
+      "text": "## ⚖️ 3. Causal Verification Stage\n- **Step 1 ($s_0$)**: Baseline stability verification\n- **Step 2 ($s_1$)**: Positive intervention (TRUE condition)\n- **Step 3 ($s_2$)**: Counterfactual control (FALSE condition)\n- **Step 4 ($s_3$)**: Alternative hypothesis rejection\n- **Step 5 ($s_4$)**: 3x Clean-room isolated reproduction",
+      "x": 350,
+      "y": -200,
+      "width": 400,
+      "height": 250,
+      "color": "3"
+    },
+    {
+      "id": "graybox",
+      "type": "text",
+      "text": "## 🔬 4. Gray-Box Hybrid Subsystem\n- **IastRuntimeSensor**: In-process driver hooks (Zero egress required)\n- **HeadlessDomBridge**: Pre-encryption DOM injection (Bypasses WebCrypto/HMAC)\n- **MacroStateReplay**: 2FA/OTP solver & stateful transaction chaining\n- **WafBypassOrchestrator**: Authorized clearance cookies & test tokens",
+      "x": -150,
+      "y": 140,
+      "width": 420,
+      "height": 240,
+      "color": "4"
+    },
+    {
+      "id": "synthesis",
+      "type": "text",
+      "text": "## 📊 5. Synthesis & Telemetry\n- **Vectorized Extraction**: High-throughput bisection / UNION dump\n- **Adaptive Schema**: Data dictionary enumeration\n- **Evidence Synthesis**: 17-layer coverage matrix\n- **SARIF Exporter**: OASIS SARIF v2.1.0 telemetry export",
+      "x": 350,
+      "y": 140,
+      "width": 400,
+      "height": 240,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "fromNode": "ingress",
+      "fromSide": "right",
+      "toNode": "oracles",
+      "toSide": "left",
+      "label": "Candidate Parameters"
+    },
+    {
+      "id": "e2",
+      "fromNode": "oracles",
+      "fromSide": "right",
+      "toNode": "causal",
+      "toSide": "left",
+      "label": "Candidate Findings"
+    },
+    {
+      "id": "e3",
+      "fromNode": "oracles",
+      "fromSide": "bottom",
+      "toNode": "graybox",
+      "toSide": "top",
+      "label": "Gated / Egress-Blocked Sinks"
+    },
+    {
+      "id": "e4",
+      "fromNode": "causal",
+      "fromSide": "bottom",
+      "toNode": "synthesis",
+      "toSide": "top",
+      "label": "Certified True-Positives"
+    },
+    {
+      "id": "e5",
+      "fromNode": "graybox",
+      "fromSide": "right",
+      "toNode": "synthesis",
+      "toSide": "left",
+      "label": "IAST AST Telemetry"
+    }
+  ]
+}

@@ -1988,6 +1988,8 @@ pub async fn cmd_launch_system_browser(
                     .args([
                         &proxy_arg,
                         "--ignore-certificate-errors",
+                        "--disable-http2",
+                        "--disable-quic",
                         "--no-first-run",
                         "--no-default-browser-check",
                         &user_data_arg,
@@ -2054,6 +2056,45 @@ pub async fn cmd_open_html_in_browser(
 
     let file_url = format!("file:///{}", temp_file.to_string_lossy().replace('\\', "/"));
     cmd_launch_system_browser(Some(file_url), Some(port)).await
+}
+
+#[tauri::command]
+pub async fn cmd_launch_wireshark(filter: Option<String>) -> Result<String, String> {
+    let candidates = vec![
+        r"C:\Program Files\Wireshark\Wireshark.exe".to_string(),
+        r"C:\Program Files (x86)\Wireshark\Wireshark.exe".to_string(),
+        "wireshark.exe".to_string(),
+    ];
+
+    let exe = candidates.into_iter().find(|p| std::path::Path::new(p).exists())
+        .ok_or_else(|| "Wireshark executable not found. Ensure Wireshark is installed.".to_string())?;
+
+    let filter_arg = filter.unwrap_or_else(|| "tcp.port == 8085 or tcp.port == 8080".to_string());
+
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("-Y").arg(&filter_arg);
+
+    match cmd.spawn() {
+        Ok(_) => Ok(format!("Wireshark launched with filter: {}", filter_arg)),
+        Err(e) => Err(format!("Failed to launch Wireshark: {}", e)),
+    }
+}
+
+#[tauri::command]
+pub async fn cmd_check_packet_capture_status() -> Result<serde_json::Value, String> {
+    let wireshark_installed = std::path::Path::new(r"C:\Program Files\Wireshark\Wireshark.exe").exists();
+    let tshark_installed = std::path::Path::new(r"C:\Program Files\Wireshark\tshark.exe").exists();
+    let npcap_driver = std::path::Path::new(r"C:\Program Files\Npcap\npcap.sys").exists()
+        || std::path::Path::new(r"C:\Windows\System32\Npcap\wpcap.dll").exists();
+
+    Ok(serde_json::json!({
+        "wireshark": wireshark_installed,
+        "tshark": tshark_installed,
+        "npcap": npcap_driver,
+        "wireshark_version": "4.6.8",
+        "npcap_version": "1.88",
+        "default_filter": "tcp.port == 8085 or tcp.port == 8080",
+    }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

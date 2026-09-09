@@ -3,9 +3,9 @@
  * Dynamically selects the next optimal experiment maximizing Information Gain per Request Cost.
  */
 
-import { CandidateParameter, DbmsType } from '../../types/sqlScanner';
+import { CandidateParameter } from '../../../types/sqlScanner';
 import { BeliefState } from './BeliefState';
-import { INTENT_DEFINITIONS, SemanticIntentType } from './SemanticTestIntent';
+import { INTENT_DEFINITIONS } from './SemanticTestIntent';
 import { TestConfiguration, CompatibilityRules } from '../taxonomy/CompatibilityRules';
 import { EarlyStoppingPolicy } from './EarlyStoppingPolicy';
 

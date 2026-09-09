@@ -145,6 +145,22 @@ impl RepeaterExecutor {
         } else {
             raw_request_template.to_vec()
         };
+        let request_bytes = Self::expand_hackvertor_tags(&request_bytes);
+
+        // 2. SEC-01: Scope Enforcement Gate (Fail-Closed)
+        let decision = self.scope_engine.is_in_scope(target_url);
+        if !decision.allowed {
+            if let Some(bus) = &self.event_bus {
+                let _ = bus.publish_critical(CriticalEvent::ScopeViolationAttempt {
+                    source: "RepeaterEngine".to_string(),
+                    target: target_url.to_string(),
+                    decision: decision.clone(),
+                });
+            }
+            return Err(SentinelError::ScopeViolation {
+                reason: format!("Target '{}' is out of scope: {}", target_url, decision.reason),
+            });
+        }
 
         // 3. Target parsing
         let parsed_url = Url::parse(target_url)
@@ -382,6 +398,55 @@ impl RepeaterExecutor {
         }
 
         Ok(buffer)
+    }
+
+    /// Expands Hackvertor-style tags such as `<@hex_entities>payload</@hex_entities>`
+    /// and `<@dec_entities>payload</@dec_entities>` and updates Content-Length automatically.
+    pub fn expand_hackvertor_tags(raw: &[u8]) -> Vec<u8> {
+        let text = match std::str::from_utf8(raw) {
+            Ok(t) => t,
+            Err(_) => return raw.to_vec(),
+        };
+
+        if !text.contains("<@") {
+            return raw.to_vec();
+        }
+
+        let mut result = text.to_string();
+
+        // 1. <@hex_entities>...</@hex_entities> -> &#x55;&#x4e;...
+        if let Ok(re) = regex::Regex::new(r"(?s)<@hex_entities>(.*?)</@hex_entities>") {
+            result = re.replace_all(&result, |caps: &regex::Captures| {
+                caps[1].chars().map(|c| format!("&#x{:x};", c as u32)).collect::<String>()
+            }).to_string();
+        }
+
+        // 2. <@dec_entities>...</@dec_entities> -> &#85;&#78;...
+        if let Ok(re) = regex::Regex::new(r"(?s)<@dec_entities>(.*?)</@dec_entities>") {
+            result = re.replace_all(&result, |caps: &regex::Captures| {
+                caps[1].chars().map(|c| format!("&#{};", c as u32)).collect::<String>()
+            }).to_string();
+        }
+
+        // 3. <@urlencode>...</@urlencode>
+        if let Ok(re) = regex::Regex::new(r"(?s)<@urlencode>(.*?)</@urlencode>") {
+            result = re.replace_all(&result, |caps: &regex::Captures| {
+                url::form_urlencoded::byte_serialize(caps[1].as_bytes()).collect::<String>()
+            }).to_string();
+        }
+
+        // 4. Update Content-Length if headers exist
+        if let Some((headers, body)) = result.split_once("\r\n\r\n") {
+            let actual_body_len = body.as_bytes().len();
+            if let Ok(cl_re) = regex::Regex::new(r"(?i)Content-Length:\s*\d+") {
+                if cl_re.is_match(headers) {
+                    let new_headers = cl_re.replace(headers, format!("Content-Length: {}", actual_body_len));
+                    return format!("{}\r\n\r\n{}", new_headers, body).into_bytes();
+                }
+            }
+        }
+
+        result.into_bytes()
     }
 
     /// Executes multiple HTTP requests simultaneously using connection priming and single-packet barrier synchronization.

@@ -1,6 +1,9 @@
 // Unconditionally suppress console / CMD window (Pure GUI mode like Burp Suite)
 #![windows_subsystem = "windows"]
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod state;
 mod commands;
 
@@ -12,13 +15,96 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 fn log_debug(msg: &str) {
+    let now = chrono::Local::now().to_rfc3339();
+    let line = format!("[{}] {}\n", now, msg);
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open("sentinel_desktop_debug.log") {
-        let _ = writeln!(f, "[{}] {}", chrono::Local::now().to_rfc3339(), msg);
+        let _ = f.write_all(line.as_bytes());
+    }
+    let temp_log = std::env::temp_dir().join("sentinel_desktop_debug.log");
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(temp_log) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod win_guard {
+    use std::ffi::c_void;
+    use crate::log_debug;
+
+    type HANDLE = *mut c_void;
+    type HWND = *mut c_void;
+    type BOOL = i32;
+    type DWORD = u32;
+    type LPCWSTR = *const u16;
+
+    const ERROR_ALREADY_EXISTS: DWORD = 183;
+    const SW_RESTORE: i32 = 9;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateMutexW(lpMutexAttributes: *mut c_void, bInitialOwner: BOOL, lpName: LPCWSTR) -> HANDLE;
+        fn GetLastError() -> DWORD;
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn FindWindowW(lpClassName: LPCWSTR, lpWindowName: LPCWSTR) -> HWND;
+        fn IsWindow(hWnd: HWND) -> BOOL;
+        fn ShowWindow(hWnd: HWND, nCmdShow: i32) -> BOOL;
+        fn SetForegroundWindow(hWnd: HWND) -> BOOL;
+        fn BringWindowToTop(hWnd: HWND) -> BOOL;
+    }
+
+    static mut APP_MUTEX: HANDLE = std::ptr::null_mut();
+
+    pub fn ensure_single_instance_or_heal() {
+        unsafe {
+            let my_pid = std::process::id();
+            let mutex_name: Vec<u16> = "Local\\SentinelV6DesktopSingleInstanceMutex\0".encode_utf16().collect();
+            let h_mutex = CreateMutexW(std::ptr::null_mut(), 1, mutex_name.as_ptr());
+            let err = GetLastError();
+            APP_MUTEX = h_mutex;
+
+            log_debug(&format!("Single-instance guard: PID={}, MutexHandle={:?}, LastError={}", my_pid, h_mutex, err));
+
+            if err == ERROR_ALREADY_EXISTS {
+                log_debug("Another instance detected holding single-instance mutex. Checking for active window...");
+                let titles = [
+                    "Sentinel V6 — Pentester Desktop\0",
+                    "Sentinel V6\0",
+                    "NEXUS — Pentester Desktop\0",
+                ];
+                let mut found_active_window = false;
+                for t in titles {
+                    let w_title: Vec<u16> = t.encode_utf16().collect();
+                    let hwnd = FindWindowW(std::ptr::null(), w_title.as_ptr());
+                    if !hwnd.is_null() && IsWindow(hwnd) != 0 {
+                        log_debug(&format!("Found active window ('{}'). Restoring and bringing to front.", t.trim_matches('\0')));
+                        ShowWindow(hwnd, SW_RESTORE);
+                        SetForegroundWindow(hwnd);
+                        BringWindowToTop(hwnd);
+                        found_active_window = true;
+                        break;
+                    }
+                }
+
+                if found_active_window {
+                    log_debug("Existing window brought to focus. Exiting launcher process.");
+                    std::process::exit(0);
+                }
+
+                log_debug("Mutex held but no active window found (stale lock). Proceeding with launch.");
+            }
+        }
     }
 }
 
 fn main() {
     log_debug("=== Sentinel Desktop Starting ===");
+
+    #[cfg(target_os = "windows")]
+    win_guard::ensure_single_instance_or_heal();
+
     std::panic::set_hook(Box::new(|info| {
         log_debug(&format!("FATAL PANIC: {:?}", info));
     }));
@@ -27,13 +113,16 @@ fn main() {
     let state = AppState::new();
     log_debug("Step 2: AppState created. Launching Tauri...");
 
-    log_debug("Step 3: Calling tauri::Builder::default().run()...");
-        let res = tauri::Builder::default()
+    log_debug("Step 3: Configuring tauri::Builder...");
+    let builder = tauri::Builder::default()
         .manage(state)
         .setup(|app| {
             log_debug("setup() hook running");
             if let Some(window) = app.get_webview_window("main") {
-                log_debug("Window 'main' found, calling show(), set_focus()...");
+                log_debug("Window 'main' found, applying unminimize(), set_size(), center(), show(), set_focus()...");
+                let _ = window.unminimize();
+                let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: 1400, height: 900 }));
+                let _ = window.center();
                 let _ = window.show();
                 let _ = window.set_focus();
                 log_debug("Window 'main' show() executed");
@@ -126,9 +215,20 @@ fn main() {
                 };
 
                 use sentinel_common::traits::ProxyEngine;
-                log_debug("Starting native SentinelProxyEngine on 127.0.0.1:8085 with storage & CAS...");
-                if let Err(e) = proxy_engine.start(proxy_cfg).await {
-                    log_debug(&format!("SentinelProxyEngine error: {:?}", e));
+                let mut attempts = 0;
+                while attempts < 3 {
+                    attempts += 1;
+                    log_debug(&format!("Starting native SentinelProxyEngine on 127.0.0.1:8085 (attempt {}/3)...", attempts));
+                    match proxy_engine.start(proxy_cfg.clone()).await {
+                        Ok(_) => {
+                            log_debug("SentinelProxyEngine started successfully on 127.0.0.1:8085");
+                            break;
+                        }
+                        Err(e) => {
+                            log_debug(&format!("SentinelProxyEngine error on attempt {}: {:?}", attempts, e));
+                            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                        }
+                    }
                 }
             });
 
@@ -136,6 +236,13 @@ fn main() {
         })
         .on_window_event(|window, event| {
             log_debug(&format!("Window event on '{}': {:?}", window.label(), event));
+            match event {
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                    log_debug("Window close/destroy detected. Cleanly terminating process immediately.");
+                    std::process::exit(0);
+                }
+                _ => {}
+            }
         })
         .invoke_handler(tauri::generate_handler![
             cmd_get_platform_info,
@@ -168,11 +275,34 @@ fn main() {
             cmd_open_html_in_browser,
             cmd_ucmax_analyze_boolean,
             cmd_ucmax_plan_next_step,
-        ])
-        .run(tauri::generate_context!());
+            cmd_launch_wireshark,
+            cmd_check_packet_capture_status,
+        ]);
 
-    match res {
-        Ok(_) => log_debug("Tauri run() completed normally"),
-        Err(e) => log_debug(&format!("FATAL TAURI RUN ERROR: {:?}", e)),
-    }
+    log_debug("Step 3.1: Calling builder.build()...");
+    let app = match builder.build(tauri::generate_context!()) {
+        Ok(app) => {
+            log_debug("Step 3.2: builder.build() SUCCEEDED");
+            app
+        }
+        Err(e) => {
+            log_debug(&format!("FATAL TAURI BUILD ERROR: {:?}", e));
+            std::process::exit(1);
+        }
+    };
+
+    log_debug("Step 3.3: Calling app.run()...");
+    app.run(|_app_handle, event| {
+        match event {
+            tauri::RunEvent::ExitRequested { code, .. } => {
+                log_debug(&format!("Tauri RunEvent::ExitRequested with code: {:?}", code));
+            }
+            tauri::RunEvent::WindowEvent { label, event, .. } => {
+                log_debug(&format!("RunEvent::WindowEvent '{}': {:?}", label, event));
+            }
+            _ => {}
+        }
+    });
+
+    log_debug("Tauri run() loop terminated");
 }

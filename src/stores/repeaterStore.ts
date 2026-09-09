@@ -15,7 +15,6 @@ import { TrafficSummary, HttpRequestDetails, HttpResponseDetails, TransactionDet
 import { TransactionModel } from '../types/models';
 import { ipcClient } from '../ipc/client';
 import { useToastStore } from './toastStore';
-import { useAppShellStore } from './appShellStore';
 import {
   generateUuid as uuidv4,
   parseRawHttpRequest,
@@ -125,6 +124,18 @@ export interface RepeaterStoreState {
   closeDiffModal: () => void;
   toggleSplitOrientation: () => void;
   setSplitOrientation: (orientation: 'horizontal' | 'vertical') => void;
+
+  // Inspector & Side Dock
+  isInspectorOpen: boolean;
+  toggleInspector: () => void;
+  setInspectorOpen: (open: boolean) => void;
+  inspectorTab: 'inspector' | 'notes';
+  setInspectorTab: (tab: 'inspector' | 'notes') => void;
+  tabNotes: Record<string, string>;
+  setTabNote: (tabId: string, note: string) => void;
+  selectionData: { text: string; start: number; end: number };
+  setSelectionData: (data: { text: string; start: number; end: number }) => void;
+  applySelectionReplacement: (tabId: string, replacement: string) => void;
 }
 
 export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
@@ -253,7 +264,6 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       duration: 2500,
     });
 
-    useAppShellStore.getState().setActiveWorkspace('repeater');
     return tabId;
   },
 
@@ -435,11 +445,31 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       tabs: state.tabs.map((t) => {
         if (t.id !== tabId) return t;
         const parsed = parseRawHttpRequest(rawRequest);
+        let newUrl = t.url;
+        if (parsed.path) {
+          if (parsed.path.startsWith('http://') || parsed.path.startsWith('https://')) {
+            newUrl = parsed.path;
+          } else {
+            try {
+              const parsedUrl = new URL(t.url);
+              newUrl = `${parsedUrl.origin}${parsed.path}`;
+            } catch {
+              const hostHeader = parsed.headers.find((h) => h.name.toLowerCase() === 'host')?.value;
+              if (hostHeader) {
+                newUrl = `https://${hostHeader}${parsed.path}`;
+              } else {
+                newUrl = parsed.path;
+              }
+            }
+          }
+        }
         return {
           ...t,
           rawRequest,
-          method: parsed.method,
-          protocol: parsed.protocol,
+          url: newUrl,
+          queryParams: extractQueryParamsFromUrl(newUrl),
+          method: parsed.method || t.method,
+          protocol: parsed.protocol || t.protocol,
           headers: parsed.headers.length > 0 ? parsed.headers : t.headers,
           body: parsed.body,
           isDirty: true,
@@ -755,4 +785,26 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
     set((s) => ({ splitOrientation: s.splitOrientation === 'horizontal' ? 'vertical' : 'horizontal' })),
 
   setSplitOrientation: (orientation) => set({ splitOrientation: orientation }),
+
+  // Inspector & Side Dock
+  isInspectorOpen: true,
+  toggleInspector: () => set((s) => ({ isInspectorOpen: !s.isInspectorOpen })),
+  setInspectorOpen: (open) => set({ isInspectorOpen: open }),
+  inspectorTab: 'inspector',
+  setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+  tabNotes: {},
+  setTabNote: (tabId, note) => set((s) => ({ tabNotes: { ...s.tabNotes, [tabId]: note } })),
+  selectionData: { text: '', start: 0, end: 0 },
+  setSelectionData: (selectionData) => set({ selectionData }),
+  applySelectionReplacement: (tabId, replacement) => {
+    const state = get();
+    const tab = state.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const { start, end } = state.selectionData;
+    if (start < 0 || end < start) return;
+    const raw = tab.rawRequest;
+    const newRaw = raw.substring(0, start) + replacement + raw.substring(end);
+    state.updateTabRawRequest(tabId, newRaw);
+    set({ selectionData: { text: replacement, start, end: start + replacement.length } });
+  },
 }));

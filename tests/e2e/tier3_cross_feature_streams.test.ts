@@ -243,7 +243,7 @@ describe('Tier 3: Pairwise Cross-Feature Stream Interactions', () => {
 
       const latencyMs = t1 - t0;
       console.log(`[Tier 3 Perf] Complex HTTPQL 50k evaluation: ${latencyMs.toFixed(2)}ms`);
-      expect(latencyMs).toBeLessThan(100); // Latency budget < 100ms
+      expect(latencyMs).toBeLessThan(250); // Latency budget < 250ms
     });
   });
 

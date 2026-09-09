@@ -3,7 +3,7 @@
  * Maintains probability distributions and performs sequential Bayesian updates upon receiving test observations.
  */
 
-import { CandidateParameter, DbmsType, InjectionContext } from '../../types/sqlScanner';
+import { CandidateParameter, DbmsType, InjectionContext } from '../../../types/sqlScanner';
 import { BeliefState, ShannonEntropy } from './BeliefState';
 
 export interface ObservationResult {

@@ -126,7 +126,15 @@ impl SsrfValidator {
     }
 
     /// Validates an IP against restricted ranges.
-    pub fn validate_ip(_ip: IpAddr, _allowed_rules: &[IpCidrMatcher]) -> Result<(), String> {
+    /// If the IP is restricted, it is only allowed if explicitly matched by an entry in `allowed_rules`.
+    pub fn validate_ip(ip: IpAddr, allowed_rules: &[IpCidrMatcher]) -> Result<(), String> {
+        if let Some(reason) = Self::is_restricted_ip(ip) {
+            // Check if explicitly allowed by an inclusion rule
+            let is_explicitly_allowed = allowed_rules.iter().any(|rule| rule.matches(ip));
+            if !is_explicitly_allowed {
+                return Err(format!("IP {} blocked by SSRF defense: {}", ip, reason));
+            }
+        }
         Ok(())
     }
 

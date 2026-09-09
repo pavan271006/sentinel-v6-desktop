@@ -68,14 +68,15 @@ async fn test_dual_write_cas_sqlite_and_eventbus_telemetry() {
     let _ = client.read(&mut res_buf).await.unwrap();
 
     // 3. Verify EventBus emitted ObservationCreated event
-    let event = tokio::time::timeout(tokio::time::Duration::from_secs(2), telemetry_rx.recv())
-        .await
-        .expect("Telemetry event must be received within 2s")
-        .expect("Telemetry channel must have an event");
+    let tx_id = loop {
+        let event = tokio::time::timeout(tokio::time::Duration::from_secs(2), telemetry_rx.recv())
+            .await
+            .expect("Telemetry event must be received within 2s")
+            .expect("Telemetry channel must have an event");
 
-    let tx_id = match event {
-        SentinelEvent::ObservationCreated(id) => id,
-        other => panic!("Expected ObservationCreated event, got: {:?}", other),
+        if let SentinelEvent::ObservationCreated(id) = event {
+            break id;
+        }
     };
 
     // Allow persistence worker a brief moment to finish SQLite writes

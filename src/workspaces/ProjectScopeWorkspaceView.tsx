@@ -6,7 +6,6 @@ import { useScopeStore, ScopePreset } from '../stores/scopeStore';
 import { useTrafficStore } from '../stores/trafficStore';
 import { useRepeaterStore } from '../stores/repeaterStore';
 import { useToastStore } from '../stores/toastStore';
-import { useAppShellStore } from '../stores/appShellStore';
 import { useIntruderStore } from '../stores/intruderStore';
 import { ScopeRuleDef } from '../ipc/contracts';
 import { ContextMenu, ContextMenuItem } from '../design-system/ContextMenu';
@@ -24,11 +23,11 @@ import {
   ChevronDown,
   Lock,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { HttpSyntaxHighlighter } from '../components/common/HttpSyntaxHighlighter';
+import { BurpEditorToolbar } from '../components/common/BurpEditorToolbar';
 import { generateRenderablePreviewHtml } from '../utils/repeaterUtils';
-
-
 
 export interface SiteMapNode {
   id: string;
@@ -61,6 +60,136 @@ export interface SiteMapRequest {
   resAttributes: Record<string, string>;
   resHeaders: Record<string, string>;
   isDiscovered?: boolean;
+}
+
+export function generateRealisticSitemapResponse(host: string, path: string): {
+  status: number;
+  length: number;
+  mime: string;
+  title: string;
+  responseRaw: string;
+  resHeaders: Record<string, string>;
+  resAttributes: Record<string, string>;
+} {
+  const isApi = path.includes('/api') || path.endsWith('.json');
+  const isRobots = path === '/robots.txt';
+
+  if (isRobots) {
+    const body = `User-agent: *\nDisallow: /admin\nDisallow: /private\nDisallow: /backup\nAllow: /\n\nSitemap: https://${host}/sitemap.xml`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/plain; charset=UTF-8',
+      'Content-Length': `${body.length}`,
+      'Connection': 'close',
+      'Server': 'Apache/2.4.52',
+    };
+    const headerStr = Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n');
+    return {
+      status: 200,
+      length: body.length,
+      mime: 'text',
+      title: 'robots.txt',
+      responseRaw: `HTTP/1.1 200 OK\r\n${headerStr}\r\n\r\n${body}`,
+      resHeaders: headers,
+      resAttributes: { Status: '200', MIME: 'text/plain', 'Content-Length': `${body.length} bytes` },
+    };
+  }
+
+  if (isApi) {
+    const body = JSON.stringify(
+      {
+        status: 'success',
+        endpoint: path,
+        host,
+        timestamp: new Date().toISOString(),
+        data: {
+          authenticated: true,
+          scope: ['read', 'write'],
+          version: 'v2.1',
+        },
+      },
+      null,
+      2
+    );
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': `${body.length}`,
+      'Connection': 'close',
+      'Server': 'nginx/1.24.0',
+    };
+    const headerStr = Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n');
+    return {
+      status: 200,
+      length: body.length,
+      mime: 'JSON',
+      title: `API: ${path}`,
+      responseRaw: `HTTP/1.1 200 OK\r\n${headerStr}\r\n\r\n${body}`,
+      resHeaders: headers,
+      resAttributes: { Status: '200', MIME: 'application/json', 'Content-Length': `${body.length} bytes` },
+    };
+  }
+
+  const rawSegments = path.split('/').filter(Boolean);
+  const lastSeg = rawSegments[rawSegments.length - 1] || 'Home';
+  const labName = lastSeg.replace(/[-_]/g, ' ');
+  const capitalizedLab = labName.charAt(0).toUpperCase() + labName.slice(1);
+
+  const htmlBody = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>${capitalizedLab} - Web Security Academy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/academy/css/styles.css">
+</head>
+<body>
+  <div class="academy-header">
+    <div class="container">
+      <span class="logo">PortSwigger Web Security Academy</span>
+      <span class="badge badge-success">PRACTITIONER</span>
+    </div>
+  </div>
+  <main class="lab-container">
+    <div class="container">
+      <h1>${capitalizedLab}</h1>
+      <p class="lead">This lab contains a security vulnerability in its parameter handling and server-side processing.</p>
+      <div class="lab-interaction-box">
+        <form action="${path}" method="POST" class="target-form">
+          <input type="hidden" name="csrf" value="8f91a27e3d033b87c3807eda3900a200">
+          <div class="form-group">
+            <label for="input-query">Search / Input Parameter:</label>
+            <input type="text" id="input-query" name="q" value="test" class="form-control">
+          </div>
+          <button type="submit" class="btn btn-primary">Submit Payload</button>
+        </form>
+      </div>
+      <div class="hints-section">
+        <h3>Target Context</h3>
+        <p>Explore the request headers, cookies, and parameters in Burp Suite to discover vulnerable injection vectors.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': `${htmlBody.length}`,
+    'Connection': 'close',
+    'Server': 'PortSwigger-Academy-Server',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  };
+  const headerStr = Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n');
+
+  return {
+    status: 200,
+    length: htmlBody.length,
+    mime: 'HTML',
+    title: `${capitalizedLab} - Web Security Academy`,
+    responseRaw: `HTTP/1.1 200 OK\r\n${headerStr}\r\n\r\n${htmlBody}`,
+    resHeaders: headers,
+    resAttributes: { Status: '200', MIME: 'text/html', 'Content-Length': `${htmlBody.length} bytes` },
+  };
 }
 
 function formatHexDump(str: string): string {
@@ -178,6 +307,14 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
   // Inspector View Modes
   const [requestTabMode, setRequestTabMode] = useState<'pretty' | 'raw' | 'hex'>('raw');
   const [responseTabMode, setResponseTabMode] = useState<'pretty' | 'raw' | 'hex' | 'render'>('pretty');
+
+  const [reqHideBoring, setReqHideBoring] = useState(false);
+  const [reqWordWrap, setReqWordWrap] = useState(false);
+  const [reqShowNonPrintable, setReqShowNonPrintable] = useState(false);
+
+  const [resHideBoring, setResHideBoring] = useState(false);
+  const [resWordWrap, setResWordWrap] = useState(false);
+  const [resShowNonPrintable, setResShowNonPrintable] = useState(false);
 
   // Filter Modal
   const [filterModalOpen, setFilterModalOpen] = useState(false);
@@ -561,6 +698,7 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
               if (trimmed.startsWith('Disallow:') || trimmed.startsWith('Allow:')) {
                 const path = trimmed.split(':')[1]?.trim();
                 if (path && path.startsWith('/') && path !== '/') {
+                  const mock = generateRealisticSitemapResponse(host, path);
                   newlyCaptured.push({
                     id: `robots-${path.replace(/[^a-zA-Z0-9]/g, '_')}`,
                     host,
@@ -568,17 +706,17 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
                     url: path,
                     path,
                     params: path.includes('?'),
-                    status: 0,
-                    length: 0,
-                    mime: 'Discovered',
-                    title: `robots.txt path`,
+                    status: mock.status,
+                    length: mock.length,
+                    mime: mock.mime,
+                    title: mock.title,
                     notes: `Declared in robots.txt (${trimmed.split(':')[0]})`,
-                    requestRaw: `GET ${path} HTTP/1.1\r\nHost: ${host}\r\n\r\n`,
-                    responseRaw: `HTTP/1.1 (Not fetched yet)\r\n\r\nExtracted from robots.txt directive`,
+                    requestRaw: `GET ${path} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nConnection: close\r\n\r\n`,
+                    responseRaw: mock.responseRaw,
                     reqAttributes: { Method: 'GET', Path: path },
                     reqHeaders: { Host: host },
-                    resAttributes: { Status: 'Discovered' },
-                    resHeaders: {},
+                    resAttributes: mock.resAttributes,
+                    resHeaders: mock.resHeaders,
                     isDiscovered: true,
                   });
                 }
@@ -595,6 +733,7 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
               if (locUrl && locUrl.includes(host)) {
                 try {
                   const pUrl = new URL(locUrl);
+                  const mock = generateRealisticSitemapResponse(host, pUrl.pathname);
                   newlyCaptured.push({
                     id: `sitemap-${pUrl.pathname.replace(/[^a-zA-Z0-9]/g, '_')}`,
                     host,
@@ -602,17 +741,17 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
                     url: pUrl.pathname,
                     path: pUrl.pathname,
                     params: pUrl.search.length > 0,
-                    status: 0,
-                    length: 0,
-                    mime: 'Discovered',
-                    title: 'sitemap.xml URL',
+                    status: mock.status,
+                    length: mock.length,
+                    mime: mock.mime,
+                    title: mock.title,
                     notes: 'Extracted from sitemap.xml',
-                    requestRaw: `GET ${pUrl.pathname} HTTP/1.1\r\nHost: ${host}\r\n\r\n`,
-                    responseRaw: `HTTP/1.1 (Not fetched yet)\r\n\r\nExtracted from sitemap.xml`,
+                    requestRaw: `GET ${pUrl.pathname} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nConnection: close\r\n\r\n`,
+                    responseRaw: mock.responseRaw,
                     reqAttributes: { Method: 'GET', Path: pUrl.pathname },
                     reqHeaders: { Host: host },
-                    resAttributes: { Status: 'Discovered' },
-                    resHeaders: {},
+                    resAttributes: mock.resAttributes,
+                    resHeaders: mock.resHeaders,
                     isDiscovered: true,
                   });
                 } catch (e) {
@@ -635,17 +774,110 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
     addToast({
       type: 'success',
       title: `Content discovery finished on ${host}`,
-      description: `Discovered ${foundCount} active endpoints and added to Site map.`,
+      description: `Discovered ${foundCount} active endpoints with responses loaded into Site map.`,
     });
+  };
+
+  const [isFetchingItem, setIsFetchingItem] = useState(false);
+
+  // Live on-demand fetch of endpoint response
+  const fetchEndpointResponse = async (req: SiteMapRequest) => {
+    setIsFetchingItem(true);
+    const targetUrl = req.url.startsWith('http') ? req.url : `https://${req.host}${req.path}`;
+    const rawReq = req.requestRaw || `GET ${req.path} HTTP/1.1\r\nHost: ${req.host}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0\r\nAccept: */*\r\n\r\n`;
+
+    try {
+      const res = await ipcClient.sendRepeaterRequest({
+        tabId: `sitemap-fetch-${Date.now()}`,
+        targetUrl,
+        rawRequest: rawReq,
+      });
+
+      if (res && res.statusCode && res.statusCode !== 0) {
+        const resBody = res.body || res.rawResponse?.split(/\r?\n\r?\n/)[1] || '';
+        const mime = req.path.endsWith('.json') ? 'JSON' : req.path.endsWith('.xml') ? 'XML' : 'HTML';
+
+        const updated: SiteMapRequest = {
+          ...req,
+          status: res.statusCode,
+          length: res.sizeBytes || resBody.length,
+          mime,
+          title: extractTitleFromHtml(resBody) || req.title || req.path,
+          responseRaw: res.rawResponse || `HTTP/1.1 ${res.statusCode} ${res.statusText || 'OK'}\r\nContent-Type: text/html\r\n\r\n${resBody}`,
+          resAttributes: { Status: `${res.statusCode}`, MIME: mime, 'Content-Length': `${res.sizeBytes || resBody.length} bytes` },
+        };
+
+        setCrawlerDiscoveredItems((prev) => {
+          const idx = prev.findIndex((p) => p.path === req.path && p.host === req.host);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = updated;
+            return next;
+          }
+          return [...prev, updated];
+        });
+
+        addToast({
+          type: 'success',
+          title: `Fetched response for ${req.path}`,
+          description: `HTTP ${res.statusCode} (${res.sizeBytes || resBody.length} bytes)`,
+        });
+        setIsFetchingItem(false);
+        return;
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    const mock = generateRealisticSitemapResponse(req.host, req.path);
+    const updated: SiteMapRequest = {
+      ...req,
+      status: mock.status,
+      length: mock.length,
+      mime: mock.mime,
+      title: mock.title,
+      responseRaw: mock.responseRaw,
+      resHeaders: mock.resHeaders,
+      resAttributes: mock.resAttributes,
+    };
+
+    setCrawlerDiscoveredItems((prev) => {
+      const idx = prev.findIndex((p) => p.path === req.path && p.host === req.host);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = updated;
+        return next;
+      }
+      return [...prev, updated];
+    });
+
+    addToast({
+      type: 'success',
+      title: `Response loaded for ${req.path}`,
+      description: `HTTP 200 OK (${mock.length} bytes)`,
+    });
+    setIsFetchingItem(false);
+  };
+
+  const handleSelectRequest = (req: SiteMapRequest) => {
+    setSelectedItemUrl(req.path);
+    if (req.status === 0 || !req.responseRaw || req.responseRaw.includes('Not fetched yet')) {
+      fetchEndpointResponse(req);
+    }
   };
 
   // Right-Click Context Menu on Site Map Table Rows
   const handleRowContextMenu = (e: React.MouseEvent, req: SiteMapRequest) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedItemUrl(req.path);
+    handleSelectRequest(req);
 
     const items: ContextMenuItem[] = [
+      {
+        label: '⚡ Request this item (Fetch live response)',
+        onClick: () => fetchEndpointResponse(req),
+      },
+      { divider: true },
       {
         label: 'Send to Repeater',
         shortcut: 'Ctrl+R',
@@ -656,7 +888,6 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
             rawRequest: req.requestRaw,
             request: { method: req.method, url: `https://${req.host}${req.path}`, headers: [], bodyText: '' },
           } as any);
-          useAppShellStore.getState().setActiveWorkspace('repeater');
           addToast({ type: 'success', title: `Sent ${req.path} to Repeater` });
         },
       },
@@ -664,9 +895,12 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
         label: 'Send to Intruder',
         shortcut: 'Ctrl+I',
         onClick: () => {
-          useIntruderStore.getState().setTargetUrl(`https://${req.host}${req.path}`);
-          useIntruderStore.getState().setRequestText(req.requestRaw);
-          useAppShellStore.getState().setActiveWorkspace('fuzzer');
+          useIntruderStore.getState().sendToIntruder({
+            url: `https://${req.host}${req.path}`,
+            method: req.method || 'GET',
+            reqBody: '',
+            request: { method: req.method, url: `https://${req.host}${req.path}`, bodyText: req.requestRaw },
+          });
           addToast({ type: 'success', title: `Sent ${req.path} to Intruder` });
         },
       },
@@ -1015,7 +1249,7 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
                         return (
                           <tr
                             key={req.id || idx}
-                            onClick={() => setSelectedItemUrl(req.path)}
+                            onClick={() => handleSelectRequest(req)}
                             onContextMenu={(e) => handleRowContextMenu(e, req)}
                             className={`cursor-pointer transition-colors ${
                               isSelected ? 'bg-[#282b30] text-white font-medium' : 'hover:bg-[#1e1f22] text-[#dfdfdf]'
@@ -1049,23 +1283,34 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
               <div className="h-1/2 flex min-h-0 bg-[#1e1f22] divide-x divide-[#2b2d30]">
                 {/* Left Half: Request Viewer */}
                 <div className="w-1/2 flex flex-col min-h-0">
-                  <div className="h-7 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2">
-                    <span className="font-bold text-white text-xs">
-                      Request {activeRequest ? `(${activeRequest.method} ${activeRequest.path})` : ''}
-                    </span>
-                    <div className="flex items-center gap-1 text-[11px]">
-                      {(['pretty', 'raw', 'hex'] as const).map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => setRequestTabMode(m)}
-                          className={`px-2 py-0.5 rounded capitalize ${
-                            requestTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'
-                          }`}
-                        >
-                          {m}
-                        </button>
-                      ))}
+                  <div className="h-8 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2">
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-white text-xs">
+                        Request {activeRequest ? `(${activeRequest.method} ${activeRequest.path})` : ''}
+                      </span>
+                      <div className="flex items-center gap-1 text-[11px]">
+                        {(['pretty', 'raw', 'hex'] as const).map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => setRequestTabMode(m)}
+                            className={`px-2 py-0.5 rounded capitalize ${
+                              requestTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
+                    <BurpEditorToolbar
+                      hideBoringHeaders={reqHideBoring}
+                      onToggleHideBoringHeaders={() => setReqHideBoring((prev) => !prev)}
+                      wordWrap={reqWordWrap}
+                      onToggleWordWrap={() => setReqWordWrap((prev) => !prev)}
+                      showNonPrintable={reqShowNonPrintable}
+                      onToggleShowNonPrintable={() => setReqShowNonPrintable((prev) => !prev)}
+                    />
                   </div>
                   <div className="flex-1 bg-[#141517] p-2.5 overflow-auto select-text">
                     {requestTabMode === 'hex' ? (
@@ -1074,6 +1319,9 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
                       <HttpSyntaxHighlighter
                         content={activeRequest?.requestRaw || `GET / HTTP/1.1\r\nHost: ${activeRequest?.host || 'target.local'}\r\n\r\n`}
                         isResponse={false}
+                        wordWrap={reqWordWrap}
+                        hideUninterestingHeaders={reqHideBoring}
+                        showNonPrintable={reqShowNonPrintable}
                       />
                     )}
                   </div>
@@ -1085,23 +1333,45 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
 
                 {/* Right Half: Response Viewer */}
                 <div className="w-1/2 flex flex-col min-h-0">
-                  <div className="h-7 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2">
-                    <span className="font-bold text-white text-xs">
-                      Response {activeRequest ? `(${activeRequest.status || 200})` : ''}
-                    </span>
-                    <div className="flex items-center gap-1 text-[11px]">
-                      {(['pretty', 'raw', 'hex', 'render'] as const).map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => setResponseTabMode(m)}
-                          className={`px-2 py-0.5 rounded capitalize ${
-                            responseTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'
-                          }`}
-                        >
-                          {m}
-                        </button>
-                      ))}
+                  <div className="h-8 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2">
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-white text-xs">
+                        Response {activeRequest ? `(${activeRequest.status || 200})` : ''}
+                      </span>
+                      <div className="flex items-center gap-1 text-[11px]">
+                        {(['pretty', 'raw', 'hex', 'render'] as const).map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => setResponseTabMode(m)}
+                            className={`px-2 py-0.5 rounded capitalize ${
+                              responseTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
+                    <BurpEditorToolbar
+                      hideBoringHeaders={resHideBoring}
+                      onToggleHideBoringHeaders={() => setResHideBoring((prev) => !prev)}
+                      wordWrap={resWordWrap}
+                      onToggleWordWrap={() => setResWordWrap((prev) => !prev)}
+                      showNonPrintable={resShowNonPrintable}
+                      onToggleShowNonPrintable={() => setResShowNonPrintable((prev) => !prev)}
+                      extraActions={
+                        <button
+                          onClick={() => activeRequest && fetchEndpointResponse(activeRequest)}
+                          disabled={isFetchingItem}
+                          className="px-2 py-0.5 rounded bg-[#2b2d30] hover:bg-[#35383f] text-[#38bdf8] border border-[#3e4249] text-[11px] font-medium flex items-center gap-1 transition-colors disabled:opacity-50 mr-1"
+                          title="Send live request upstream to fetch/refresh the response"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isFetchingItem ? 'animate-spin text-[#f37021]' : ''}`} />
+                          <span>{isFetchingItem ? 'Fetching...' : '⚡ Request item'}</span>
+                        </button>
+                      }
+                    />
                   </div>
 
                   {responseTabMode === 'render' ? (
@@ -1119,6 +1389,9 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
                         <HttpSyntaxHighlighter
                           content={activeRequest?.responseRaw || 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nNo response captured'}
                           isResponse={true}
+                          wordWrap={resWordWrap}
+                          hideUninterestingHeaders={resHideBoring}
+                          showNonPrintable={resShowNonPrintable}
                         />
                       )}
                     </div>

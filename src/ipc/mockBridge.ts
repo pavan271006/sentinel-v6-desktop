@@ -1370,35 +1370,164 @@ export const mockBackendBridge = {
       const headerBlock = headers.map((h) => `${h.name}: ${h.value}`).join('\r\n');
       rawResponse = `HTTP/2 400 Bad Request\r\n${headerBlock}\r\n\r\n${responseBody}`;
     } else {
-      const responseData = {
-        status: statusCode,
-        timestamp: new Date().toISOString(),
-        echo_method: parsedReq.method,
-        echo_path: parsedReq.path,
-        authenticated: true,
-        session_token: `sess_${Math.random().toString(36).substring(2, 12)}`,
-        user: {
-          id: 42,
-          username: 'admin',
-          role: 'security_lead',
-        },
-        audit: {
-          in_scope: true,
-          repeater_dispatched: true,
-        },
-      };
+      // Dynamic SQL & WAF Evaluation Engine for simulated/local audit targets
+      let decodedRaw = rawReq;
+      try {
+        decodedRaw = decodeURIComponent(rawReq);
+      } catch {
+        decodedRaw = rawReq;
+      }
 
-      responseBody = JSON.stringify(responseData, null, 2);
-      headers = [
-        { name: 'Content-Type', value: 'application/json; charset=utf-8' },
-        { name: 'Server', value: 'SentinelShield/6.0' },
-        { name: 'Content-Length', value: responseBody.length.toString() },
-        { name: 'Connection', value: 'keep-alive' },
-        { name: 'Date', value: new Date().toUTCString() },
-        { name: 'Set-Cookie', value: `sentinel_session=s%3A_${Math.random().toString(36).substring(2, 10)}; Path=/; Secure; HttpOnly; SameSite=Strict` },
-      ];
+      // OOB / OAST Callback trigger simulation (e.g. Oracle xmltype, MSSQL xp_dirtree, etc.)
+      const isOobPayload = /(xmltype|UTL_INADDR|UTL_HTTP|HTTPURITYPE|DBMS_LDAP|xp_dirtree|xp_subdirs|xp_fileexist|OPENROWSET|LOAD_FILE|COPY.*PROGRAM|dblink_connect|lo_import)/i.test(decodedRaw);
+      if (isOobPayload) {
+        const domainMatch = decodedRaw.match(/(snt[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_.-]+)+)/i) ||
+          decodedRaw.match(/([a-zA-Z0-9_-]+\.(?:[a-zA-Z0-9_-]+\.)*(?:oast\.[a-zA-Z0-9_.-]+|burpcollaborator\.net|sentinel\.local))/i);
+        if (domainMatch) {
+          try {
+            const { InteractshClient } = await import('../services/sqlScanner/engine/InteractshClient');
+            
+            // Simulation for data exfiltration
+            if (/SELECT\s+version/i.test(decodedRaw) || /@@version/i.test(decodedRaw) || /v\$instance/i.test(decodedRaw)) {
+               InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'Oracle Database 19c Enterprise Edition', 'dns');
+            } else if (/SELECT\s+(?:table_name|name)\s+FROM\s+(?:all_tables|user_tables|information_schema\.tables|sys\.tables)/i.test(decodedRaw)) {
+               // Cycle through some mock tables if ROWNUM or LIMIT is used
+               if (/ROWNUM\s*=\s*1/i.test(decodedRaw) || /LIMIT\s+1\s+OFFSET\s+0/i.test(decodedRaw) || /offset\s+0\s+rows\s+fetch\s+next\s+1\s+rows/i.test(decodedRaw) || /rnum\s*>=\s*1/i.test(decodedRaw)) {
+                 InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'users', 'dns');
+               } else if (/ROWNUM\s*=\s*2/i.test(decodedRaw) || /LIMIT\s+1\s+OFFSET\s+1/i.test(decodedRaw) || /offset\s+1\s+rows\s+fetch\s+next\s+1\s+rows/i.test(decodedRaw) || /rnum\s*>=\s*2/i.test(decodedRaw)) {
+                 InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'sessions', 'dns');
+               } else {
+                 InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'products', 'dns');
+               }
+            } else if (/SELECT\s+(?:column_name|name)\s+FROM\s+(?:all_tab_columns|user_tab_columns|information_schema\.columns|sys\.columns)/i.test(decodedRaw)) {
+               if (/ROWNUM\s*=\s*1/i.test(decodedRaw) || /LIMIT\s+1\s+OFFSET\s+0/i.test(decodedRaw) || /offset\s+0\s+rows\s+fetch\s+next\s+1\s+rows/i.test(decodedRaw) || /rnum\s*>=\s*1/i.test(decodedRaw)) {
+                 InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'username', 'dns');
+               } else if (/ROWNUM\s*=\s*2/i.test(decodedRaw) || /LIMIT\s+1\s+OFFSET\s+1/i.test(decodedRaw) || /offset\s+1\s+rows\s+fetch\s+next\s+1\s+rows/i.test(decodedRaw) || /rnum\s*>=\s*2/i.test(decodedRaw)) {
+                 InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'password', 'dns');
+               } else {
+                 InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'email', 'dns');
+               }
+            } else if (/SELECT.*FROM\s+users/i.test(decodedRaw)) {
+               InteractshClient.getInstance().registerMockExfilInteraction(domainMatch[1], 'administrator:s3cretpassword', 'dns');
+            } else {
+               // Standard detection payload
+               InteractshClient.getInstance().registerMockInteraction(domainMatch[1], 'dns');
+            }
+          } catch {}
+        }
+      }
 
-      rawResponse = `HTTP/1.1 ${statusCode} ${statusText}\r\nContent-Type: application/json; charset=utf-8\r\nServer: SentinelShield/6.0\r\nContent-Length: ${responseBody.length}\r\nConnection: keep-alive\r\nDate: ${new Date().toUTCString()}\r\n\r\n${responseBody}`;
+      const isWafTarget = /(__cf_bm|cf-ray|cf_clearance)/i.test(rawReq) || /cloudflare/i.test(target);
+      const isRawUnion = /\bUNION\s+SELECT\b/i.test(rawReq);
+      const isRawTautology = /'\s*OR\s*'1'='1/i.test(rawReq) || /\bOR\s+1=1\b/i.test(rawReq);
+      const hasEvasionComment = rawReq.includes('/**/') || (rawReq.includes('/*') && rawReq.includes('*/'));
+
+      if (isWafTarget && (isRawUnion || isRawTautology) && !hasEvasionComment) {
+        // WAF blocks raw untransformed payload
+        statusCode = 403;
+        statusText = 'Forbidden';
+        responseBody = `<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head><body><h1>403 Forbidden</h1><p>Cloudflare Ray ID: 897654321-IAD</p><p>Request blocked by Cloudflare Managed OWASP CRS (RULE-942100)</p></body></html>`;
+        headers = [
+          { name: 'Content-Type', value: 'text/html; charset=UTF-8' },
+          { name: 'Server', value: 'cloudflare' },
+          { name: 'cf-ray', value: '897654321-IAD' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+        ];
+      } else if (/(\bpg_sleep\s*\(\s*\d+|WAITFOR\s+DELAY|\bSLEEP\s*\(\s*\d+|\bBENCHMARK\s*\()/i.test(decodedRaw)) {
+        // Time-based SQL delay simulation
+        const delayMatch = decodedRaw.match(/\b(?:pg_sleep|SLEEP)\s*\(\s*(\d+)/i) || decodedRaw.match(/WAITFOR\s+DELAY\s*'[^']*?(\d+)'/i);
+        const delaySec = delayMatch ? parseInt(delayMatch[1], 10) : 3;
+        const sleepMs = Math.min(600, delaySec * 100); // Scaled responsive sleep for fast audit execution
+        await new Promise((r) => setTimeout(r, sleepMs));
+
+        statusCode = 200;
+        statusText = 'OK';
+        responseBody = `<!DOCTYPE html><html><body><h1>Search Results</h1><div class="greeting"><p>Welcome back</p></div><div class="item">Delayed Query Completed</div></body></html>`;
+        headers = [
+          { name: 'Content-Type', value: 'text/html; charset=UTF-8' },
+          { name: 'Server', value: 'PostgreSQL/15.2' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+        ];
+      } else if (/(UNION(?:\/\*\*\/|\s+)SELECT(?:\/\*\*\/|\s+).*(?:information_schema|user_tables|all_tables|users))/i.test(decodedRaw)) {
+        // UNION Schema & Data extraction
+        statusCode = 200;
+        statusText = 'OK';
+        if (/information_schema\.columns/i.test(decodedRaw)) {
+          responseBody = `<!DOCTYPE html><html><body><h1>Catalog Columns</h1><div class="data">~SNT_COL:id:COL_SNT~~SNT_COL:username:COL_SNT~~SNT_COL:password_hash:COL_SNT~~SNT_COL:email:COL_SNT~~SNT_COL:role:COL_SNT~~SNT_COL:mfa_secret:COL_SNT~</div></body></html>`;
+        } else if (/information_schema\.tables/i.test(decodedRaw)) {
+          responseBody = `<!DOCTYPE html><html><body><h1>Catalog Tables</h1><div class="data">~SNT_TBL:users:TBL_SNT~~SNT_TBL:accounts:TBL_SNT~~SNT_TBL:orders:TBL_SNT~~SNT_TBL:products:TBL_SNT~~SNT_TBL:pg_shadow:TBL_SNT~</div></body></html>`;
+        } else if (/\busers\b/i.test(decodedRaw)) {
+          responseBody = `<!DOCTYPE html><html><body><h1>User Records</h1><div class="data">~SNT_ROW:admin#pbkdf2_sha256$260000$saltsalt$hashedpassword:ROW_SNT~~SNT_ROW:carlos#hunter2:ROW_SNT~</div></body></html>`;
+        } else {
+          responseBody = `<!DOCTYPE html><html><body><h1>Query Output</h1><div class="data">~SNT_TBL:users:TBL_SNT~~SNT_TBL:app_config:TBL_SNT~</div></body></html>`;
+        }
+        headers = [
+          { name: 'Content-Type', value: 'text/html; charset=UTF-8' },
+          { name: 'Server', value: 'PostgreSQL/15.2' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+        ];
+      } else if (/'\s*--|'\s*#|'\s*OR\s*'1'='1|1=1|\bTRUE\b|version\(\)\s*IS\s*NOT\s*NULL|\b1\s*BETWEEN\s*1\s*AND\s*1/i.test(decodedRaw)) {
+        // Boolean TRUE condition
+        statusCode = 200;
+        statusText = 'OK';
+        responseBody = `<!DOCTYPE html><html><body><h1>Products</h1><div class="greeting"><p>Welcome back</p></div><div class="product">Product #1: Leather Wallet (In Stock)</div><div class="product">Product #2: Canvas Bag</div></body></html>`;
+        headers = [
+          { name: 'Content-Type', value: 'text/html; charset=UTF-8' },
+          { name: 'Server', value: 'PostgreSQL/15.2' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+        ];
+      } else if (/'\s*AND\s*'1'='2|1=2|\bFALSE\b|version\(\)\s*IS\s*NULL|\b1\s*BETWEEN\s*2\s*AND\s*3/i.test(decodedRaw)) {
+        // Boolean FALSE condition
+        statusCode = 200;
+        statusText = 'OK';
+        responseBody = `<!DOCTYPE html><html><body><h1>Products</h1><div class="greeting"></div><div class="product-empty">No products matched your criteria.</div></body></html>`;
+        headers = [
+          { name: 'Content-Type', value: 'text/html; charset=UTF-8' },
+          { name: 'Server', value: 'PostgreSQL/15.2' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+        ];
+      } else if (/(CAST\(|CONVERT\(|EXTRACTVALUE\(|UPDATEXML\(|['"][^'"]*['"]\s*['"]|['"]\s+HTTP\/|[?&][a-zA-Z0-9_-]+=[^&\s]*['"])/i.test(decodedRaw) && !/1=1|1=2|UNION|pg_sleep|WAITFOR/i.test(decodedRaw)) {
+        // Error-based SQL trigger
+        statusCode = 500;
+        statusText = 'Internal Server Error';
+        responseBody = `<html><head><title>500 Internal Server Error</title></head><body><h1>Database Query Error</h1><pre>psycopg2.errors.SyntaxError: syntax error at or near "'"\nLINE 1: SELECT * FROM items WHERE category = '` + decodedRaw.substring(0, 40) + `'\n                                             ^</pre></body></html>`;
+        headers = [
+          { name: 'Content-Type', value: 'text/html; charset=UTF-8' },
+          { name: 'Server', value: 'PostgreSQL/15.2' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+        ];
+      } else {
+        const responseData = {
+          status: statusCode,
+          timestamp: new Date().toISOString(),
+          echo_method: parsedReq.method,
+          echo_path: parsedReq.path,
+          authenticated: true,
+          session_token: `sess_${Math.random().toString(36).substring(2, 12)}`,
+          user: {
+            id: 42,
+            username: 'admin',
+            role: 'security_lead',
+          },
+          audit: {
+            in_scope: true,
+            repeater_dispatched: true,
+          },
+        };
+
+        responseBody = JSON.stringify(responseData, null, 2);
+        headers = [
+          { name: 'Content-Type', value: 'application/json; charset=utf-8' },
+          { name: 'Server', value: 'SentinelShield/6.0' },
+          { name: 'Content-Length', value: responseBody.length.toString() },
+          { name: 'Connection', value: 'keep-alive' },
+          { name: 'Date', value: new Date().toUTCString() },
+          { name: 'Set-Cookie', value: `sentinel_session=s%3A_${Math.random().toString(36).substring(2, 10)}; Path=/; Secure; HttpOnly; SameSite=Strict` },
+        ];
+      }
+
+      const headerBlock = headers.map((h) => `${h.name}: ${h.value}`).join('\r\n');
+      rawResponse = `HTTP/1.1 ${statusCode} ${statusText}\r\n${headerBlock}\r\n\r\n${responseBody}`;
     }
 
     const casResHash = `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
