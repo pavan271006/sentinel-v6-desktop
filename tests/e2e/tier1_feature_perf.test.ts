@@ -817,7 +817,7 @@ describe('Tier 1: Feature Performance & Latency Isolation Suite (>=5 tests per c
 
     it('9.5: resolves secret reference via opaque SecretReference without leakage in <2ms', () => {
       const vault = new Map<string, string>();
-      vault.set('sec-ref-001', 'Bearer sk_live_998877665544');
+      vault.set('sec-ref-001', 'Bearer test_key_998877665544');
 
       let resolved: string | undefined;
       const elapsed = measureMs(() => {

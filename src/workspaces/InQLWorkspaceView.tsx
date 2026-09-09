@@ -32,7 +32,7 @@ export const InQLWorkspaceView: React.FC = () => {
       "username": "admin",
       "email": "admin@target.local",
       "role": "SYSTEM_ADMIN",
-      "apiKey": "sk_live_99214a19e2",
+      "apiKey": "mock_key_99214a19e2",
       "internalNotes": "Master service account"
     }
   }

@@ -161,7 +161,7 @@ struct NestedConfigWithSecrets {
 
 #[test]
 fn test_nested_container_secret_redaction() {
-    let secret_token = "sk_live_very_secret_token_123456789";
+    let secret_token = "mock_secret_token_123456789";
     let raw_key = vec![0x11, 0x22, 0x33, 0x44];
     let cred = Credential::new(Uuid::new_v4(), "ApiKey", Uuid::new_v4(), AccessLevel::User);
 
