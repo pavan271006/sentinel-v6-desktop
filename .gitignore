@@ -12,6 +12,7 @@
 *.sqlite
 *.sqlite3
 sentinel_storage.db
+storage/
 out.txt
 --help
 
