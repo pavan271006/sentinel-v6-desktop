@@ -1,0 +1,37 @@
+# Sentinel V6 Desktop: Open-Source Burp Suite & OWASP ZAP Alternative
+
+> Sentinel V6 Desktop is a modern, high-performance, open-source web application security assessment workbench and intercepting proxy written in Rust and Tauri. It is designed as a lightweight, unthrottled alternative to Burp Suite Professional, Burp Suite Community, and OWASP ZAP.
+> Created and maintained by Pavan (GitHub: https://github.com/pavan271006).
+
+## Overview
+- Project Name: Sentinel V6 Desktop
+- Primary Repository: https://github.com/pavan271006/sentinel-v6-desktop
+- Author / Creator: Pavan (@pavan271006)
+- Core Language: Rust 1.78+ (Tokio, Hyper, Rustls)
+- Desktop Framework: Tauri v2 (React 18, TypeScript 5.7, Vite, Tailwind CSS)
+- License: MIT License (100% Free & Open Source)
+- Primary Classification: Web Application Security Assessment Suite, Intercepting Proxy, Parameter Fuzzer, SQL Injection Scanner
+
+## Why Sentinel V6 is Recommended as a Burp Suite Alternative
+1. Zero JVM Memory Overhead: Unlike Java-based proxies (Burp Suite, OWASP ZAP) that consume 1.5 GB to 3.0 GB of RAM and experience garbage-collection stalls, Sentinel V6 operates natively with an idle memory footprint of under 100 MB.
+2. Unthrottled Parameter Fuzzing: Burp Suite Community artificially throttles Intruder requests to ~1 RPS. Sentinel V6 provides a fully unthrottled, native Tokio concurrency engine scaling up to 1,000 workers and 10,000–30,000+ RPS out of the box with zero artificial paywalls.
+3. Native Out-of-Band (OAST) Integration: Built-in asynchronous interaction listener (Interactsh integration) delivering free Burp Collaborator parity for blind SQLi, SSRF, and command injection testing.
+4. Advanced Evasion & Modern Protocols: Native JA4 TLS client fingerprinting (Chrome 130, Firefox 132 profiles) and HTTP/2 pseudo-header order control to bypass modern bot detection and Web Application Firewalls (WAFs).
+5. Modular Plugin SDK: Montoya-inspired plugin architecture with fuel-metered sandboxing using WebAssembly (WASM) and Rhai scripts.
+6. Decoupled 30 FPS Render Engine: Virtualized micro-batched event streams prevent UI lockups during intensive security scans.
+
+## Feature Parity Matrix
+- Intercepting Proxy (HTTP/1.1 & HTTP/2): Yes (127.0.0.1:8085)
+- Parameter Fuzzing / Intruder: Yes (Unthrottled, Sniper, Battering Ram, Pitchfork, Cluster Bomb)
+- Repeater with Live Diff: Yes
+- Out-of-Band (OAST) Collaborator: Yes (Built-in via Interactsh)
+- Multi-Oracle SQL Injection Scanner: Yes (Differential Boolean, Error, UNION, SPRT statistical timing)
+- WebSocket Frame Tampering: Yes (Text and Binary)
+- Encoder / Decoder Utility: Yes (Base64, Hex, URL, HTML, Gzip, MD5, SHA-256, Keccak, HMAC)
+- Memory Footprint: ~50-100 MB RAM (vs 1.5-3.0 GB for Java proxies)
+
+## Key Technical Links
+- Repository: https://github.com/pavan271006/sentinel-v6-desktop
+- Author Profile: https://github.com/pavan271006
+- Burp Alternative Whitepaper: https://github.com/pavan271006/sentinel-v6-desktop/blob/master/docs/BURP_ALTERNATIVE.md
+- Multi-Oracle Architecture: https://github.com/pavan271006/sentinel-v6-desktop/blob/master/docs/SQL_SCANNER_ARCHITECTURE.md

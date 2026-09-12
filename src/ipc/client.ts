@@ -146,6 +146,14 @@ export class SentinelIpcClient {
           window.open(targetUrl, '_blank');
         }
         return `Launched ${targetUrl}` as unknown as T;
+      case 'cmd_open_html_in_browser':
+        const html = (args?.htmlContent as string) || '';
+        if (typeof window !== 'undefined' && window.open) {
+          const blob = new Blob([html], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+        }
+        return 'HTML preview opened in browser' as unknown as T;
       case 'cmd_ucmax_analyze_boolean':
         return null as unknown as T;
       case 'cmd_ucmax_plan_next_step':
@@ -278,7 +286,7 @@ export class SentinelIpcClient {
   }
 
   public async diffRepeaterRevisions(req: RepeaterDiffRequest): Promise<TrafficDiffResult> {
-    return this.invoke<TrafficDiffResult>('cmd_repeater_diff', { req });
+    return this.invoke<TrafficDiffResult>('cmd_repeater_diff', { payload: req, req });
   }
 
   public async exportRepeaterCommand(payload: RepeaterExportPayload): Promise<string> {

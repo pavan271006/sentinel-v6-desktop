@@ -1,42 +1,28 @@
-## 2026-08-18T12:35:07Z
-You are Challenger 2 for Milestone 1.
-Your working directory is: `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2`
+## 2026-09-11T08:14:37Z
+You are Challenger 2 for Milestone M1 (Wire Forensics & Network Throughput Hardening).
 
-MANDATORY: You MUST read:
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\PROJECT.md`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\sub_orch_m1_baseline\SCOPE.md`
-- Deliverables: `c:\Users\Legion 5 pro\Desktop\cyber sec\PERFORMANCE_BASELINE_REPORT.md`, `c:\Users\Legion 5 pro\Desktop\cyber sec\PERFORMANCE_ENVIRONMENT.md`
+Your Identity & Working Directory:
+- Working Directory: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2
+- Workspace Root: c:\Users\Legion 5 pro\Desktop\cyber sec
+- Parent Conversation ID: 94d601fe-cc12-4b39-babd-492e9642f362
+- Archetype: teamwork_preview_challenger
 
-Your Task:
-1. Stress-test the build and baseline performance claims across frontend stress suites (`tests/stress/` or virtualized table rendering, command palette search, HTTPQL eval) and backend performance benchmarks.
-2. Confirm that all 11 spec checks in `architecture/v6/validate_v6_spec.py` pass and no edge cases or regressions were introduced.
-3. Output your formal verdict (`APPROVE` or `REQUEST_CHANGES`) in `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2\handoff.md` and send a message back.
+MANDATORY INPUT:
+You MUST read:
+1. c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md (under ## 2026-09-11T07:48:59Z)
+2. c:\Users\Legion 5 pro\Desktop\cyber sec\PROJECT.md
+3. Worker Handoff: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\worker_m1\handoff.md
 
-## 2026-08-19T12:59:10Z
-You are Challenger 2 for Milestone M1 (Global Security Tool Research & Coverage Taxonomy).
-Your working directory is: `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2`
-Workspace root is: `c:\Users\Legion 5 pro\Desktop\cyber sec`
+YOUR MISSION:
+Adversarially challenge the heap virtualization and Wireshark/Npcap telemetry:
+1. Verify that `FuzzerWorkspaceView.tsx` bounded body preview (`MAX_STORED_BODY_PREVIEW`) prevents V8 heap overflow while preserving correct request/response length metadata.
+2. Verify Wireshark (4.6.8) and Npcap (1.88) commands: check edge cases where Wireshark or Npcap is missing or on non-standard paths, verifying graceful error handling.
 
-MANDATORY FIRST STEP: Read the authoritative request in `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md` (specifically section `## Follow-up — 2026-08-19T12:49:26Z` and sections 1–4) and `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\orchestrator_engines\PROJECT.md`.
+Deliverables:
+- Write `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2\handoff.md` with structured verdict: APPROVE or REJECT.
+- Send message to orchestrator (`94d601fe-cc12-4b39-babd-492e9642f362`).
 
-Challenge and empirically verify:
-- Licensing classification accuracy (GPL vs AGPL vs Apache 2.0 vs MIT vs Commercial), linking constraints, and isolation architectures.
-- Evidence hierarchy (CAS SHA-256 Request/Response, DOM screenshot, Timing differential, OAST callback proof) and false-positive mitigation controls.
-- Issue an explicit verdict: `APPROVE` or `REJECT`.
-
-Write your adversarial challenge report to `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2\handoff.md` and notify parent with `send_message`.
-
-## 2026-08-21T15:41:07Z
-You are Challenger 2 for Milestone M1 (SOTA Research Landscape & Hardened Target Baseline).
-Your working directory is `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_2/`.
-The authoritative request is in `c:/Users/Legion 5 pro/Desktop/cyber sec/ORIGINAL_REQUEST.md`.
-The master scope is in `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab/PROJECT.md`.
-The project workspace root is `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab`.
-
-Challenger Tasks:
-1. Adversarially challenge `research_lab/lab/target/` authentication and multi-tenant isolation:
-   - Probe JWT token mutations (tampered signatures, alg: none, expired timestamps, swapped tenant claims).
-   - Probe cross-tenant BOLA and BFLA access on invoices, workflows, and ledgers.
-2. Run empirical verification scripts against the target application.
-3. Write your empirical challenge report in `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_2/analysis.md` and complete `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_2/handoff.md` with your verdict (CONFIRMED_CORRECT / VULNERABILITY_EXPOSED). Send a message when finished.
+## 2026-09-11T08:24:17Z
+**Context**: Milestone M1 Verification Gate
+**Content**: Please report your current verification status on Fuzzer heap bounds and Wireshark/Npcap telemetry.
+**Action**: Complete your challenge evaluation and send verdict as soon as possible.

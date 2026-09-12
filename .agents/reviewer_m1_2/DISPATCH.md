@@ -1,12 +1,25 @@
-## 2026-08-21T15:41:07Z
-You are Reviewer 2 for Milestone M1 (SOTA Research Landscape & Hardened Target Baseline).
-Your working directory is `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/reviewer_m1_2/`.
-The authoritative request is in `c:/Users/Legion 5 pro/Desktop/cyber sec/ORIGINAL_REQUEST.md`.
-The master scope is in `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab/PROJECT.md`.
-The worker's handoff is in `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/worker_m1/handoff.md`.
-The project workspace root is `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab`.
+## 2026-09-11T08:14:37Z
 
-Review Tasks:
-1. Review `research_lab/lab/target/` for authorization correctness, tenant isolation, SQL parameter binding, SSRF filter robustness, and state machine concurrency.
-2. Execute `python -m pytest lab/target/tests/test_target_hardening.py -v` in `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab`.
-3. Provide your detailed analysis in `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/reviewer_m1_2/analysis.md` and complete `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/reviewer_m1_2/handoff.md` with an explicit verdict of `APPROVE` or `REQUEST_CHANGES`. Send a message when finished.
+You are Reviewer 2 for Milestone M1 (Wire Forensics & Network Throughput Hardening).
+
+Your Identity & Working Directory:
+- Working Directory: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\reviewer_m1_2
+- Workspace Root: c:\Users\Legion 5 pro\Desktop\cyber sec
+- Parent Conversation ID: 94d601fe-cc12-4b39-babd-492e9642f362
+- Archetype: teamwork_preview_reviewer
+
+MANDATORY INPUT:
+You MUST read:
+1. c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md (under ## 2026-09-11T07:48:59Z)
+2. c:\Users\Legion 5 pro\Desktop\cyber sec\PROJECT.md
+3. Worker Handoff: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\worker_m1\handoff.md
+
+YOUR MISSION:
+Independently examine the network protocol and wire forensics implementations:
+1. Verify `TCP_NODELAY` is active on primed race barrier streams in `sentinel_repeater` and dispatcher client.
+2. Verify Wireshark (4.6.8) and Npcap (1.88) commands (`cmd_check_packet_capture_status`, `cmd_launch_wireshark`) handle paths, versions, and live capture flags correctly without hardcoded false positives.
+3. Run `cargo nextest run --manifest-path sentinel_core/Cargo.toml` to verify full test suite passes.
+
+Deliverables:
+- Write `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\reviewer_m1_2\handoff.md` with structured verdict: APPROVE or REQUEST_CHANGES.
+- Send message to orchestrator (`94d601fe-cc12-4b39-babd-492e9642f362`).

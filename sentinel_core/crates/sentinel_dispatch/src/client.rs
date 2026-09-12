@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 use tokio_rustls::rustls::pki_types::ServerName;
@@ -35,6 +35,7 @@ use sentinel_scope::DefaultScopeEngine;
 use sentinel_storage::SqliteObservationStore;
 
 use crate::budget::DispatchBudget;
+use crate::pool::{read_http_response_framed, HttpConnectionPool, PoolConfig, PoolKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DispatchResult {
@@ -59,6 +60,7 @@ pub struct HttpDispatcher {
     tls_config: Arc<ClientConfig>,
     connect_timeout: Duration,
     read_timeout: Duration,
+    pool: Arc<HttpConnectionPool>,
 }
 
 impl HttpDispatcher {
@@ -74,17 +76,34 @@ impl HttpDispatcher {
             .with_no_client_auth();
         config.alpn_protocols = vec![b"http/1.1".to_vec()];
 
+        let tls_config = Arc::new(config);
+        let pool = Arc::new(HttpConnectionPool::new(
+            PoolConfig::default(),
+            tls_config.clone(),
+        ));
+
         Self {
             scope_engine,
             event_bus: None,
             storage: None,
             budget: None,
             parser: SentinelHttpParser::new(),
-            tls_config: Arc::new(config),
+            tls_config,
             connect_timeout: Duration::from_secs(10),
             read_timeout: Duration::from_secs(15),
+            pool,
         }
     }
+
+    pub fn with_pool(mut self, pool: Arc<HttpConnectionPool>) -> Self {
+        self.pool = pool;
+        self
+    }
+
+    pub fn pool(&self) -> &Arc<HttpConnectionPool> {
+        &self.pool
+    }
+
 
     pub fn with_event_bus(mut self, bus: Arc<ChannelEventBus>) -> Self {
         self.event_bus = Some(bus);
@@ -114,6 +133,11 @@ impl HttpDispatcher {
     pub fn scope_engine(&self) -> &Arc<DefaultScopeEngine> {
         &self.scope_engine
     }
+
+    pub fn tls_config(&self) -> &Arc<ClientConfig> {
+        &self.tls_config
+    }
+
 
     /// Dispatches raw HTTP bytes to the target URL after validating scope, budgets, and timeouts.
     pub async fn dispatch(
@@ -155,15 +179,49 @@ impl HttpDispatcher {
         let port = parsed_url.port().unwrap_or(default_port);
         let addr = format!("{}:{}", host, port);
 
-        // 4. Socket dispatch with timeouts
+        // 4. Socket dispatch with connection pooling and timeouts
         let start_time = Instant::now();
-        let raw_response = if is_https {
-            self.send_tls(&addr, &host, raw_request).await?
-        } else {
-            self.send_plain(&addr, raw_request).await?
+        let pool_key = PoolKey::new(&host, port, is_https);
+        let is_head = raw_request.starts_with(b"HEAD ") || raw_request.starts_with(b"head ");
+        let req_has_close = {
+            let req_str = String::from_utf8_lossy(raw_request);
+            req_str.to_ascii_lowercase().contains("connection: close")
+        };
+
+        let mut attempts = 0;
+        let raw_response = loop {
+            attempts += 1;
+            let (mut transport, is_reused) = self.pool.acquire(&pool_key).await?;
+
+            if let Err(e) = transport.write_all(raw_request).await {
+                if is_reused && attempts == 1 {
+                    continue;
+                }
+                return Err(SentinelError::NetworkError(format!(
+                    "Failed to write request to {}: {}",
+                    addr, e
+                )));
+            }
+            let _ = transport.flush().await;
+
+            match read_http_response_framed(&mut transport, self.read_timeout, is_head).await {
+                Ok(res) => {
+                    if res.is_reusable && !req_has_close {
+                        self.pool.release(pool_key.clone(), transport);
+                    }
+                    break res.raw_response;
+                }
+                Err(e) => {
+                    if is_reused && attempts == 1 {
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
         };
         let duration = start_time.elapsed();
         let duration_ms = duration.as_millis() as u64;
+
 
         // 5. Response parsing
         let parsed_response = self.parser.parse_response(&raw_response).ok();
@@ -297,60 +355,39 @@ impl HttpDispatcher {
             .collect()
     }
 
-    async fn send_plain(&self, addr: &str, request_bytes: &[u8]) -> Result<Vec<u8>, SentinelError> {
+    pub async fn send_plain(&self, addr: &str, request_bytes: &[u8]) -> Result<Vec<u8>, SentinelError> {
         let connect_fut = TcpStream::connect(addr);
         let mut stream = tokio::time::timeout(self.connect_timeout, connect_fut)
             .await
             .map_err(|_| SentinelError::NetworkError(format!("Connection timeout to {}", addr)))?
             .map_err(|e| SentinelError::NetworkError(format!("Failed to connect to {}: {}", addr, e)))?;
+        stream.set_nodelay(true).ok();
 
         stream
             .write_all(request_bytes)
             .await
             .map_err(|e| SentinelError::NetworkError(format!("Failed to write request: {}", e)))?;
+        let _ = stream.flush().await;
 
-        let mut buffer = Vec::with_capacity(8192);
-        let mut chunk = [0u8; 4096];
-        loop {
-            let read_fut = stream.read(&mut chunk);
-            let n = match tokio::time::timeout(self.read_timeout, read_fut).await {
-                Ok(Ok(0)) => break,
-                Ok(Ok(n)) => n,
-                Ok(Err(e)) => {
-                    return Err(SentinelError::NetworkError(format!(
-                        "Failed to read response: {}",
-                        e
-                    )))
-                }
-                Err(_) => {
-                    if !buffer.is_empty() {
-                        // Return what we received before read timeout
-                        break;
-                    }
-                    return Err(SentinelError::NetworkError(format!(
-                        "Read timeout from {}",
-                        addr
-                    )));
-                }
-            };
-            buffer.extend_from_slice(&chunk[..n]);
-        }
-
-        Ok(buffer)
+        let is_head = request_bytes.starts_with(b"HEAD ") || request_bytes.starts_with(b"head ");
+        let result = read_http_response_framed(&mut stream, self.read_timeout, is_head).await?;
+        Ok(result.raw_response)
     }
 
-    async fn send_tls(
+    pub async fn send_tls(
         &self,
         addr: &str,
         host: &str,
         request_bytes: &[u8],
     ) -> Result<Vec<u8>, SentinelError> {
+
         let connector = TlsConnector::from(self.tls_config.clone());
         let connect_fut = TcpStream::connect(addr);
         let stream = tokio::time::timeout(self.connect_timeout, connect_fut)
             .await
             .map_err(|_| SentinelError::NetworkError(format!("Connection timeout to {}", addr)))?
             .map_err(|e| SentinelError::NetworkError(format!("Failed to connect to {}: {}", addr, e)))?;
+        stream.set_nodelay(true).ok();
 
         let server_name = ServerName::try_from(host.to_string()).map_err(|e| {
             SentinelError::InvariantViolation(format!("Invalid TLS server name: {}", e))
@@ -365,33 +402,23 @@ impl HttpDispatcher {
         tls_stream.write_all(request_bytes).await.map_err(|e| {
             SentinelError::NetworkError(format!("Failed to write TLS request: {}", e))
         })?;
+        let _ = tls_stream.flush().await;
 
-        let mut buffer = Vec::with_capacity(8192);
-        let mut chunk = [0u8; 4096];
-        loop {
-            let read_fut = tls_stream.read(&mut chunk);
-            let n = match tokio::time::timeout(self.read_timeout, read_fut).await {
-                Ok(Ok(0)) => break,
-                Ok(Ok(n)) => n,
-                Ok(Err(e)) => {
-                    return Err(SentinelError::NetworkError(format!(
-                        "Failed to read TLS response: {}",
-                        e
-                    )))
-                }
-                Err(_) => {
-                    if !buffer.is_empty() {
-                        break;
-                    }
-                    return Err(SentinelError::NetworkError(format!(
-                        "TLS read timeout from {}",
-                        addr
-                    )));
-                }
-            };
-            buffer.extend_from_slice(&chunk[..n]);
-        }
+        let is_head = request_bytes.starts_with(b"HEAD ") || request_bytes.starts_with(b"head ");
+        let result = read_http_response_framed(&mut tls_stream, self.read_timeout, is_head).await?;
+        Ok(result.raw_response)
+    }
 
-        Ok(buffer)
+    /// Asynchronously reads an HTTP response from stream with RFC 9112 framing detection.
+    /// Completes as soon as the response body is fully received without waiting for timeout or EOF.
+    pub async fn read_http_response<S: tokio::io::AsyncRead + Unpin>(
+        &self,
+        stream: &mut S,
+        _addr: &str,
+        is_head: bool,
+    ) -> Result<Vec<u8>, SentinelError> {
+        let res = read_http_response_framed(stream, self.read_timeout, is_head).await?;
+        Ok(res.raw_response)
     }
 }
+

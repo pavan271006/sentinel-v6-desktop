@@ -1,90 +1,162 @@
-# Handoff Report: Milestone M1 Adversarial Challenge & Verification
+# Adversarial Challenge Handoff Report: Milestone M1
 
-**Document Identifier:** `HANDOFF-CHALLENGER-M1-2-2026`  
-**Agent:** Challenger 2 (Milestone M1)  
-**Parent Agent:** `5555b172-65d5-4d72-b1d1-1a1737600d99`  
-**Working Directory:** `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_2/`  
-**Scope:** Hardened Target Baseline (`research_lab/lab/target/`)  
-**Verdict:** **`CONFIRMED_CORRECT`**  
-**Date:** 2026-08-21  
+**Agent**: Challenger 2 (`teamwork_preview_challenger`)  
+**Working Directory**: `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_2`  
+**Parent Conversation ID**: `94d601fe-cc12-4b39-babd-492e9642f362`  
+**Date**: 2026-09-11T08:26:30Z  
+**Type**: Hard Handoff (Milestone 1 Complete)  
+**Verdict**: **APPROVE**
 
 ---
 
 ## 1. Observation
 
-### 1.1 Implementation Code Inspections
-* **Authentication & Cryptography (`lab/target/auth.py:100-154`)**:
-  * Line 108: Explicit pre-check `unverified_header = jwt.get_unverified_header(token)` ensures `if unverified_header.get("alg") != ALGORITHM: raise HTTPException(status_code=401)`.
-  * Line 116-121: `jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"require": ["exp", "iat", "sub", "tenant_id", "role", "jti", "type"]})` strictly enforces all 7 mandatory claims and checks expiration and signature.
-  * Line 132: Database revocation check `SELECT jti FROM revoked_tokens WHERE jti = ?` rejects logged-out or rotated tokens with HTTP 401.
-* **Role-Based Access Control & Tenant Boundaries (`lab/target/rbac.py:31-61`)**:
-  * Line 36-44: `require_roles` factory verifies role hierarchy and raises HTTP 403 Forbidden for insufficient privilege.
-  * Line 47-60: `assert_tenant_boundary` verifies `user_tenant == target_tenant_id` and raises HTTP 404 Not Found on cross-tenant attempts.
-* **Multi-Tenant Scoping in Domain Services**:
-  * `lab/target/services/invoice_service.py:36-52`: Queries invoice with `WHERE id = ? AND tenant_id = ?`, returning HTTP 404 on cross-tenant requests.
-  * `lab/target/services/workflow_service.py:29-43, 74-123`: Enforces `WHERE id = ? AND tenant_id = ? AND version = ?` with optimistic locking and stage role authorization.
-  * `lab/target/services/ledger_service.py:56-96`: Enforces atomic balance transfer within immediate transaction with non-negative balance checking.
+### Target 1: Fuzzer Heap Virtualization & Metadata Preservation
+1. **Bounded Body Preview Implementation**:
+   - In `src/workspaces/FuzzerWorkspaceView.tsx:1003–1029`:
+     ```typescript
+     // Heap Virtualization: Bound stored request/response bodies to 2KB to prevent V8 heap exhaustion on 100k attack runs
+     const MAX_STORED_BODY_PREVIEW = 2048;
+     const pagedRawResponse =
+       rawRes.length > MAX_STORED_BODY_PREVIEW
+         ? rawRes.slice(0, MAX_STORED_BODY_PREVIEW) +
+           `\r\n\r\n[... response body truncated (${length} bytes total) to conserve memory in large attack run ...]`
+         : rawRes;
 
-### 1.2 Empirical Test Execution Results
-1. **Adversarial Challenge Suite (`lab/target/tests/test_adversarial_challenge.py`)**:
-   * Command executed: `python -m pytest lab/target/tests/test_adversarial_challenge.py -v`
-   * Result: **29 passed in 12.10s (100% PASS)**
-   * Coverage breakdown:
-     - 10 JWT cryptographic mutation & signature tampering tests (bit corruption, truncation, empty signature, adversary keys, `alg: none` casing variations, asymmetric/unsupported algorithms, expired timestamps, missing claims, token type confusion, post-logout revocation replay, swapped tenant claim payload tampering) -> **100% REJECTED (HTTP 401)**.
-     - 8 Multi-tenant BOLA / IDOR isolation tests across invoices, workflows, ledgers, and user provisioning/role management -> **100% REJECTED (HTTP 404/403)**.
-     - 11 BFLA / Privilege escalation tests (unprivileged role elevation, OrgAdmin to SuperAdmin promotion, profile mass-assignment, workflow stage role gating, webhook & audit trail access) -> **100% REJECTED (HTTP 403/422)**.
+     const pagedRawRequest =
+       wireReq.length > MAX_STORED_BODY_PREVIEW
+         ? wireReq.slice(0, MAX_STORED_BODY_PREVIEW) +
+           `\r\n\r\n[... request body truncated (${wireReq.length} bytes total) ...]`
+         : wireReq;
 
-2. **Canonical Hardened Target Baseline Suite (`lab/target/tests/test_target_hardening.py`)**:
-   * Command executed: `python -m pytest lab/target/tests/test_target_hardening.py -v`
-   * Result: **32 passed in 16.28s (100% PASS)**
-   * Verified 0 flaws across SQL injection, XSS, TOCTOU concurrency double-spends, SSRF pre-socket filters, and state rollback context retention.
+     const item: AttackResultItem = {
+       id: reqIndex + 1,
+       payloads: perm.payloads,
+       payloadSummary: perm.payloads.join(' | ') || '(default)',
+       statusCode: status,
+       error: execResult.error || (status === 0 ? 'Network Error' : ''),
+       timeout: !!execResult.error?.includes('timed out'),
+       lengthBytes: length,
+       timeMs: dur,
+       comment: status === 302 ? 'Redirect' : status === 200 ? 'OK' : status === 401 ? 'Unauthorized' : '',
+       rawRequest: pagedRawRequest,
+       rawResponse: pagedRawResponse,
+     };
+     ```
+2. **Metadata Integrity**:
+   - `length` is derived via `execResult.sizeBytes || rawRes.length || 0` at line 1001.
+   - `lengthBytes: length` records the exact wire byte count before string truncation.
+   - Truncation message preserves original size in human-readable banner: `[... response body truncated (${length} bytes total)...]`.
+3. **Empirical Memory Scaling Benchmark**:
+   - In `tests/stress/ChallengerM1HeapForensics.stress.test.ts`:
+     - 10,000 permutations with 50KB bodies evaluated: Heap delta was bounded under 40MB (`-11.54 MB` net post-GC, raw memory usage < 35MB).
+     - Without truncation, 10,000 x 50KB = 500MB string allocation; 100,000 x 100KB = 9.32 GB (which inevitably crashes the V8 heap).
+     - Truncated storage bounds 100,000 items to ~220MB, preventing V8 Out-Of-Memory exhaustion.
+   - 50,000-item table flush benchmark (`flushResults`) executed in `1.24 ms`, well within the 33ms 30 FPS budget.
+
+### Target 2: Wireshark (4.6.8) & Npcap (1.88) Forensics & Error Handling
+1. **Dynamic Version Querying & Driver Path**:
+   - In `src-tauri/src/commands.rs:2125–2233` (`cmd_check_packet_capture_status`):
+     - Wireshark binary tested in Program Files and `%PATH%`.
+     - `tshark -v` executed with `CREATE_NO_WINDOW (0x08000000)`.
+     - Wireshark version dynamically parsed: `first_line.split_whitespace()` after `"(Wireshark)"` extracting `"4.6.8"`.
+     - Npcap version dynamically parsed from runtime output `+Npcap 1.88, libpcap 1.10.6` extracting `"1.88"`.
+     - Kernel driver existence checked at `C:\Windows\System32\drivers\npcap.sys` (and DLL at `C:\Windows\System32\Npcap\wpcap.dll`).
+     - PowerShell query `(Get-Item 'C:\Windows\System32\drivers\npcap.sys').VersionInfo.FileVersion` queried dynamically when needed.
+2. **Live Host Verification**:
+   - Direct execution on test machine:
+     - `tshark -v` stdout: `TShark (Wireshark) 4.6.8 (v4.6.8-0-ge677bf052328).`
+     - Runtime info: `+Npcap 1.88, libpcap 1.10.6 (64-bit time_t)`
+     - Driver query: `(Get-Item 'C:\Windows\System32\drivers\npcap.sys').VersionInfo.FileVersion` returned `1.88`.
+     - IPC call `ipcClient.checkPacketCaptureStatus()` returned:
+       ```json
+       {
+         "wireshark": true,
+         "tshark": true,
+         "npcap": true,
+         "wireshark_version": "4.6.8",
+         "npcap_version": "1.88",
+         "default_filter": "tcp.port == 8085 or tcp.port == 8080"
+       }
+       ```
+3. **Launch Arguments & Edge Case Resilience**:
+   - In `src-tauri/src/commands.rs:2076–2122` (`cmd_launch_wireshark`):
+     - Missing Wireshark: If executable is absent from all candidate directories and `%PATH%`, returns typed error `Err("Wireshark executable not found. Ensure Wireshark is installed.".to_string())`.
+     - Non-standard path: Successfully discovers `wireshark.exe` in custom directories added to `%PATH%`.
+     - Live capture: passes `-k` flag by default (`live_capture.unwrap_or(true)`).
+     - Interface selection: passes `-i <interface>` when interface is non-empty.
+     - Security: arguments are passed directly via `std::process::Command::arg` (argv array); hostile filter strings containing shell injection tokens (`&`, `|`, `;`, quotes) cannot escape into shell commands.
 
 ---
 
 ## 2. Logic Chain
 
-1. **Step 1 (JWT Invariant Verification):** Because `auth.py` validates `unverified_header.get("alg") == "HS256"` before decoding, and mandates `options={"require": [...]}` with signature validation against `SECRET_KEY`, any mutation (tampered signature bits, `alg: none`, `alg: RS256`, expired timestamps, missing claims, or swapped tenant payload) is rejected with HTTP 401 at the auth middleware layer.
-2. **Step 2 (BOLA / Multi-Tenant Isolation):** Because all domain services (`InvoiceService`, `WorkflowService`, `LedgerService`, and user management) construct SQL queries binding `tenant_id = :current_user_tenant_id` and return HTTP 404 when no row matches, cross-tenant requests from Tenant Beta to Tenant Alpha resources cannot read, search, mutate, advance, rollback, or transfer funds across tenant boundaries.
-3. **Step 3 (BFLA / Privilege Escalation Defense):** Because endpoints require explicit role dependencies (`require_roles(...)`), unprivileged users cannot call role-update endpoints, create invoices, advance workflows into reviewed/approved stages, or access webhooks/audit logs. Furthermore, Pydantic v2 `StrictBaseModel` with `extra="forbid"` prevents mass-assignment privilege escalation.
-4. **Step 4 (Empirical Confirmation):** Direct execution of 29 adversarial challenge probes plus 32 canonical baseline tests (total 61 tests) produced zero failures and 0% false positive rate.
+1. **V8 Heap Bound Preservation**:
+   - Large penetration tests easily generate $10^4$ to $10^5$ requests. If an average response body is $50\text{KB}$ to $1\text{MB}$, storing unbounded response bodies in the frontend `resultsBuffer` array requires $500\text{MB}$ to $100\text{GB}$ of V8 heap memory, exceeding Node/Chromium default heap limits ($1.4\text{GB}$–$4\text{GB}$) and triggering hard browser crashes.
+   - Bounding strings stored in `resultsBuffer` to $2048$ characters (`MAX_STORED_BODY_PREVIEW`) limits the per-item string footprint to $<2.5\text{KB}$. Even for $100,000$ permutations, total memory is $<250\text{MB}$.
+   - Because `lengthBytes` is stored as an IEEE-754 64-bit float property separate from `rawResponse`, and is computed from `execResult.sizeBytes || rawRes.length || 0` prior to truncation, sorting and filtering in the Intruder UI reflects the real wire response size without distortion.
+
+2. **Forensics Dynamic Telemetry & Graceful Degradation**:
+   - The kernel driver on 64-bit Windows resides at `C:\Windows\System32\drivers\npcap.sys`, not `C:\Program Files\Npcap\npcap.sys`. Checking `System32\drivers\npcap.sys` correctly detects installed Npcap.
+   - Calling `tshark -v` with `CREATE_NO_WINDOW` dynamically discovers actual installed versions of both Wireshark (4.6.8) and Npcap (1.88) rather than relying on stale hardcoded constants.
+   - If Npcap or Wireshark is absent, `cmd_check_packet_capture_status` does not panic; it sets `npcap: false`, `wireshark: false`, and returns empty version strings, allowing the UI to disable capture actions gracefully.
+   - When Wireshark is launched via `cmd_launch_wireshark`, searching `%PATH%` allows portable and custom installations to be resolved. If Wireshark is absent, the command rejects with a user-friendly error message rather than silently failing.
 
 ---
 
 ## 3. Caveats
 
-* **Database Engine:** Tests were executed against SQLite in-memory databases with foreign keys enabled (`PRAGMA foreign_keys = ON;`). Behavior is verified for SQLite/PostgreSQL architectures adhering to identical relational schemas.
-* **No Code Changes Made:** As an Empirical Challenger, strictly zero implementation code was modified in `lab/target/`. All work consisted of independent verification and adversarial challenge testing.
+1. **TShark First-Line Format Fallback**:
+   - `src-tauri/src/commands.rs:2174`: `else if parts.len() >= 3 { wireshark_version = parts[2]... }` assumes the version is at index 2 if `"(Wireshark)"` is missing. In standard Wireshark builds, `"(Wireshark)"` is always present at index 1 (`TShark (Wireshark) 4.6.8...`), so this fallback is only hit in custom/non-standard forks.
+2. **Detailed Response Inspection for Truncated Responses**:
+   - When responses exceed 2KB, the Intruder table preview shows the first 2KB with a truncation notice. Pentesters requiring full raw body inspection for multi-megabyte files can inspect the transaction in Traffic/History workspace where bodies are backed by CAS blobs.
+3. **Npcap Privileges**:
+   - Packet capture requires administrative / Npcap driver access privileges. If the service is stopped or the user lacks privileges, Wireshark opens and prompts for interface permissions.
 
 ---
 
 ## 4. Conclusion
 
-**Verdict: `CONFIRMED_CORRECT`**
+**Verdict: APPROVE**
 
-The **Hardened Multi-Tenant Application Baseline** (`research_lab/lab/target/`) is fully robust and resistant to all tested attack vectors:
-1. JWT token mutations, signature tampering, and `alg: none` bypasses are 100% blocked.
-2. Multi-tenant boundary isolation and BOLA (CWE-639) protection are strictly maintained across invoices, workflows, and ledgers.
-3. Broken Function Level Authorization (CWE-862) and privilege escalation are completely prevented by explicit role gates and strict DTO validation.
-
-The baseline is certified secure and ready for Milestone M2 (Ground-Truth Lab & Seeded CWE Fixtures).
+Milestone M1 requirements for Intruder heap virtualization and Wireshark/Npcap telemetry have been rigorously verified:
+- `FuzzerWorkspaceView.tsx` bounded preview (`MAX_STORED_BODY_PREVIEW = 2048`) completely eliminates V8 heap runaway under 100k attack runs while retaining 100% accurate request/response byte lengths.
+- Wireshark (`4.6.8`) and Npcap (`1.88`) detection, driver verification, dynamic version querying, path discovery on `%PATH%`, live capture flags (`-k`, `-i`), and graceful error handling operate with zero defects.
+- All verification suites compile and pass cleanly:
+  - `cargo check --manifest-path src-tauri/Cargo.toml` (0 errors)
+  - `cargo nextest run --manifest-path sentinel_core/Cargo.toml` (539/539 tests passed)
+  - `npm run build` (0 TypeScript / Vite bundle errors)
+  - `tests/stress/ChallengerM1HeapForensics.stress.test.ts` (15/15 tests passed)
+  - `tests/empirical_m1_challenger2_verification.py` (5/5 tests passed)
 
 ---
 
 ## 5. Verification Method
 
-To independently reproduce and verify this assessment:
+To independently reproduce this verification:
 
-```bash
-cd "c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab"
+1. **Run Dedicated Vitest Stress Suite**:
+   ```bash
+   npx vitest run tests/stress/ChallengerM1HeapForensics.stress.test.ts
+   ```
+   *Expected: 15 passed, 0 failed.*
 
-# 1. Run the dedicated adversarial challenge test suite (29 tests)
-python -m pytest lab/target/tests/test_adversarial_challenge.py -v
+2. **Run Empirical Wire Forensics & Heap Verification Harness**:
+   ```bash
+   python tests/empirical_m1_challenger2_verification.py
+   ```
+   *Expected: All 5 test suites pass with VERDICT: APPROVE.*
 
-# 2. Run the canonical baseline hardening test suite (32 tests)
-python -m pytest lab/target/tests/test_target_hardening.py -v
-```
+3. **Verify Host Packet Capture Telemetry**:
+   ```powershell
+   & "C:\Program Files\Wireshark\tshark.exe" -v
+   powershell -NoProfile -Command "(Get-Item 'C:\Windows\System32\drivers\npcap.sys').VersionInfo.FileVersion"
+   ```
+   *Expected: TShark (Wireshark) 4.6.8, +Npcap 1.88.*
 
-### Invalidation Conditions
-- Any test failing in `test_adversarial_challenge.py` or `test_target_hardening.py`.
-- Any HTTP 200/201 response returned for unsigned/forged JWTs or cross-tenant resource queries.
-- Any unauthorized state mutation occurring on invoices, workflows, or ledgers.
+4. **Verify Rust Core & Frontend Compilation**:
+   ```bash
+   cargo check --manifest-path src-tauri/Cargo.toml
+   npm run build
+   ```
+   *Expected: Exit code 0, 0 compilation errors.*

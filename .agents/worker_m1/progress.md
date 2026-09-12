@@ -1,28 +1,18 @@
-# Progress Log — Milestone M1 Implementation
+# Progress - Milestone 1: Wire Forensics & Network Throughput Hardening
+Last visited: 2026-09-11T08:14:00Z
+Status: Complete
 
-**Worker:** worker_m1 (Lead Implementation Worker)  
-**Milestone:** M1 (SOTA Research Landscape & Hardened Target Baseline)  
-**Last visited:** 2026-08-21T15:41:00Z  
-
-## Status: COMPLETE (100%)
-
-### Completed Items:
-- [x] **Requirement R1**: Delivered canonical `research_lab/RESEARCH_LANDSCAPE.md` covering:
-  - 8 premier automated DAST/fuzzing engines (Nuclei, Neo, Burp Suite Pro/Enterprise, OWASP ZAP, Caido, FFUF/Turbo Intruder, Katana, Interactsh) with comparative architecture matrix.
-  - Comprehensive vulnerability intelligence sources (NVD, CVE, CISA KEV, GHSA, OSV.dev, vendor security bulletins).
-  - Advanced testing methodologies (Differential Fuzzing, State-Machine Authorization Inference, Temporal State Desynchronization, and AI Fuzzing Guardrails).
-  - Academic prior-art taxonomy and formal 4-tier novelty classification rubric (`KNOWN_TEST_FIXTURE`, `VARIANT`, `NOVEL_CANDIDATE`, `CONFIRMED_NOVEL`).
-- [x] **Requirement R2**: Implemented production-grade hardened multi-tenant SaaS application in `research_lab/lab/target/`:
-  - `database.py`: Thread-safe SQLite persistence layer with foreign keys, indexes, and audit logging.
-  - `models.py`: Pydantic v2 request/response DTOs enforcing `ConfigDict(extra="forbid")` to eliminate Mass Assignment (CWE-915).
-  - `auth.py`: PBKDF2-HMAC-SHA256 (600,000 iterations), HS256 JWT signing, claim validation (`sub`, `tenant_id`, `role`, `jti`, `exp`), token revocation table, and refresh token rotation.
-  - `rbac.py`: Fine-grained role matrix (SuperAdmin, OrgAdmin, FinanceEditor, Auditor, User) and tenant boundary dependencies.
-  - `services/invoice_service.py`: Parameter-bound CRUD and safe HTML preview escaping (SQLi / XSS / BOLA defense).
-  - `services/ledger_service.py`: Atomic balance transfers using conditional updates (`WHERE balance >= :amt`) in transactions, ensuring balance non-negativity under concurrency.
-  - `services/workflow_service.py`: Multi-stage approval FSM with optimistic concurrency locking (`version`) and immutable tenant context pinning.
-  - `services/webhook_service.py`: Pre-socket IP/DNS validator blocking private networks (RFC 1918), loopback, link-local, and cloud metadata (SSRF defense).
-  - `app.py`: FastAPI application factory with security headers (CSP, X-Content-Type-Options, X-Frame-Options, HSTS, etc.) and complete API route definitions.
-- [x] **Requirement R2 / R3 Test Suite**: Implemented `lab/target/tests/test_target_hardening.py` with 32 comprehensive automated security test cases.
-- [x] **Execution & Verification**: Executed `pytest lab/target/tests/test_target_hardening.py` -> **32/32 tests passed (100%)** in 15.69 seconds.
-- [x] **Baseline Report**: Generated `research_lab/HARDENED_TARGET_SECURITY_BASELINE.md` documenting verified invariants and test execution results.
-- [x] **Handoff Report**: Prepared `handoff.md` with complete 5-component structure.
+## Tasks
+- [x] Read mandatory input documents (ORIGINAL_REQUEST.md, PROJECT.md, explorer_survey_1 report & handoff)
+- [x] Investigate current code in the 4 target files
+- [x] Task 1: Keep-Alive Stripping Removal (`src-tauri/src/commands.rs:1665`)
+- [x] Task 2: `TCP_NODELAY` Synchronization (`sentinel_repeater/src/executor.rs:563,638` and `sentinel_dispatch/src/client.rs:301,350`)
+- [x] Task 3: Dynamic Wireshark & Npcap Telemetry & Launch Commands (`src-tauri/src/commands.rs:2062-2098`)
+- [x] Task 4: Intruder Heap Virtualization (`src/workspaces/FuzzerWorkspaceView.tsx:937-1018`)
+- [x] Task 5: Build & Test Verification:
+  - `cargo check --manifest-path src-tauri/Cargo.toml` -> 0 errors (PASS)
+  - `cargo nextest run --manifest-path sentinel_core/Cargo.toml` -> 539/539 passed (PASS)
+  - `npm run build` -> 0 errors (PASS)
+  - `npm test -- --run` -> 858/858 passed across 96 test suites (PASS)
+- [x] Task 6: Comprehensive 5-Component Handoff Report (`.agents/worker_m1/handoff.md`)
+- [x] Task 7: Coordination Message to Orchestrator

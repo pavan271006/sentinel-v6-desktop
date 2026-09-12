@@ -1000,6 +1000,20 @@ export const FuzzerWorkspaceView: React.FC = () => {
           (rawRes.match(/HTTP\/[0-9.]+\s+(\d+)/)?.[1] ? parseInt(RegExp.$1, 10) : 0);
         const length = execResult.sizeBytes || rawRes.length || 0;
 
+        // Heap Virtualization: Bound stored request/response bodies to 2KB to prevent V8 heap exhaustion on 100k attack runs
+        const MAX_STORED_BODY_PREVIEW = 2048;
+        const pagedRawResponse =
+          rawRes.length > MAX_STORED_BODY_PREVIEW
+            ? rawRes.slice(0, MAX_STORED_BODY_PREVIEW) +
+              `\r\n\r\n[... response body truncated (${length} bytes total) to conserve memory in large attack run ...]`
+            : rawRes;
+
+        const pagedRawRequest =
+          wireReq.length > MAX_STORED_BODY_PREVIEW
+            ? wireReq.slice(0, MAX_STORED_BODY_PREVIEW) +
+              `\r\n\r\n[... request body truncated (${wireReq.length} bytes total) ...]`
+            : wireReq;
+
         const item: AttackResultItem = {
           id: reqIndex + 1,
           payloads: perm.payloads,
@@ -1010,8 +1024,8 @@ export const FuzzerWorkspaceView: React.FC = () => {
           lengthBytes: length,
           timeMs: dur,
           comment: status === 302 ? 'Redirect' : status === 200 ? 'OK' : status === 401 ? 'Unauthorized' : '',
-          rawRequest: wireReq,
-          rawResponse: rawRes,
+          rawRequest: pagedRawRequest,
+          rawResponse: pagedRawResponse,
         };
 
         resultsBuffer[reqIndex] = item;

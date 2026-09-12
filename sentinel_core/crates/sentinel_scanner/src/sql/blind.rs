@@ -12,8 +12,8 @@ pub enum SprtDecision {
 
 /// Wald Sequential Probability Ratio Test (SPRT)
 pub struct WaldSprt {
-    alpha: f64,
-    beta: f64,
+    pub alpha: f64,
+    pub beta: f64,
     h0_mean: f64,
     h1_mean: f64,
     variance: f64,

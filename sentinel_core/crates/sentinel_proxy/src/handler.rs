@@ -13,7 +13,7 @@ use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
-use tracing::{debug, info, warn};
+use tracing::warn;
 
 use sentinel_common::domain::meta::TlsData;
 use sentinel_common::events::CriticalEvent;
@@ -66,7 +66,7 @@ pub async fn handle_connection(
 /// Handles HTTPS CONNECT MITM Tunneling with Dynamic TLS Termination.
 async fn handle_connect_tunnel(
     mut client_stream: TcpStream,
-    client_addr: SocketAddr,
+    _client_addr: SocketAddr,
     initial_buf: &[u8],
     state: HandlerState,
 ) -> Result<(), ProxyError> {
@@ -100,7 +100,7 @@ async fn handle_connect_tunnel(
     // 4. Terminate Client TLS with dynamically forged certificate
     let server_config = state.tls_cache.get_or_generate(&target_host)?;
     let acceptor = TlsAcceptor::from(server_config);
-    let mut client_tls = acceptor.accept(client_stream).await.map_err(|e| {
+    let client_tls = acceptor.accept(client_stream).await.map_err(|e| {
         ProxyError::Tls(format!(
             "Client TLS handshake failed for {}: {}",
             target_host, e
@@ -131,7 +131,7 @@ async fn handle_connect_tunnel(
     let server_name = rustls::pki_types::ServerName::try_from(target_host.clone())
         .map_err(|_| ProxyError::Tls(format!("Invalid SNI server name: {}", target_host)))?;
 
-    let mut upstream_tls = connector
+    let upstream_tls = connector
         .connect(server_name, upstream_tcp)
         .await
         .map_err(|e| {
@@ -141,7 +141,7 @@ async fn handle_connect_tunnel(
             ))
         })?;
 
-    let tls_info = Some(TlsData {
+    let _tls_info = Some(TlsData {
         protocol: "TLSv1.3".to_string(),
         cipher: "TLS_AES_256_GCM_SHA384".to_string(),
         server_name: Some(target_host.clone()),

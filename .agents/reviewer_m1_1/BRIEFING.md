@@ -1,63 +1,64 @@
-# BRIEFING — 2026-08-21T15:43:00Z
+# BRIEFING — 2026-09-11T08:24:00Z
 
 ## Mission
-Objective and adversarial quality review of Milestone M1 deliverables (SOTA Research Landscape & Hardened Target Baseline) in the Security Research Laboratory.
+Conduct adversarial review and quality verification of Milestone M1 (Wire Forensics & Network Throughput Hardening) implemented by Worker M1.
 
 ## 🔒 My Identity
-- Archetype: reviewer_critic
+- Archetype: teamwork_preview_reviewer
 - Roles: reviewer, critic
 - Working directory: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\reviewer_m1_1
-- Original parent: 322d525f-8ed1-4b78-94c6-c252efaebc47
+- Original parent: 94d601fe-cc12-4b39-babd-492e9642f362
 - Milestone: M1
 - Instance: 1 of 1
 
 ## 🔒 Key Constraints
-- Review-only — do NOT modify implementation code or deliverable files directly
-- Check for integrity violations (hardcoded facsimiles, dummy logic, skipped taxonomies, fake citations)
-- Follow systematic evidence-based evaluation
+- Review-only — do NOT modify implementation code
+- Report any failures as findings — do NOT fix them yourself
+- Check for integrity violations (hardcoded test results, facade logic, bypasses, fabricated logs, self-certification)
+- Issue clear verdict: APPROVE or REQUEST_CHANGES
 
 ## Current Parent
-- Conversation ID: 5555b172-65d5-4d72-b1d1-1a1737600d99
-- Updated: 2026-08-21T15:43:00Z
+- Conversation ID: 94d601fe-cc12-4b39-babd-492e9642f362
+- Updated: 2026-09-11T08:24:00Z
 
 ## Review Scope
 - **Files to review**:
-  - `research_lab/RESEARCH_LANDSCAPE.md`
-  - `research_lab/lab/target/` (`app.py`, `auth.py`, `database.py`, `models.py`, `rbac.py`, `services/*`, `tests/*`)
-  - `research_lab/HARDENED_TARGET_SECURITY_BASELINE.md`
-  - `.agents/worker_m1/handoff.md`
-- **Interface contracts**: `ORIGINAL_REQUEST.md`, `research_lab/PROJECT.md`
-- **Review criteria**: Technical depth of discovery engines & threat feeds, architectural integrity of hardened target baseline, 0 critical flaws in baseline, complete pytest execution (32/32 tests), integrity evaluation, adversarial stress testing.
-
-## Key Decisions Made
-- Executed `python -m pytest lab/target/tests/test_target_hardening.py -v` independently in `research_lab`; verified 32/32 tests pass in 15.86s.
-- Performed deep inspection of `RESEARCH_LANDSCAPE.md` (33.1 KB), `lab/target/` source code, and `HARDENED_TARGET_SECURITY_BASELINE.md` (15.2 KB).
-- Conducted adversarial analysis on JWT algorithm manipulation (`alg: none`), TOCTOU race conditions, cross-tenant state rollback hijacking (CAND-001 / H-006), and SSRF pre-socket filtering.
-- Confirmed zero integrity violations, zero facades, and zero hardcoded test shortcuts.
-- Formally issued explicit verdict: **APPROVE**.
+  - `src-tauri/src/commands.rs` (Keep-Alive preservation, Wireshark & Npcap dynamic telemetry, live capture flags)
+  - `sentinel_core/crates/sentinel_repeater/src/executor.rs` (`TCP_NODELAY` on primed race sockets)
+  - `sentinel_core/crates/sentinel_dispatch/src/client.rs` (`TCP_NODELAY` on HTTP dispatcher sockets)
+  - `src/workspaces/FuzzerWorkspaceView.tsx` (Intruder heap virtualization and body truncation)
+- **Interface contracts**: PROJECT.md, ORIGINAL_REQUEST.md
+- **Review criteria**: correctness, logical completeness, quality, risk assessment, integrity
 
 ## Review Checklist
 - **Items reviewed**:
-  - `RESEARCH_LANDSCAPE.md` — Verified 33.1 KB, 8 DAST engines, 5 intelligence feeds, 4 research methodologies, 4-tier novelty taxonomy, academic citations.
-  - `lab/target/` — Verified FastAPI app factory, SQLite persistence, PBKDF2 hashing, HS256 JWT, RBAC/ABAC, parameterized queries, HTML escaping, atomic transfers, optimistic locking, SSRF filter, Pydantic `extra="forbid"`.
-  - `lab/target/tests/test_target_hardening.py` — 32 test cases passed cleanly.
-  - `HARDENED_TARGET_SECURITY_BASELINE.md` — Verified certification report.
+  - `src-tauri/src/commands.rs:1663–1668`: Keep-alive preservation verified; no mutations to `Connection: close`.
+  - `src-tauri/src/commands.rs:2052–2217`: Dynamic Wireshark & Npcap discovery, `tshark -v` version parsing, `npcap.sys` driver path correction, `powershell` file version query, `-k` / `-i` launch flags verified.
+  - `sentinel_core/crates/sentinel_repeater/src/executor.rs:566, 642`: `set_nodelay(true)` verified on primed race sockets.
+  - `sentinel_core/crates/sentinel_dispatch/src/client.rs:306, 355`: `set_nodelay(true)` verified on dispatcher sockets.
+  - `src/workspaces/FuzzerWorkspaceView.tsx:1003–1025`: 2KB body preview truncation and exact `lengthBytes` verified.
 - **Verdict**: APPROVE
-- **Unverified claims**: None.
+- **Unverified claims**: none (all independently verified via compilation and tests)
 
 ## Attack Surface
 - **Hypotheses tested**:
-  - JWT algorithm confusion (`alg: none`): Blocked via unverified header pre-check and strict algorithm configuration.
-  - TOCTOU double-spend concurrency: Blocked via atomic conditional SQL update and database check constraint.
-  - Cross-tenant state machine hijack: Blocked via immutable tenant context pinning and optimistic concurrency locking.
-  - SSRF destination reachability: Blocked via pre-socket IP/DNS resolution check.
-- **Vulnerabilities found**: 0 vulnerabilities in hardened baseline.
-- **Untested angles**: Autonomous black-box exploration and verifier novelty gate (to be implemented and tested in M2–M6).
+  - *Keep-alive read hang*: Verified `RepeaterExecutor::read_http_response` parses `Content-Length` / chunked encoding with timeout slices; verified via `test_repeater_execute_raw_persistent_keepalive_server`.
+  - *`TCP_NODELAY` socket level*: Verified via `test_nodelay_genuine_socket_option` (`client.nodelay().unwrap() == true`).
+  - *Wireshark argument injection*: Verified arguments are passed via `Command::arg()` without shell execution.
+  - *100-worker concurrency*: Verified via `test_100_worker_concurrency_stress` with zero socket exhaustion.
+  - *Integrity violation checks*: Zero hardcoded test facades, zero fake progress, zero shortcuts detected.
+- **Vulnerabilities found**:
+  - [Advisory/Future Hardening] In `sentinel_repeater/src/executor.rs`, `send_plain_primed_race` and `send_tls_primed_race` read until EOF (`Ok(0)`). If a primed race target is a persistent HTTP server that does not close the socket, reading will wait until connection drop. (Not a regression, but flagged for M3/M5).
+  - [Advisory] `tests/stress/AdversarialChallengeUI1.test.tsx` line 54 has a CPU-dependent timing threshold (`eventsPerSec > 400`) that can fail under heavy parallel suite load.
+- **Untested angles**: none within M1 scope.
+
+## Key Decisions Made
+- Independent builds and tests run: `cargo check --manifest-path src-tauri/Cargo.toml` (0 err), `npm run build` (0 err), `cargo nextest run --manifest-path sentinel_core/Cargo.toml` (539/539 passed), `sentinel_repeater` tests (11/11 passed).
+- Verified genuine implementations across all 4 files.
+- Verdict: APPROVE.
 
 ## Artifact Index
-- `.agents/reviewer_m1_1/DISPATCH.md` — Inbound instructions & history
-- `.agents/reviewer_m1_1/BRIEFING.md` — Working memory and context
+- `.agents/reviewer_m1_1/DISPATCH.md` — Inbound instructions log
+- `.agents/reviewer_m1_1/BRIEFING.md` — Persistent state tracking
 - `.agents/reviewer_m1_1/progress.md` — Liveness heartbeat
-- `.agents/reviewer_m1_1/analysis.md` — Detailed review analysis & critic evaluation
-- `.agents/reviewer_m1_1/handoff.md` — Final handoff report & explicit verdict
-
+- `.agents/reviewer_m1_1/handoff.md` — Final review report

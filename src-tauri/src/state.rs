@@ -91,6 +91,7 @@ pub struct AppState {
     pub active_scope: Arc<Mutex<ScopeResponse>>,
     pub active_scope_engine: Arc<Mutex<DefaultScopeEngine>>,
     pub event_bus: Arc<SentinelEventBus>,
+    pub connection_pool: Arc<sentinel_repeater::executor::HttpConnectionPool>,
     #[allow(dead_code)]
     pub proxy_engine: Arc<Mutex<Option<SentinelProxyEngine>>>,
 }
@@ -161,6 +162,7 @@ impl AppState {
         };
         let engine = DefaultScopeEngine::new(common_scope);
         let bus = Arc::new(SentinelEventBus::new(EventBusConfig::default()));
+        let pool = Arc::new(sentinel_repeater::executor::HttpConnectionPool::default());
 
         Self {
             status: Arc::new(Mutex::new(AppStatus::default())),
@@ -171,7 +173,9 @@ impl AppState {
             active_scope: Arc::new(Mutex::new(initial_scope)),
             active_scope_engine: Arc::new(Mutex::new(engine)),
             event_bus: bus,
+            connection_pool: pool,
             proxy_engine: Arc::new(Mutex::new(None)),
         }
     }
 }
+

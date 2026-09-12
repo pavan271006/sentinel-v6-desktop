@@ -24,6 +24,10 @@ use sentinel_parser::SentinelHttpParser;
 use sentinel_scope::DefaultScopeEngine;
 use sentinel_storage::SqliteObservationStore;
 
+pub use sentinel_dispatch::pool::{
+    HttpConnectionPool, PoolConfig, PoolKey, PoolMetrics, PooledTransport, ResponseReadResult,
+};
+
 use crate::variables::VariableEnvironment;
 
 use serde::{Deserialize, Serialize};
@@ -34,7 +38,9 @@ pub struct RepeaterExecutor {
     storage: Option<Arc<SqliteObservationStore>>,
     parser: SentinelHttpParser,
     tls_config: Arc<ClientConfig>,
+    pool: Option<Arc<HttpConnectionPool>>,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionOutput {
@@ -119,13 +125,24 @@ impl RepeaterExecutor {
             storage: None,
             parser: SentinelHttpParser::new(),
             tls_config: Arc::new(config),
+            pool: None,
         }
+    }
+
+    pub fn with_pool(mut self, pool: Arc<HttpConnectionPool>) -> Self {
+        self.pool = Some(pool);
+        self
+    }
+
+    pub fn pool(&self) -> Option<&Arc<HttpConnectionPool>> {
+        self.pool.as_ref()
     }
 
     pub fn with_event_bus(mut self, bus: Arc<ChannelEventBus>) -> Self {
         self.event_bus = Some(bus);
         self
     }
+
 
     pub fn with_storage(mut self, storage: Arc<SqliteObservationStore>) -> Self {
         self.storage = Some(storage);
@@ -174,13 +191,54 @@ impl RepeaterExecutor {
 
         // 4. Socket dispatch
         let start_time = Instant::now();
-        let raw_response = if is_https {
+        let raw_response = if let Some(pool) = &self.pool {
+            let pool_key = PoolKey::new(&host, port, is_https);
+            let req_has_close = {
+                let req_str = String::from_utf8_lossy(&request_bytes);
+                req_str.to_ascii_lowercase().contains("connection: close")
+            };
+            let mut attempts = 0;
+            loop {
+                attempts += 1;
+                let (mut transport, is_reused) = pool.acquire(&pool_key).await?;
+                if let Err(e) = transport.write_all(&request_bytes).await {
+                    if is_reused && attempts == 1 {
+                        continue;
+                    }
+                    return Err(SentinelError::NetworkError(format!(
+                        "Failed to write request: {}",
+                        e
+                    )));
+                }
+                let _ = transport.flush().await;
+
+                match Self::read_http_response(&mut transport).await {
+                    Ok(resp_bytes) => {
+                        let resp_has_close = {
+                            let resp_str = String::from_utf8_lossy(&resp_bytes);
+                            resp_str.to_ascii_lowercase().contains("connection: close")
+                        };
+                        if !req_has_close && !resp_has_close {
+                            pool.release(pool_key.clone(), transport);
+                        }
+                        break resp_bytes;
+                    }
+                    Err(e) => {
+                        if is_reused && attempts == 1 {
+                            continue;
+                        }
+                        return Err(e);
+                    }
+                }
+            }
+        } else if is_https {
             self.send_tls(&addr, &host, &request_bytes).await?
         } else {
             self.send_plain(&addr, &request_bytes).await?
         };
         let duration = start_time.elapsed();
         let duration_ms = duration.as_millis() as u64;
+
 
         // 5. Response parsing
         let parsed_response = self.parser.parse_response(&raw_response).ok();
@@ -302,7 +360,7 @@ impl RepeaterExecutor {
         Self::read_http_response(&mut tls_stream).await
     }
 
-    async fn read_http_response<S: tokio::io::AsyncRead + Unpin>(
+    pub async fn read_http_response<S: tokio::io::AsyncRead + Unpin>(
         stream: &mut S,
     ) -> Result<Vec<u8>, SentinelError> {
         let mut buffer = Vec::with_capacity(16384);
@@ -320,20 +378,22 @@ impl RepeaterExecutor {
                 break;
             }
 
-            // If headers are already parsed and we are waiting for EOF, use a very short timeout slice
+            // Inactivity slice timeout:
+            // - When framing is known (Content-Length or chunked), allow up to 5s idle between packets.
+            // - When framing is indeterminate (no headers or keep-alive without framing), use 80ms.
             let read_timeout = if headers_parsed {
                 if content_length.is_some() || is_chunked {
-                    std::time::Duration::from_millis(500)
+                    std::time::Duration::from_secs(5)
                 } else {
                     std::time::Duration::from_millis(80)
                 }
             } else {
-                std::time::Duration::from_millis(1500)
+                std::time::Duration::from_secs(3)
             };
 
             let read_future = stream.read(&mut chunk);
             let n = match tokio::time::timeout(read_timeout, read_future).await {
-                Ok(Ok(0)) => break,
+                Ok(Ok(0)) => break, // EOF reached: socket closed by peer
                 Ok(Ok(n)) => n,
                 Ok(Err(e)) => {
                     if !buffer.is_empty() {
@@ -342,19 +402,35 @@ impl RepeaterExecutor {
                     return Err(SentinelError::NetworkError(format!("Read error: {}", e)));
                 }
                 Err(_) => {
-                    // Timeout slice: check if full response already buffered
+                    // Inactivity timeout slice fired
                     if headers_parsed {
                         if let Some(cl) = content_length {
                             if buffer.len() >= header_end_offset + cl {
                                 break;
                             }
-                        } else if is_chunked && (buffer.ends_with(b"\r\n0\r\n\r\n") || buffer.ends_with(b"0\r\n\r\n")) {
-                            break;
+                            if start_read.elapsed() > total_timeout {
+                                break;
+                            }
+                        } else if is_chunked {
+                            if buffer.ends_with(b"\r\n0\r\n\r\n") || buffer.ends_with(b"0\r\n\r\n") {
+                                break;
+                            }
+                            if sentinel_parser::ChunkedDecoder::decode(
+                                &buffer[header_end_offset..],
+                                usize::MAX,
+                            )
+                            .is_ok()
+                            {
+                                break;
+                            }
+                            if start_read.elapsed() > total_timeout {
+                                break;
+                            }
                         } else if !buffer.is_empty() {
+                            // Indeterminate framing on keep-alive connection: inactivity indicates stream end
                             break;
                         }
-                    }
-                    if !buffer.is_empty() && start_read.elapsed() > std::time::Duration::from_millis(500) {
+                    } else if start_read.elapsed() > total_timeout {
                         break;
                     }
                     continue;
@@ -371,11 +447,28 @@ impl RepeaterExecutor {
                     let header_bytes = &buffer[..pos];
                     let header_str = String::from_utf8_lossy(header_bytes).to_ascii_lowercase();
 
+                    // RFC 7230 §3.3.3: 1xx, 204, 304 have no message body regardless of headers
+                    let status_line = header_str.lines().next().unwrap_or("");
+                    let mut parts = status_line.split_whitespace();
+                    parts.next(); // Skip HTTP-Version
+                    if let Some(code_str) = parts.next() {
+                        if let Ok(code) = code_str.parse::<u16>() {
+                            if (100..200).contains(&code) || code == 204 || code == 304 {
+                                content_length = Some(0);
+                            }
+                        }
+                    }
+
                     for line in header_str.lines() {
-                        if let Some(val) = line.strip_prefix("content-length:") {
-                            content_length = val.trim().parse::<usize>().ok();
-                        } else if let Some(val) = line.strip_prefix("transfer-encoding:") {
-                            if val.contains("chunked") {
+                        let line = line.trim();
+                        if let Some((k, v)) = line.split_once(':') {
+                            let key = k.trim();
+                            let val = v.trim();
+                            if key == "content-length" {
+                                if let Some(first) = val.split(',').next() {
+                                    content_length = first.trim().parse::<usize>().ok();
+                                }
+                            } else if key == "transfer-encoding" && val.contains("chunked") {
                                 is_chunked = true;
                             }
                         }
@@ -391,14 +484,25 @@ impl RepeaterExecutor {
                     if buffer.len() >= header_end_offset + cl {
                         break;
                     }
-                } else if is_chunked && (buffer.ends_with(b"\r\n0\r\n\r\n") || buffer.ends_with(b"0\r\n\r\n")) {
-                    break;
+                } else if is_chunked {
+                    if buffer.ends_with(b"\r\n0\r\n\r\n") || buffer.ends_with(b"0\r\n\r\n") {
+                        break;
+                    }
+                    if sentinel_parser::ChunkedDecoder::decode(
+                        &buffer[header_end_offset..],
+                        usize::MAX,
+                    )
+                    .is_ok()
+                    {
+                        break;
+                    }
                 }
             }
         }
 
         Ok(buffer)
     }
+
 
     /// Expands Hackvertor-style tags such as `<@hex_entities>payload</@hex_entities>`
     /// and `<@dec_entities>payload</@dec_entities>` and updates Content-Length automatically.
@@ -563,8 +667,9 @@ impl RepeaterExecutor {
         let mut stream = TcpStream::connect(addr).await.map_err(|e| {
             SentinelError::NetworkError(format!("Failed to connect to {}: {}", addr, e))
         })?;
+        stream.set_nodelay(true).ok();
 
-        if request_bytes.len() > 1 {
+        let fire_instant = if request_bytes.len() > 1 {
             let head = &request_bytes[..request_bytes.len() - 1];
             let last = &request_bytes[request_bytes.len() - 1..];
 
@@ -582,23 +687,7 @@ impl RepeaterExecutor {
                 .await
                 .map_err(|e| SentinelError::NetworkError(format!("Failed to write last byte: {}", e)))?;
             let _ = stream.flush().await;
-
-            let mut buffer = Vec::with_capacity(4096);
-            let mut chunk = [0u8; 4096];
-            loop {
-                match stream.read(&mut chunk).await {
-                    Ok(0) => break,
-                    Ok(n) => buffer.extend_from_slice(&chunk[..n]),
-                    Err(e) => {
-                        return Err(SentinelError::NetworkError(format!(
-                            "Failed to read response: {}",
-                            e
-                        )))
-                    }
-                }
-            }
-            let duration = fire_instant.elapsed();
-            Ok((buffer, fire_instant, duration))
+            fire_instant
         } else {
             barrier.wait().await;
             let fire_instant = Instant::now();
@@ -607,24 +696,12 @@ impl RepeaterExecutor {
                 .await
                 .map_err(|e| SentinelError::NetworkError(format!("Failed to write request: {}", e)))?;
             let _ = stream.flush().await;
+            fire_instant
+        };
 
-            let mut buffer = Vec::with_capacity(4096);
-            let mut chunk = [0u8; 4096];
-            loop {
-                match stream.read(&mut chunk).await {
-                    Ok(0) => break,
-                    Ok(n) => buffer.extend_from_slice(&chunk[..n]),
-                    Err(e) => {
-                        return Err(SentinelError::NetworkError(format!(
-                            "Failed to read response: {}",
-                            e
-                        )))
-                    }
-                }
-            }
-            let duration = fire_instant.elapsed();
-            Ok((buffer, fire_instant, duration))
-        }
+        let buffer = Self::read_http_response(&mut stream).await?;
+        let duration = fire_instant.elapsed();
+        Ok((buffer, fire_instant, duration))
     }
 
     async fn send_tls_primed_race(
@@ -638,6 +715,7 @@ impl RepeaterExecutor {
         let stream = TcpStream::connect(addr).await.map_err(|e| {
             SentinelError::NetworkError(format!("Failed to connect to {}: {}", addr, e))
         })?;
+        stream.set_nodelay(true).ok();
 
         let server_name = ServerName::try_from(host.to_string()).map_err(|e| {
             SentinelError::InvariantViolation(format!("Invalid TLS server name: {}", e))
@@ -647,7 +725,7 @@ impl RepeaterExecutor {
             SentinelError::TlsError(format!("TLS handshake failed with {}: {}", host, e))
         })?;
 
-        if request_bytes.len() > 1 {
+        let fire_instant = if request_bytes.len() > 1 {
             let head = &request_bytes[..request_bytes.len() - 1];
             let last = &request_bytes[request_bytes.len() - 1..];
 
@@ -665,23 +743,7 @@ impl RepeaterExecutor {
                 .await
                 .map_err(|e| SentinelError::NetworkError(format!("Failed to write TLS last byte: {}", e)))?;
             let _ = tls_stream.flush().await;
-
-            let mut buffer = Vec::with_capacity(4096);
-            let mut chunk = [0u8; 4096];
-            loop {
-                match tls_stream.read(&mut chunk).await {
-                    Ok(0) => break,
-                    Ok(n) => buffer.extend_from_slice(&chunk[..n]),
-                    Err(e) => {
-                        return Err(SentinelError::NetworkError(format!(
-                            "Failed to read TLS response: {}",
-                            e
-                        )))
-                    }
-                }
-            }
-            let duration = fire_instant.elapsed();
-            Ok((buffer, fire_instant, duration))
+            fire_instant
         } else {
             barrier.wait().await;
             let fire_instant = Instant::now();
@@ -690,23 +752,12 @@ impl RepeaterExecutor {
                 .await
                 .map_err(|e| SentinelError::NetworkError(format!("Failed to write TLS request: {}", e)))?;
             let _ = tls_stream.flush().await;
+            fire_instant
+        };
 
-            let mut buffer = Vec::with_capacity(4096);
-            let mut chunk = [0u8; 4096];
-            loop {
-                match tls_stream.read(&mut chunk).await {
-                    Ok(0) => break,
-                    Ok(n) => buffer.extend_from_slice(&chunk[..n]),
-                    Err(e) => {
-                        return Err(SentinelError::NetworkError(format!(
-                            "Failed to read TLS response: {}",
-                            e
-                        )))
-                    }
-                }
-            }
-            let duration = fire_instant.elapsed();
-            Ok((buffer, fire_instant, duration))
-        }
+        let buffer = Self::read_http_response(&mut tls_stream).await?;
+        let duration = fire_instant.elapsed();
+        Ok((buffer, fire_instant, duration))
     }
 }
+

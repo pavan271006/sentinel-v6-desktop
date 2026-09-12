@@ -9,6 +9,12 @@
 
 pub mod budget;
 pub mod client;
+pub mod pool;
 
 pub use budget::DispatchBudget;
 pub use client::{DispatchResult, HttpDispatcher};
+pub use pool::{
+    default_client_config, read_http_response_framed, HttpConnectionPool, PoolConfig, PoolKey,
+    PoolMetrics, PooledTransport, ResponseReadResult,
+};
+

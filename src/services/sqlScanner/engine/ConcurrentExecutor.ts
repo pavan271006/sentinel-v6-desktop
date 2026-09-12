@@ -96,7 +96,7 @@ export class ConcurrentExecutor {
     if (this.isAborted) {
       throw new Error('Execution aborted');
     }
-    if (this.activeWorkers >= this.concurrencyLimit) {
+    while (this.activeWorkers >= this.concurrencyLimit && !this.isAborted) {
       await new Promise<void>((resolve) => this.queue.push(resolve));
     }
     if (this.isAborted) {

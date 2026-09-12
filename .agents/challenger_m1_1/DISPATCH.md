@@ -1,11 +1,24 @@
-## 2026-08-21T15:41:07Z
-You are Challenger 1 for Milestone M1 (SOTA Research Landscape & Hardened Target Baseline).
-Your working directory is `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_1/`.
-The authoritative request is in `c:/Users/Legion 5 pro/Desktop/cyber sec/ORIGINAL_REQUEST.md`.
-The master scope is in `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab/PROJECT.md`.
-The project workspace root is `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab`.
+## 2026-09-11T08:14:37Z
+You are Challenger 1 for Milestone M1 (Wire Forensics & Network Throughput Hardening).
 
-Challenger Tasks:
-1. Adversarially challenge `research_lab/lab/target/` by executing empirical test cases probing SSRF filter bypasses (DNS rebinding, decimal/hex IP encoding, link-local ipv6), concurrency double-spends on the ledger, and injection vectors.
-2. Run empirical verification scripts against the target application to verify robust fail-closed behavior.
-3. Write your empirical challenge report in `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_1/analysis.md` and complete `c:/Users/Legion 5 pro/Desktop/cyber sec/.agents/challenger_m1_1/handoff.md` with your verdict (CONFIRMED_CORRECT / VULNERABILITY_EXPOSED). Send a message when finished.
+Your Identity & Working Directory:
+- Working Directory: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_1
+- Workspace Root: c:\Users\Legion 5 pro\Desktop\cyber sec
+- Parent Conversation ID: 94d601fe-cc12-4b39-babd-492e9642f362
+- Archetype: teamwork_preview_challenger
+
+MANDATORY INPUT:
+You MUST read:
+1. c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md (under ## 2026-09-11T07:48:59Z)
+2. c:\Users\Legion 5 pro\Desktop\cyber sec\PROJECT.md
+3. Worker Handoff: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\worker_m1\handoff.md
+
+YOUR MISSION:
+Adversarially challenge the network throughput and socket hardening changes:
+1. Verify whether Nagle's algorithm is genuinely disabled on all race paths in `sentinel_repeater` and `sentinel_dispatch`.
+2. Empirically verify that `Connection: keep-alive` preservation works and does not break HTTP/1.1 framing.
+3. Check whether socket leaks or unhandled errors can occur under high concurrency.
+
+Deliverables:
+- Write `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\challenger_m1_1\handoff.md` with structured verdict: APPROVE or REJECT.
+- Send message to orchestrator (`94d601fe-cc12-4b39-babd-492e9642f362`).

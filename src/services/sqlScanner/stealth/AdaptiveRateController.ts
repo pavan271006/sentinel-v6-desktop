@@ -53,26 +53,41 @@ export class AdaptiveRateController {
     }
   }
 
+  private queueLock: Promise<void> = Promise.resolve();
+
   /**
    * Pauses execution until it's time for the next request according to the current RPS.
+   * Serialized with an atomic promise chain to eliminate thundering-herd concurrent burst collisions.
    */
   async waitForSlot(): Promise<void> {
-    const now = performance.now();
-    const targetIntervalMs = 1000 / this.currentRps;
-    
-    // Calculate how long since the last request
-    const elapsed = now - this.lastRequestTime;
-    
-    if (elapsed < targetIntervalMs) {
-      const remainingWait = targetIntervalMs - elapsed;
-      // Add a tiny bit of random jitter (±10%) to the wait to avoid mechanical precision
-      const jitter = remainingWait * 0.1 * (Math.random() * 2 - 1); 
-      const finalWait = Math.max(0, remainingWait + jitter);
-      
-      await new Promise(resolve => setTimeout(resolve, finalWait));
-    }
+    const prevLock = this.queueLock;
+    let releaseLock: () => void = () => {};
+    this.queueLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
 
-    this.lastRequestTime = performance.now();
+    await prevLock;
+
+    try {
+      const now = performance.now();
+      const targetIntervalMs = 1000 / this.currentRps;
+      
+      // Calculate how long since the last request
+      const elapsed = now - this.lastRequestTime;
+      
+      if (elapsed < targetIntervalMs) {
+        const remainingWait = targetIntervalMs - elapsed;
+        // Add a tiny bit of random jitter (±10%) to the wait to avoid mechanical precision
+        const jitter = remainingWait * 0.1 * (Math.random() * 2 - 1); 
+        const finalWait = Math.max(0, remainingWait + jitter);
+        
+        await new Promise(resolve => setTimeout(resolve, finalWait));
+      }
+
+      this.lastRequestTime = performance.now();
+    } finally {
+      releaseLock();
+    }
   }
   
   get getCurrentRps(): number {

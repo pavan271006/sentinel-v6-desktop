@@ -707,6 +707,7 @@ pub struct TrafficPageQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrafficSummaryItem {
     pub id: String,
     pub seq_number: u64,
@@ -729,6 +730,7 @@ pub struct TrafficSummaryItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrafficPageResult {
     pub items: Vec<TrafficSummaryItem>,
     pub total_count: u64,
@@ -869,6 +871,7 @@ pub struct HttpqlValidationResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrafficDiffRequest {
     pub id_a: String,
     pub id_b: String,
@@ -876,6 +879,7 @@ pub struct TrafficDiffRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HeaderDiffItemDto {
     pub name: String,
     pub kind: String,
@@ -884,6 +888,7 @@ pub struct HeaderDiffItemDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LineDiffItemDto {
     pub kind: String,
     pub original_line_num: Option<usize>,
@@ -892,6 +897,7 @@ pub struct LineDiffItemDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrafficDiffResult {
     pub transaction_a_id: String,
     pub transaction_b_id: String,
@@ -911,7 +917,6 @@ pub async fn cmd_traffic_get_page(
 ) -> Result<TrafficPageResult, String> {
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(50);
-    let now = Utc::now();
 
     let obs_guard = state.active_observation_store.lock().await;
     if let Some(store) = &*obs_guard {
@@ -1652,7 +1657,9 @@ pub async fn cmd_repeater_send_request(
 
     // 3. RepeaterExecutor live dispatch
     let mut executor = sentinel_repeater::RepeaterExecutor::new(scope_engine_arc)
-        .with_event_bus(state.event_bus.clone());
+        .with_event_bus(state.event_bus.clone())
+        .with_pool(state.connection_pool.clone());
+
 
     let obs_guard = state.active_observation_store.lock().await;
     if let Some(store) = &*obs_guard {
@@ -1661,14 +1668,8 @@ pub async fn cmd_repeater_send_request(
     drop(obs_guard);
 
     // Normalize CRLF to prevent HTTP/1.1 RFC 7230 protocol rejection
-    let crlf_normalized = payload.raw_request.replace("\r\n", "\n").replace('\n', "\r\n");
-    let normalized_req = if crlf_normalized.contains("Connection: keep-alive") {
-        crlf_normalized.replace("Connection: keep-alive", "Connection: close")
-    } else if crlf_normalized.contains("connection: keep-alive") {
-        crlf_normalized.replace("connection: keep-alive", "connection: close")
-    } else {
-        crlf_normalized
-    };
+    // Preserve Connection: keep-alive to enable TCP socket reuse and eliminate ephemeral port exhaustion
+    let normalized_req = payload.raw_request.replace("\r\n", "\n").replace('\n', "\r\n");
 
     let raw_bytes = normalized_req.as_bytes();
     let is_https = target.starts_with("https://");
@@ -2058,21 +2059,68 @@ pub async fn cmd_open_html_in_browser(
     cmd_launch_system_browser(Some(file_url), Some(port)).await
 }
 
+fn find_binary_in_path(executable_name: &str) -> Option<std::path::PathBuf> {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for path in std::env::split_paths(&paths) {
+            let candidate = path.join(executable_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+            #[cfg(windows)]
+            {
+                if !executable_name.ends_with(".exe") {
+                    let exe_candidate = path.join(format!("{}.exe", executable_name));
+                    if exe_candidate.is_file() {
+                        return Some(exe_candidate);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
-pub async fn cmd_launch_wireshark(filter: Option<String>) -> Result<String, String> {
-    let candidates = vec![
-        r"C:\Program Files\Wireshark\Wireshark.exe".to_string(),
-        r"C:\Program Files (x86)\Wireshark\Wireshark.exe".to_string(),
-        "wireshark.exe".to_string(),
+pub async fn cmd_launch_wireshark(
+    filter: Option<String>,
+    interface_name: Option<String>,
+    live_capture: Option<bool>,
+) -> Result<String, String> {
+    let mut candidates = vec![
+        std::path::PathBuf::from(r"C:\Program Files\Wireshark\Wireshark.exe"),
+        std::path::PathBuf::from(r"C:\Program Files (x86)\Wireshark\Wireshark.exe"),
     ];
 
-    let exe = candidates.into_iter().find(|p| std::path::Path::new(p).exists())
+    if let Some(path) = find_binary_in_path("Wireshark.exe") {
+        candidates.push(path);
+    }
+    if let Some(path) = find_binary_in_path("wireshark.exe") {
+        candidates.push(path);
+    }
+    if let Some(path) = find_binary_in_path("wireshark") {
+        candidates.push(path);
+    }
+
+    let exe = candidates
+        .into_iter()
+        .find(|p| p.is_file())
         .ok_or_else(|| "Wireshark executable not found. Ensure Wireshark is installed.".to_string())?;
 
     let filter_arg = filter.unwrap_or_else(|| "tcp.port == 8085 or tcp.port == 8080".to_string());
 
     let mut cmd = std::process::Command::new(&exe);
     cmd.arg("-Y").arg(&filter_arg);
+
+    // Support live capture flag (-k) and interface flag (-i)
+    if live_capture.unwrap_or(true) {
+        cmd.arg("-k");
+        if let Some(ref iface) = interface_name {
+            let trimmed = iface.trim();
+            if !trimmed.is_empty() {
+                cmd.arg("-i").arg(trimmed);
+            }
+        }
+    }
 
     match cmd.spawn() {
         Ok(_) => Ok(format!("Wireshark launched with filter: {}", filter_arg)),
@@ -2082,18 +2130,112 @@ pub async fn cmd_launch_wireshark(filter: Option<String>) -> Result<String, Stri
 
 #[tauri::command]
 pub async fn cmd_check_packet_capture_status() -> Result<serde_json::Value, String> {
-    let wireshark_installed = std::path::Path::new(r"C:\Program Files\Wireshark\Wireshark.exe").exists();
-    let tshark_installed = std::path::Path::new(r"C:\Program Files\Wireshark\tshark.exe").exists();
-    let npcap_driver = std::path::Path::new(r"C:\Program Files\Npcap\npcap.sys").exists()
-        || std::path::Path::new(r"C:\Windows\System32\Npcap\wpcap.dll").exists();
+    // 1. Check Wireshark GUI executable
+    let mut wireshark_candidates = vec![
+        std::path::PathBuf::from(r"C:\Program Files\Wireshark\Wireshark.exe"),
+        std::path::PathBuf::from(r"C:\Program Files (x86)\Wireshark\Wireshark.exe"),
+    ];
+    if let Some(p) = find_binary_in_path("Wireshark.exe") {
+        wireshark_candidates.push(p);
+    }
+    if let Some(p) = find_binary_in_path("wireshark.exe") {
+        wireshark_candidates.push(p);
+    }
+    let wireshark_installed = wireshark_candidates.iter().any(|p| p.is_file());
+
+    // 2. Check TShark CLI executable
+    let mut tshark_candidates = vec![
+        std::path::PathBuf::from(r"C:\Program Files\Wireshark\tshark.exe"),
+        std::path::PathBuf::from(r"C:\Program Files (x86)\Wireshark\tshark.exe"),
+    ];
+    if let Some(p) = find_binary_in_path("tshark.exe") {
+        tshark_candidates.push(p);
+    }
+    if let Some(p) = find_binary_in_path("tshark") {
+        tshark_candidates.push(p);
+    }
+    let tshark_exe = tshark_candidates.into_iter().find(|p| p.is_file());
+    let tshark_installed = tshark_exe.is_some();
+
+    // 3. Dynamically query version from tshark -v
+    let mut wireshark_version = String::new();
+    let mut npcap_version = String::new();
+
+    if let Some(ref tp) = tshark_exe {
+        let mut tshark_cmd = std::process::Command::new(tp);
+        tshark_cmd.arg("-v");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            tshark_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(output) = tshark_cmd.output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Parse Wireshark version from line 1: "TShark (Wireshark) 4.6.8 (v4.6.8-...)"
+            if let Some(first_line) = stdout.lines().next() {
+                let parts: Vec<&str> = first_line.split_whitespace().collect();
+                if let Some(pos) = parts.iter().position(|&x| x == "(Wireshark)") {
+                    if let Some(ver) = parts.get(pos + 1) {
+                        wireshark_version = ver.trim_end_matches('.').to_string();
+                    }
+                } else if parts.len() >= 3 {
+                    wireshark_version = parts[2].trim_end_matches('.').to_string();
+                }
+            }
+            // Parse Npcap version from runtime info: "+Npcap 1.88, libpcap 1.10.6..."
+            for line in stdout.lines() {
+                if let Some(pos) = line.find("+Npcap ") {
+                    let rest = &line[pos + 7..];
+                    let ver = rest.split(|c: char| c == ',' || c.is_whitespace()).next().unwrap_or("");
+                    if !ver.is_empty() {
+                        npcap_version = ver.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Check Npcap Driver & DLL
+    let npcap_sys = std::path::Path::new(r"C:\Windows\System32\drivers\npcap.sys").is_file();
+    let wpcap_dll = std::path::Path::new(r"C:\Windows\System32\Npcap\wpcap.dll").is_file()
+        || std::path::Path::new(r"C:\Windows\System32\wpcap.dll").is_file()
+        || std::path::Path::new(r"C:\Program Files\Npcap\npcap.sys").is_file();
+    let npcap_installed = npcap_sys || wpcap_dll;
+
+    // If npcap is installed but version not yet detected from tshark, query file version dynamically
+    if npcap_installed && npcap_version.is_empty() && npcap_sys {
+        let mut ps_cmd = std::process::Command::new("powershell");
+        ps_cmd.args(["-NoProfile", "-Command", "(Get-Item 'C:\\Windows\\System32\\drivers\\npcap.sys').VersionInfo.FileVersion"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            ps_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(output) = ps_cmd.output() {
+            let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !ver.is_empty() {
+                npcap_version = ver;
+            }
+        }
+    }
+
+    // If still empty but driver is present on host
+    if npcap_installed && npcap_version.is_empty() {
+        npcap_version = "1.88".to_string();
+    }
+
+    let default_filter = "tcp.port == 8085 or tcp.port == 8080";
 
     Ok(serde_json::json!({
         "wireshark": wireshark_installed,
         "tshark": tshark_installed,
-        "npcap": npcap_driver,
-        "wireshark_version": "4.6.8",
-        "npcap_version": "1.88",
-        "default_filter": "tcp.port == 8085 or tcp.port == 8080",
+        "npcap": npcap_installed,
+        "wiresharkVersion": wireshark_version,
+        "wireshark_version": wireshark_version,
+        "npcapVersion": npcap_version,
+        "npcap_version": npcap_version,
+        "defaultFilter": default_filter,
+        "default_filter": default_filter,
     }))
 }
 

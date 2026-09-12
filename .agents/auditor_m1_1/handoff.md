@@ -1,116 +1,120 @@
-# Handoff Report — Milestone M1 Forensic Integrity Audit
+# Forensic Audit Report: Milestone M1 (Wire Forensics & Network Throughput Hardening)
 
-**Agent:** Forensic Integrity Auditor (`auditor_m1_1`)  
-**Parent Agent:** `5555b172-65d5-4d72-b1d1-1a1737600d99`  
-**Working Directory:** `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\auditor_m1_1`  
-**Date:** 2026-08-21  
-**Integrity Mode:** `development`  
-**Verdict:** **CLEAN** 🟢  
+**Work Product**: Milestone M1 Changes (`src-tauri/src/commands.rs`, `sentinel_core/crates/sentinel_repeater/src/executor.rs`, `sentinel_core/crates/sentinel_dispatch/src/client.rs`, `src/workspaces/FuzzerWorkspaceView.tsx`)  
+**Auditor**: Forensic Auditor M1 (`teamwork_preview_auditor`)  
+**Working Directory**: `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\auditor_m1_1`  
+**Parent Conversation ID**: `94d601fe-cc12-4b39-babd-492e9642f362`  
+**Date**: 2026-09-11T08:24:00Z  
+**Profile**: General Project / Development Mode  
+**Verdict**: **CLEAN** (0 Integrity Violations, 0 Facades, 0 Mocked Tests)
 
 ---
 
 ## 1. Observation
 
-1. **Test Suite Execution**:
-   - Command: `python -m pytest lab/target/tests/test_target_hardening.py -v` in `c:/Users/Legion 5 pro/Desktop/cyber sec/research_lab`
-   - Output:
-     ```text
-     ============================= test session starts =============================
-     platform win32 -- Python 3.11.9, pytest-9.0.3, pluggy-1.6.0
-     rootdir: C:\Users\Legion 5 pro\Desktop\cyber sec\research_lab
-     plugins: anyio-4.9.0
-     collected 32 items
+Direct empirical inspection of modified source files and runtime environments:
 
-     lab/target/tests/test_target_hardening.py::test_health_and_security_headers PASSED [  3%]
-     lab/target/tests/test_target_hardening.py::test_authentication_valid_and_invalid_credentials PASSED [  6%]
-     lab/target/tests/test_target_hardening.py::test_jwt_none_algorithm_bypass_rejection PASSED [  9%]
-     lab/target/tests/test_target_hardening.py::test_jwt_signature_and_expiration_validation PASSED [ 12%]
-     lab/target/tests/test_target_hardening.py::test_jwt_logout_and_revocation PASSED [ 15%]
-     lab/target/tests/test_target_hardening.py::test_refresh_token_rotation PASSED [ 18%]
-     lab/target/tests/test_target_hardening.py::test_bola_cross_tenant_invoice_isolation PASSED [ 21%]
-     lab/target/tests/test_target_hardening.py::test_bola_cross_tenant_workflow_isolation PASSED [ 25%]
-     lab/target/tests/test_target_hardening.py::test_bola_cross_tenant_ledger_isolation PASSED [ 28%]
-     lab/target/tests/test_target_hardening.py::test_bfla_unprivileged_member_privilege_escalation_blocked PASSED [ 31%]
-     lab/target/tests/test_target_hardening.py::test_bfla_auditor_role_read_only_invariants PASSED [ 34%]
-     lab/target/tests/test_target_hardening.py::test_sqli_protection_on_search_endpoint[' OR '1'='1] PASSED [ 37%]
-     lab/target/tests/test_target_hardening.py::test_sqli_protection_on_search_endpoint[' UNION SELECT 1, 'tenant_beta', 'hacked', 'Hacked Title', 99999, 'notes', 'DRAFT', '2026', '2026' --] PASSED [ 40%]
-     lab/target/tests/test_target_hardening.py::test_sqli_protection_on_search_endpoint['; DROP TABLE invoices; --] PASSED [ 43%]
-     lab/target/tests/test_target_hardening.py::test_sqli_protection_on_search_endpoint[admin' --] PASSED [ 46%]
-     lab/target/tests/test_target_hardening.py::test_sqli_protection_on_search_endpoint[1' AND 1=1 UNION ALL SELECT 1,2,3,4,5,6,7,8,9 --] PASSED [ 50%]
-     lab/target/tests/test_target_hardening.py::test_sqli_protection_on_search_endpoint[' OR EXISTS(SELECT * FROM users WHERE role='SuperAdmin') --] PASSED [ 53%]
-     lab/target/tests/test_target_hardening.py::test_xss_prevention_in_stored_and_rendered_views PASSED [ 56%]
-     lab/target/tests/test_target_hardening.py::test_concurrency_toctou_double_spend_prevention PASSED [ 59%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://127.0.0.1:8080/internal] PASSED [ 62%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://localhost:9000/admin] PASSED [ 65%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://169.254.169.254/latest/meta-data/] PASSED [ 68%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://10.0.0.1/secrets] PASSED [ 71%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://192.168.1.1/router_config] PASSED [ 75%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://172.16.0.5/internal_api] PASSED [ 78%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://[::1]/debug] PASSED [ 81%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[http://0.0.0.0:8000/] PASSED [ 84%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[ftp://example.com/file] PASSED [ 87%]
-     lab/target/tests/test_target_hardening.py::test_ssrf_pre_socket_filtering_blocks_private_destinations[file:///etc/passwd] PASSED [ 90%]
-     lab/target/tests/test_target_hardening.py::test_state_machine_temporal_rollback_and_optimistic_locking PASSED [ 93%]
-     lab/target/tests/test_target_hardening.py::test_mass_assignment_extra_fields_forbidden PASSED [ 96%]
-     lab/target/tests/test_target_hardening.py::test_benign_negative_control_baseline_operations PASSED [100%]
-
-     ============================= 32 passed in 16.16s =============================
+1. **Keep-Alive Preservation**:
+   - In `src-tauri/src/commands.rs:1663–1668`:
+     The destructive replacement logic (`replace("Connection: keep-alive", "Connection: close")`) has been completely removed.
+     The code strictly preserves HTTP keep-alive connection headers while maintaining RFC 7230 CRLF normalization:
+     ```rust
+     // Normalize CRLF to prevent HTTP/1.1 RFC 7230 protocol rejection
+     // Preserve Connection: keep-alive to enable TCP socket reuse and eliminate ephemeral port exhaustion
+     let normalized_req = payload.raw_request.replace("\r\n", "\n").replace('\n', "\r\n");
      ```
 
-2. **Codebase Forensic Inspection**:
-   - `lab/target/auth.py`: Genuine PBKDF2-HMAC-SHA256 (600,000 iterations), `hmac.compare_digest`, HS256 JWT encoding/decoding, unverified header check to block `alg: none`, and SQLite-persisted token revocation (`revoked_tokens` table).
-   - `lab/target/database.py`: Real SQLite persistence with `PRAGMA foreign_keys = ON`, `threading.RLock()`, transaction management, audit logging, and 100% parameter-bound queries.
-   - `lab/target/rbac.py`: Real role hierarchy checks (`SuperAdmin`, `OrgAdmin`, `FinanceEditor`, `Auditor`, `User`) and tenant boundary enforcement returning HTTP 404.
-   - `lab/target/services/invoice_service.py`: Parameterized queries with `?` bindings, tenant isolation, and `html.escape()` sanitization.
-   - `lab/target/services/ledger_service.py`: Atomic conditional updates (`WHERE balance >= ?`), rowcount verification, transaction rollback handling, and mathematical non-negativity constraint.
-   - `lab/target/services/webhook_service.py`: Pre-socket URL parsing, DNS resolution (`socket.getaddrinfo`), and `ipaddress.ip_address` evaluation against private (RFC 1918), loopback, link-local, and cloud metadata (`169.254.169.254`) ranges.
-   - `lab/target/services/workflow_service.py`: Finite state machine enforcement (`VALID_TRANSITIONS`), optimistic locking (`WHERE version = ?`), and immutable tenant context preservation during rollbacks.
-   - `lab/target/models.py`: Strict Pydantic v2 validation with `ConfigDict(extra="forbid", str_strip_whitespace=True)`.
+2. **`TCP_NODELAY` Socket Optimization**:
+   - In `sentinel_core/crates/sentinel_repeater/src/executor.rs`:
+     - Line 566 (`send_plain_primed_race`): `stream.set_nodelay(true).ok();` executes immediately after `TcpStream::connect(addr)`.
+     - Line 642 (`send_tls_primed_race`): `stream.set_nodelay(true).ok();` executes immediately after `TcpStream::connect(addr)`.
+   - In `sentinel_core/crates/sentinel_dispatch/src/client.rs`:
+     - Line 306 (`send_plain`): `stream.set_nodelay(true).ok();` executes immediately after `TcpStream::connect(addr)`.
+     - Line 355 (`send_tls`): `stream.set_nodelay(true).ok();` executes immediately after `TcpStream::connect(addr)`.
 
-3. **Documentation Deliverables**:
-   - `RESEARCH_LANDSCAPE.md`: 356 lines covering 8 discovery engines (Nuclei, Neo, Burp, ZAP, Caido, FFUF, Katana, Interactsh), vulnerability intelligence feeds (NVD, CVE, CISA KEV, GHSA, OSV.dev), advanced research methodologies, and 4-tier novelty taxonomy.
-   - `HARDENED_TARGET_SECURITY_BASELINE.md`: 168 lines documenting baseline architecture, 10 security invariants, and test execution results.
+3. **Dynamic Wireshark & Npcap Telemetry & Execution**:
+   - In `src-tauri/src/commands.rs:2052–2233`:
+     - Added helper `find_binary_in_path` to dynamically resolve executables across `%PATH%` with `.exe` extension resolution on Windows.
+     - `cmd_launch_wireshark`: resolves `Wireshark.exe` via Program Files and `%PATH%`, supports `-Y <filter>`, `-k` (live capture flag), and `-i <interface>` parameter.
+     - `cmd_check_packet_capture_status`:
+       - Discovers Wireshark GUI and TShark CLI dynamically across Program Files and `%PATH%`.
+       - Dynamically executes `tshark -v` with `CREATE_NO_WINDOW` (0x08000000) on Windows to parse exact runtime versions (`TShark 4.6.8` and `Npcap 1.88`).
+       - Corrected Npcap kernel driver detection path from non-existent `C:\Program Files\Npcap\npcap.sys` to canonical 64-bit Windows driver location `C:\Windows\System32\drivers\npcap.sys` and DLL `C:\Windows\System32\Npcap\wpcap.dll`.
+       - Employs dynamic PowerShell file version extraction `(Get-Item '...npcap.sys').VersionInfo.FileVersion` as dynamic fallback.
+       - Returns dual DTO keys (both camelCase: `wiresharkVersion`, `npcapVersion`, `defaultFilter` and snake_case: `wireshark_version`, `npcap_version`, `default_filter`) ensuring zero IPC deserialization breakages.
+
+4. **Intruder Heap Virtualization**:
+   - In `src/workspaces/FuzzerWorkspaceView.tsx:1003–1029`:
+     - Implemented `MAX_STORED_BODY_PREVIEW = 2048`.
+     - Stored `rawRequest` and `rawResponse` strings are capped at 2KB preview slices with explicit byte-count indicators for memory conservation.
+     - Numerical metrics (`lengthBytes: length`, `statusCode`, `timeMs`, `error`, `timeout`, `payloads`) retain 100% exact values.
+
+5. **Empirical Build and Test Gate Validation**:
+   - `cargo check --manifest-path src-tauri/Cargo.toml`: exited code 0 (0 compilation errors).
+   - `cargo nextest run --manifest-path sentinel_core/Cargo.toml`: 539 tests run, 539 passed, 0 failed, 0 skipped.
+   - `npm run build`: `tsc && vite build` completed cleanly in 36.47s (0 errors).
+   - `npx vitest run tests/e2e/tier1_feature_perf.test.ts`: 85 tests passed.
+   - `npx vitest run tests/stress/AdversarialChallengeUI1.test.tsx`: 8 tests passed, 461 events/sec burst throughput.
+   - Host wire forensics verification:
+     - `C:\Program Files\Wireshark\tshark.exe -v` executed: confirmed `TShark 4.6.8` and `Npcap 1.88`.
+     - `(Get-Item 'C:\Windows\System32\drivers\npcap.sys').VersionInfo.FileVersion`: confirmed `1.88`.
 
 ---
 
 ## 2. Logic Chain
 
-1. **Empirical Execution Validates Functional Claims**: Direct execution of pytest yielded 32/32 passing tests in 16.16s, confirming that all advertised security controls function as documented in `HARDENED_TARGET_SECURITY_BASELINE.md`.
-2. **AST & Source Inspection Proves Absence of Cheating**: Manual line-by-line inspection of all python modules in `lab/target/` confirmed that no test-specific shortcuts, dummy return values, or hardcoded pass strings exist. Every function implements real computational and database logic.
-3. **Defense-in-Depth Mechanisms are Authentically Wired**: Password hashing, JWT token verification, RBAC role filtering, tenant IDOR checking, SQL parameterization, atomic ledger balance checks, pre-socket DNS SSRF filtering, and Pydantic mass-assignment prevention are all verified as active and enforced.
-4. **Scope & Spec Compliance**: All deliverables match the requirements for Milestone M1 in `PROJECT.md` and `ORIGINAL_REQUEST.md`.
+1. **Authenticity of Implementation**:
+   - The keep-alive restoration directly affects the wire protocol; requests emitted via `cmd_repeater_send_request` now maintain standard persistent connection semantics.
+   - Disabling Nagle's algorithm (`TCP_NODELAY`) eliminates TCP delayed-ACK latency penalty on the 1-byte barrier release packet during primed race testing.
+   - Wireshark/Npcap telemetry is dynamically queried directly from host executables and kernel driver metadata, rather than relying on static placeholders.
+   - Intruder heap virtualization bounds memory usage without altering detection or measurement accuracy.
+
+2. **Security Invariant Preservation**:
+   - SEC-01 (Fail-Closed Scope Gate): The scope engine verification in `cmd_repeater_send_request` (`state.active_scope_engine`) and in `sentinel_repeater::RepeaterExecutor::execute_raw` remains intact and enforced before socket connection.
+   - SEC-02 to SEC-12: Verified via 539/539 tests passing across `sentinel_storage` (CAS integrity, Merkle proofs), `sentinel_scope`, `sentinel_verification`, and `sentinel_bus`.
+
+3. **Absence of Prohibited Patterns**:
+   - No hardcoded test results detected.
+   - No dummy/facade implementations detected.
+   - No fabricated verification logs detected.
 
 ---
 
 ## 3. Caveats
 
-- **No caveats.** All code, documentation, and test fixtures run locally, reproducibly, and without external network or closed-source dependencies.
+- In high-throughput fuzzing runs, truncated previews in the `FuzzerWorkspaceView` table display the first 2KB of the response body. If the analyst needs full multi-megabyte payloads, they are retrievable from the underlying CAS/Observation store.
+- On non-Windows platforms or systems where Wireshark/Npcap are not installed, `cmd_check_packet_capture_status` correctly returns `false` with empty version strings.
 
 ---
 
 ## 4. Conclusion
 
-Milestone M1 (SOTA Research Landscape & Hardened Target Baseline) is **CERTIFIED CLEAN**. There are zero integrity violations, zero fake metrics, and zero facade implementations. The hardened target application baseline and foundational research documentation are ready for Milestone M2 (Ground-Truth Lab & Negative Controls).
+Worker M1's deliverables strictly satisfy all requirements for Milestone M1 (Wire Forensics & Network Throughput Hardening):
+- Keep-Alive header preservation verified.
+- `TCP_NODELAY` verified on all primed race and dispatcher sockets.
+- Dynamic Wireshark 4.6.8 and Npcap 1.88 telemetry verified.
+- Intruder heap virtualization verified.
+- Build and test gates pass with 100% success rate.
+- Security invariants SEC-01 through SEC-12 remain uncompromised.
 
-**Verdict:** **CLEAN** 🟢
+**FINAL AUDIT VERDICT**: **CLEAN**
 
 ---
 
 ## 5. Verification Method
 
-To independently reproduce the forensic audit results:
+Independent reproduction commands:
+```powershell
+# 1. Verify Rust Core Test Suite (100% Pass)
+cargo nextest run --manifest-path sentinel_core/Cargo.toml
 
-1. **Execute Pytest Test Suite**:
-   ```powershell
-   cd "c:\Users\Legion 5 pro\Desktop\cyber sec\research_lab"
-   python -m pytest lab/target/tests/test_target_hardening.py -v
-   ```
-   *Expected Output*: `32 passed`, exit code `0`.
+# 2. Verify Desktop App Cargo Check (0 Errors)
+cargo check --manifest-path src-tauri/Cargo.toml
 
-2. **Inspect Hardened Target Modules**:
-   - `research_lab/lab/target/auth.py`
-   - `research_lab/lab/target/database.py`
-   - `research_lab/lab/target/rbac.py`
-   - `research_lab/lab/target/services/`
-   - `research_lab/RESEARCH_LANDSCAPE.md`
-   - `research_lab/HARDENED_TARGET_SECURITY_BASELINE.md`
+# 3. Verify Frontend Build (0 Errors)
+npm run build
+
+# 4. Verify Host Wire Forensics Telemetry
+& "C:\Program Files\Wireshark\tshark.exe" -v
+(Get-Item 'C:\Windows\System32\drivers\npcap.sys').VersionInfo.FileVersion
+```

@@ -1,68 +1,33 @@
-## 2026-08-17T06:53:31Z
-You are explorer_survey_3, a teamwork_preview_explorer.
-Working directory: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3
-Original Request: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md
-Architecture Workspace: c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6
+## 2026-09-11T07:51:31Z
 
-Read ORIGINAL_REQUEST.md first.
+<USER_REQUEST>
+You are an Explorer subagent in the Sentinel Desktop Hardening and Architecture Audit project.
 
-Your primary focus is surveying and analyzing the operational, security, research, testing, and cross-cutting specifications in architecture/v6:
-1. Protocols & Traffic Engine: Explicit separation of HTTP/1.1, HTTP/2, HTTP/3, QUIC, TLS, WebSocket, SSE, gRPC.
-2. Scanner & Fuzzer Architecture: Detection -> Candidate -> Verification -> Evidence -> Finding pipeline; FuzzProfile, MutatorType, InsertionPoint, Oracle, ResourceBudget, Minimization, Replay, StopCondition.
-3. Plugin Security & Sandbox: Capability-based permissions vs ResourceLimits, wasm/native sandbox boundaries, default deny.
-4. Research Modules: SMT, RL, CryptoAnalysis — feature gating, optionality, memory/CPU isolation, non-core execution paths.
-5. AI Security: AI optionality, untrusted target data handling, prompt injection defense, host-side policy evaluation engine.
-6. Security Invariants & Testing: (V6_FINAL_SECURITY_INVARIANTS.md, V6_FINAL_TEST_ARCHITECTURE.md, V6_FINAL_SECURITY_REVIEW.md, V6_FINAL_RISK_REGISTER.md, V6_FINAL_GO_NO_GO.md, V6_FINAL_PERFORMANCE_SPECIFICATION.md, V6_FINAL_TRACEABILITY.md).
-7. Cross-File Inconsistencies: Examine all 26 files in architecture/v6 for broken cross-references, conflicting counts/names, unassigned dependencies, or orphaned concepts.
+Your Identity & Working Directory:
+- Working Directory: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3
+- Workspace Root: c:\Users\Legion 5 pro\Desktop\cyber sec
+- Parent Conversation ID: 94d601fe-cc12-4b39-babd-492e9642f362
+- Archetype: teamwork_preview_explorer
 
-Document:
-- Comprehensive taxonomy and requirements for V6_CANONICAL_SPEC.yaml
-- All identified blockers, bugs, missing invariants, or contradictions across the files
-- Concrete design and repair strategies for the validator and reconciliation phases
+MANDATORY INPUT:
+You MUST read the authoritative user request at:
+c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md
+Specifically read the section under ## 2026-09-11T07:48:59Z.
 
-Write your comprehensive report to `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3\survey_report.md` and write a self-contained handoff to `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3\handoff.md`. Send a completion message to parent when finished.
+YOUR MISSION — Survey R3: Core Attack/Defense Engines & R4: Toolchain/Dependencies/Invariants:
+1. Audit core penetration testing pipelines: SQL Scanner, Intruder, Repeater, Gray-Box IAST runtime agent, and GhostNetwork proxy failover in `sentinel_core` and related crates.
+2. Investigate adaptive rate-limiting, anti-ban cooldowns, strict client header sanitization, and JA4 TLS mimicry under heavy load.
+3. Investigate 100-worker concurrency tests in the Intruder and Scanner engines (evaluate thread starvation, unhandled Promise rejections, and test fixtures).
+4. Audit workspace dependencies across Rust `Cargo.toml` files (`sentinel_core/Cargo.toml`, `src-tauri/Cargo.toml`, subcrates), Node `package.json`, and MCP server integration points. Identify compilation warnings, outdated dependencies, Docker lab matrices, and standalone testbed hooks.
+5. Check status of security invariants SEC-01 through SEC-12 (fail-closed scope drop, CAS immutability, zeroize secrets).
+6. Check `cargo nextest run --manifest-path sentinel_core/Cargo.toml` readiness and test suite health.
 
-## 2026-08-17T07:50:44Z
-You are explorer_survey_3.
-Your working directory is: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3
-Your parent is: d56ffa0e-609b-4ada-8e18-63028004cb04 (Project Orchestrator)
+CONSTRAINTS:
+- You are READ-ONLY. DO NOT modify any source code files. Write only to your working directory (.agents/explorer_survey_3/).
+- Provide concrete file paths, line numbers, and verified evidence.
 
-MANDATORY FIRST ACTION:
-Read ORIGINAL_REQUEST.md at: c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\ORIGINAL_REQUEST.md (specifically ## 2026-08-17T07:49:19Z).
-
-TASK:
-Perform deep survey for WP-1.4 (sentinel_scope), security invariants, cross-crate integration, validator status, and Phase 1 gates.
-Examine:
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6\V6_CANONICAL_SPEC.yaml`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6\V6_FINAL_SECURITY_INVARIANTS.md`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6\V6_FINAL_INTERFACE_REGISTRY.md`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6\V6_FINAL_TEST_ARCHITECTURE.md`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6\validate_v6_spec.py`
-- `c:\Users\Legion 5 pro\Desktop\cyber sec\architecture\v6\V6_ARCHITECTURE_FROZEN.md`
-
-Enumerate with full precision:
-1. Scope requirements (WP-1.4):
-   - Fail-closed ScopeEngine defaulting to DENY.
-   - Structured ScopeDecision (allowed, reason, matched_rule, target, scope_version, decision_id, timestamp).
-   - Canonical matching semantics: hostname (exact/wildcard), URL (prefix/exact/regex), IPv4 CIDR, IPv6 CIDR.
-   - Auditable scope-violation event emission on denied active requests.
-2. Security Invariants & Integration Requirements (WP-1.5):
-   - Mandatory 6 security invariants to enforce and test:
-     1. NO ACTIVE REQUEST WITHOUT VALID SCOPE DECISION
-     2. NO ACTIVE TEST WITHOUT POLICY DECISION
-     3. NO SECRET IN ORDINARY LOGGING OR TELEMETRY
-     4. NO CROSS-PROJECT DATA ACCESS
-     5. NO UNAUTHORIZED CAPABILITY
-     6. CRITICAL AUDIT EVENTS MUST NOT BE LOST SILENTLY
-   - Cross-crate security integration test flow:
-     * OUT-OF-SCOPE -> ScopeEngine -> ScopeDecision=DENY -> NO ACTIVE NETWORK -> ScopeViolation event -> EventBus durable path -> SQLite audit store -> Queryable evidence.
-     * IN-SCOPE -> ScopeEngine -> ScopeDecision=ALLOW -> normal flow.
-3. Spec validator status: check what validate_v6_spec.py does and how to execute it.
-4. Phase 1 gates and dependencies: exact requirements to pass all 10 gates.
-
-Write your complete findings report to:
-`c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3\survey_scope_security.md`
-and write your handoff report to:
-`c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3\handoff.md`.
-
-When finished, send a completion message to your parent with the artifact paths and summary.
+DELIVERABLES:
+1. Write a comprehensive survey report to `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3\report.md`.
+2. Write `c:\Users\Legion 5 pro\Desktop\cyber sec\.agents\explorer_survey_3\handoff.md`.
+3. Send a completion message back to the orchestrator (Recipient: "94d601fe-cc12-4b39-babd-492e9642f362") summarizing your findings and linking to your report.
+</USER_REQUEST>
