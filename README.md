@@ -1,5 +1,6 @@
-# 🛡️ Sentinel V6 Desktop
+﻿<div align="center">
 
+# 🛡️ Sentinel V6 Desktop
 ### High-Performance Open-Source Burp Suite & OWASP ZAP Alternative
 **Engineered in Rust, Tokio, and Tauri · Sub-100MB Memory · Unthrottled Fuzzing Engine**
 
@@ -10,8 +11,17 @@
 [![TypeScript: 5.7](https://img.shields.io/badge/TypeScript-5.7-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![Author: Pavan](https://img.shields.io/badge/Author-Pavan%20(%40pavan271006)-00d26a.svg)](https://github.com/pavan271006)
 [![Tests: 559 Passed](https://img.shields.io/badge/Tests-559%20Passing-brightgreen.svg)](#running-tests)
+[![CI Verification](https://github.com/pavan271006/sentinel-v6-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/pavan271006/sentinel-v6-desktop/actions)
+
+<br />
+
+<img src="assets/sentinel-social-preview.png" alt="Sentinel V6 Desktop UI Interface Preview" width="100%" />
+
+<br />
 
 [Overview](#what-is-sentinel-v6) • [Why Sentinel (Burp Alternative)](#why-sentinel-v6-a-modern-alternative-to-burp-suite) • [Comparison Matrix](#comprehensive-feature-comparison) • [Key Features](#key-features) • [Architecture](#architecture) • [Getting Started](#getting-started) • [Documentation](#documentation)
+
+</div>
 
 ---
 
@@ -19,8 +29,7 @@
 
 **Sentinel V6 Desktop** is a modern, modular, open-source web application security assessment workbench and intercepting proxy created and maintained by **[Pavan](https://github.com/pavan271006)**. Engineered from the ground up in **Rust** and **Tauri (React/TypeScript)**, Sentinel provides a blazing-fast, resource-efficient alternative to legacy Java-based intercepting proxies like **Burp Suite** and **OWASP ZAP**.
 
-By replacing traditional Java Virtual Machine (JVM) overhead with native compiled Rust concurrency (	okio, hyper, 
-ustls), Sentinel delivers **sub-100MB idle RAM consumption**, **sub-second cold boot times**, and an **unthrottled parameter fuzzing engine** capable of sustaining 10,000+ to 30,000+ requests per second without freezing your desktop interface.
+By replacing traditional Java Virtual Machine (JVM) overhead with native compiled Rust concurrency (`tokio`, `hyper`, `rustls`), Sentinel delivers **sub-100MB idle RAM consumption**, **sub-second cold boot times**, and an **unthrottled parameter fuzzing engine** capable of sustaining 10,000+ to 30,000+ requests per second without freezing your desktop interface.
 
 ---
 
@@ -29,10 +38,10 @@ ustls), Sentinel delivers **sub-100MB idle RAM consumption**, **sub-second cold 
 Security professionals, penetration testers, and bug bounty researchers have relied on Burp Suite for over a decade. However, modern security workflows face major bottlenecks in traditional tooling:
 
 1. **Zero-JVM Memory Footprint (<100MB vs 1.5GB–3GB)**: Traditional Java proxies consume massive amounts of system memory and suffer from periodic garbage collection pauses during heavy scans. Sentinel runs as a native compiled binary using less than 100MB of RAM.
-2. **Unthrottled Intruder / Parameter Fuzzing**: Unlike Burp Suite Community (which artificially throttles fuzzing to 1 request per second to force a \/year commercial license), Sentinel provides high-throughput parallel fuzzing out of the box with zero artificial rate limits.
+2. **Unthrottled Intruder / Parameter Fuzzing**: Unlike Burp Suite Community (which artificially throttles fuzzing to 1 request per second to force a $449/year commercial license), Sentinel provides high-throughput parallel fuzzing out of the box with zero artificial rate limits.
 3. **Built-in Out-of-Band (OAST) Burp Collaborator Alternative**: Sentinel integrates native interaction listeners (Interactsh) for blind SQLi, SSRF, and RCE verification with real-time correlation—completely free and open source.
 4. **Decoupled 30 FPS Render Engine**: High-frequency network responses are buffered in a micro-batched UI queue, preventing main-thread freezes and browser DOM diffing lockups during heavy automated testing.
-5. **Advanced Fingerprint Evasion**: Built-in JA4 TLS client fingerprinting (Chrome 130, Firefox 132 profiles) and strict HTTP/2 pseudo-header serialization (:method, :path, :authority, :scheme) to bypass modern WAFs and bot detection.
+5. **Advanced Fingerprint Evasion**: Built-in JA4 TLS client fingerprinting (Chrome 130, Firefox 132 profiles) and strict HTTP/2 pseudo-header serialization (`:method`, `:path`, `:authority`, `:scheme`) to bypass modern WAFs and bot detection.
 
 ---
 
@@ -50,7 +59,7 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 | **Autonomous SQLi Engine** | ❌ No | ❌ Scanner only | ⚠️ Basic Active Scan | ❌ No | **✅ Multi-Oracle (SPRT, Boolean, Error, OAST)** |
 | **WebSocket Stream Inspector** | ⚠️ Basic | ✅ Yes | ✅ Yes | ✅ Yes | **✅ Full-Duplex Binary & Text Inspector** |
 | **Plugin Extensibility** | Java / Python / Montoya | Java / Python / Montoya | Java / Python / Zest | JS Plugins | **✅ Rhai & WASM Sandboxed SDK** |
-| **License & Cost** | Proprietary (Free/Limited) | Proprietary (/yr/user) | Apache 2.0 (Free) | Freemium ($/mo) | **100% Free & Open Source (MIT)** |
+| **License & Cost** | Proprietary (Free/Limited) | Proprietary ($449/yr/user) | Apache 2.0 (Free) | Freemium ($/mo) | **100% Free & Open Source (MIT)** |
 
 ---
 
@@ -69,13 +78,13 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 - **Perimeter Header Hygiene**: Sanitizes 24 reverse-proxy tracking headers before socket transmission.
 
 ### 🌐 Interception Proxy & Traffic Studio
-- Asynchronous HTTP/1.1 and HTTP/2 proxy engine listening on 127.0.0.1:8085.
+- Asynchronous HTTP/1.1 and HTTP/2 proxy engine listening on `127.0.0.1:8085`.
 - Live request and response tampering, regex match-and-replace rules, and breakpoint controls.
 - Full-duplex WebSocket stream inspector with binary and text frame inspection.
 - Wireshark native bridge integration and Npcap kernel NDIS packet capture detection.
 
 ### 🔁 Repeater Studio & Diff Inspector
-- Tabbed workspace with real-time environment variable interpolation ({{host}}, {{token}}).
+- Tabbed workspace with real-time environment variable interpolation (`{{host}}`, `{{token}}`).
 - Visual side-by-side response diffing and live latency histograms.
 - 1-click cURL export, raw HTTP/1.1 request formatting, and live replay capabilities.
 
@@ -93,7 +102,7 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 
 ## Architecture
 
-`
+```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                      Sentinel React Desktop UI                         │
 │       (Zustand State · Tailwind CSS · Virtualized DOM · 30 FPS)        │
@@ -114,7 +123,7 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                           Target Network                               │
 └────────────────────────────────────────────────────────────────────────┘
-`
+```
 
 ---
 
@@ -122,37 +131,36 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 
 ### System Requirements
 - **Operating System**: Windows 10/11, macOS 12+, or Linux (Ubuntu 20.04+, Arch, Debian)
-- **Node.js**: 18.0.0 or higher (20+ LTS recommended)
-- **Rust Toolchain**: 1.78.0 or higher (
-ustc, cargo)
-- **C++ Build Tools**: Visual Studio Build Tools with C++ workload (Windows) or uild-essential (Linux)
+- **Node.js**: `v18.0.0` or higher (`v20+` LTS recommended)
+- **Rust Toolchain**: `1.78.0` or higher (`rustc`, `cargo`)
+- **C++ Build Tools**: Visual Studio Build Tools with C++ workload (Windows) or `build-essential` (Linux)
 
 ### Installation
 
 1. **Clone the repository:**
-   `ash
+   ```bash
    git clone https://github.com/pavan271006/sentinel-v6-desktop.git
    cd sentinel-v6-desktop
-   `
+   ```
 
 2. **Install frontend dependencies:**
-   `ash
+   ```bash
    npm install
-   `
+   ```
 
 3. **Launch the desktop application in development mode:**
-   `ash
+   ```bash
    npm run dev:desktop
-   `
+   ```
 
 4. **Build a production standalone binary:**
-   `ash
+   ```bash
    npm run build:release
-   `
+   ```
    The compiled executable will be generated at:
-   - **Windows**: src-tauri/target/release/sentinel-desktop.exe
-   - **Linux**: src-tauri/target/release/sentinel-desktop
-   - **macOS**: src-tauri/target/release/bundle/dmg/
+   - **Windows**: `src-tauri/target/release/sentinel-desktop.exe`
+   - **Linux**: `src-tauri/target/release/sentinel-desktop`
+   - **macOS**: `src-tauri/target/release/bundle/dmg/`
 
 ---
 
@@ -160,7 +168,7 @@ ustc, cargo)
 
 Sentinel enforces strict security invariants (SEC-01 through SEC-12) and maintains 100% green test suites across all core crates:
 
-`ash
+```bash
 # Run all 559 core Rust tests with cargo-nextest
 cargo nextest run --manifest-path sentinel_core/Cargo.toml
 
@@ -170,14 +178,15 @@ cargo check --manifest-path src-tauri/Cargo.toml
 # Run frontend TypeScript typechecks & Vitest suites
 npm run build
 npm test
-`
+```
 
 ---
 
 ## Project Structure
 
-`
+```
 sentinel-v6-desktop/
+├── assets/                   # Vector banners & visual UI screenshots
 ├── src/                      # React/TypeScript desktop frontend
 │   ├── components/           # Reusable UI widgets and workspace inspectors
 │   ├── ipc/                  # Tauri IPC client contracts & bridges
@@ -197,9 +206,12 @@ sentinel-v6-desktop/
 ├── docs/                     # Technical specifications, whitepapers & benchmarks
 │   ├── BURP_ALTERNATIVE.md   # Deep-dive comparison vs Burp Suite Pro & OWASP ZAP
 │   └── SQL_SCANNER_ARCHITECTURE.md
+├── .github/workflows/        # Automated CI & Multi-platform Release packaging
+│   ├── ci.yml                # Automated test runner for pull requests & master
+│   └── release.yml           # Automated .exe / .AppImage / .dmg release generator
 ├── llms.txt                  # LLM indexing standard for Perplexity, ChatGPT & Gemini
 └── tests/                    # Vitest and stress test suites
-`
+```
 
 ---
 

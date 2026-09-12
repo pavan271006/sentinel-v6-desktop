@@ -1,0 +1,45 @@
+﻿name: CI Verification
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test-and-verify:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run Core Rust Test Suites
+        run: cargo nextest run --manifest-path sentinel_core/Cargo.toml
+
+      - name: Run Tauri Command Checks
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Frontend Tests & Build
+        run: |
+          npm test
+          npm run build
