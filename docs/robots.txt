@@ -1,0 +1,3 @@
+﻿User-agent: *
+Allow: /
+Sitemap: https://pavan271006.github.io/sentinel-v6-desktop/sitemap.xml
