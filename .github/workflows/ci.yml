@@ -1,4 +1,4 @@
-﻿name: CI Verification
+name: CI Verification
 
 on:
   push:
@@ -36,10 +36,10 @@ jobs:
       - name: Run Core Rust Test Suites
         run: cargo nextest run --manifest-path sentinel_core/Cargo.toml
 
-      - name: Run Tauri Command Checks
-        run: cargo check --manifest-path src-tauri/Cargo.toml
-
       - name: Run Frontend Tests & Build
         run: |
           npm test
           npm run build
+
+      - name: Run Tauri Command Checks
+        run: cargo check --manifest-path src-tauri/Cargo.toml
