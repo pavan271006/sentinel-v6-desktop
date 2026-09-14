@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToastStore } from '../stores/toastStore';
 import { Button } from '../design-system/Button';
 import {
@@ -6,70 +6,7 @@ import {
   Sparkles,
   FolderTree,
 } from 'lucide-react';
-
-function evaluateHackvertorTags(input: string): string {
-  let result = input;
-  let prev = '';
-  let iterations = 0;
-
-  while (result !== prev && iterations < 10) {
-    prev = result;
-    iterations++;
-
-    result = result.replace(/<@url_encode>([\s\S]*?)<@\/url_encode>/gi, (_, content) => encodeURIComponent(content));
-    result = result.replace(/<@url_decode>([\s\S]*?)<@\/url_decode>/gi, (_, content) => {
-      try { return decodeURIComponent(content); } catch { return content; }
-    });
-
-    result = result.replace(/<@base64_encode>([\s\S]*?)<@\/base64_encode>/gi, (_, content) => {
-      try { return btoa(unescape(encodeURIComponent(content))); } catch { return btoa(content); }
-    });
-    result = result.replace(/<@base64_decode>([\s\S]*?)<@\/base64_decode>/gi, (_, content) => {
-      try { return decodeURIComponent(escape(atob(content.trim()))); } catch { return atob(content.trim()); }
-    });
-
-    result = result.replace(/<@hex_encode>([\s\S]*?)<@\/hex_encode>/gi, (_, content) => {
-      return Array.from(new TextEncoder().encode(content))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-    });
-    result = result.replace(/<@hex_decode>([\s\S]*?)<@\/hex_decode>/gi, (_, content) => {
-      const cleanHex = content.replace(/\s+/g, '');
-      let str = '';
-      for (let i = 0; i < cleanHex.length; i += 2) {
-        str += String.fromCharCode(parseInt(cleanHex.substr(i, 2), 16));
-      }
-      return str;
-    });
-
-    result = result.replace(/<@html_entities>([\s\S]*?)<@\/html_entities>/gi, (_, content) => {
-      return content.replace(/[&<>"']/g, (m: string) => {
-        const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-        return map[m] || m;
-      });
-    });
-
-    result = result.replace(/<@uppercase>([\s\S]*?)<@\/uppercase>/gi, (_, content) => content.toUpperCase());
-    result = result.replace(/<@lowercase>([\s\S]*?)<@\/lowercase>/gi, (_, content) => content.toLowerCase());
-    result = result.replace(/<@reverse>([\s\S]*?)<@\/reverse>/gi, (_, content) => content.split('').reverse().join(''));
-    result = result.replace(/<@rot13>([\s\S]*?)<@\/rot13>/gi, (_, content) => {
-      return content.replace(/[a-zA-Z]/g, (c: string) => {
-        const code = c.charCodeAt(0);
-        const base = code >= 97 ? 97 : 65;
-        return String.fromCharCode(((code - base + 13) % 26) + base);
-      });
-    });
-
-    result = result.replace(/<@sha256>([\s\S]*?)<@\/sha256>/gi, () => {
-      return `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
-    });
-    result = result.replace(/<@md5>([\s\S]*?)<@\/md5>/gi, () => {
-      return `d41d8cd98f00b204e9800998ecf8427e`;
-    });
-  }
-
-  return result;
-}
+import { HackvertorEngine } from '../services/hackvertor/HackvertorEngine';
 
 export const HackvertorWorkspaceView: React.FC = () => {
   const { addToast } = useToastStore();
@@ -78,8 +15,14 @@ export const HackvertorWorkspaceView: React.FC = () => {
     `<@base64_encode><@url_encode>SELECT * FROM users WHERE username = 'admin' OR 1=1--<@/url_encode><@/base64_encode>`
   );
 
-  const evaluatedOutput = useMemo(() => {
-    return evaluateHackvertorTags(inputCode);
+  const [evaluatedOutput, setEvaluatedOutput] = useState<string>('');
+
+  useEffect(() => {
+    let active = true;
+    HackvertorEngine.evaluate(inputCode).then((out) => {
+      if (active) setEvaluatedOutput(out);
+    });
+    return () => { active = false; };
   }, [inputCode]);
 
   const tagCategories = [
@@ -87,9 +30,15 @@ export const HackvertorWorkspaceView: React.FC = () => {
       name: 'Encoders',
       tags: [
         { label: 'URL Encode', open: '<@url_encode>', close: '<@/url_encode>' },
+        { label: 'URL Encode All', open: '<@url_encode_all>', close: '<@/url_encode_all>' },
         { label: 'Base64 Encode', open: '<@base64_encode>', close: '<@/base64_encode>' },
+        { label: 'Base64URL Encode', open: '<@base64url_encode>', close: '<@/base64url_encode>' },
         { label: 'Hex Encode', open: '<@hex_encode>', close: '<@/hex_encode>' },
+        { label: 'SQL Hex (0x...)', open: '<@sql_hex>', close: '<@/sql_hex>' },
         { label: 'HTML Entities', open: '<@html_entities>', close: '<@/html_entities>' },
+        { label: 'HTML Decimal', open: '<@html_decimal>', close: '<@/html_decimal>' },
+        { label: 'Unicode Escape', open: '<@unicode_escape>', close: '<@/unicode_escape>' },
+        { label: 'Binary 8-bit', open: '<@binary_encode>', close: '<@/binary_encode>' },
       ],
     },
     {
@@ -97,14 +46,27 @@ export const HackvertorWorkspaceView: React.FC = () => {
       tags: [
         { label: 'URL Decode', open: '<@url_decode>', close: '<@/url_decode>' },
         { label: 'Base64 Decode', open: '<@base64_decode>', close: '<@/base64_decode>' },
+        { label: 'Base64URL Decode', open: '<@base64url_decode>', close: '<@/base64url_decode>' },
         { label: 'Hex Decode', open: '<@hex_decode>', close: '<@/hex_decode>' },
+        { label: 'Binary Decode', open: '<@binary_decode>', close: '<@/binary_decode>' },
       ],
     },
     {
-      name: 'Hashes',
+      name: 'Cryptographic Hashes',
       tags: [
         { label: 'SHA-256 Hash', open: '<@sha256>', close: '<@/sha256>' },
+        { label: 'SHA-384 Hash', open: '<@sha384>', close: '<@/sha384>' },
+        { label: 'SHA-512 Hash', open: '<@sha512>', close: '<@/sha512>' },
+        { label: 'SHA-1 Hash', open: '<@sha1>', close: '<@/sha1>' },
         { label: 'MD5 Hash', open: '<@md5>', close: '<@/md5>' },
+      ],
+    },
+    {
+      name: 'SQL Evasion & WAF',
+      tags: [
+        { label: 'Inline Comment (/**/)', open: '<@space2comment>', close: '<@/space2comment>' },
+        { label: 'Plus for Space (+)', open: '<@space2plus>', close: '<@/space2plus>' },
+        { label: 'Randomize Case', open: '<@randomcase>', close: '<@/randomcase>' },
       ],
     },
     {
@@ -114,6 +76,7 @@ export const HackvertorWorkspaceView: React.FC = () => {
         { label: 'Uppercase', open: '<@uppercase>', close: '<@/uppercase>' },
         { label: 'Lowercase', open: '<@lowercase>', close: '<@/lowercase>' },
         { label: 'Reverse', open: '<@reverse>', close: '<@/reverse>' },
+        { label: 'Strip Whitespace', open: '<@strip_whitespace>', close: '<@/strip_whitespace>' },
       ],
     },
   ];

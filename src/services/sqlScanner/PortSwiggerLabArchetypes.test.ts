@@ -486,6 +486,85 @@ describe('Sentinel SQL X — PortSwigger Academy Lab Archetypes Self-Test', () =
       expect(extracted?.username).toBe('administrator');
       expect(extracted?.password).toBe(targetPassword);
     });
+
+    it('extracts password at lightning speed via Zero-Branching Bitwise parallel exfiltration', async () => {
+      const targetPassword = 'bug_bounty_secret_999!';
+      const dummyTable = {
+        id: 'tbl_credentials',
+        name: 'credentials',
+        schema: 'public',
+        classification: 'application' as const,
+        isSensitive: true,
+        columns: [
+          { name: 'username', dataType: 'VARCHAR', isNullable: false, isPrimaryKey: true, isForeignKey: false, isIndexed: false, isSensitive: false, confidence: 'Confirmed' as const, discoveredAt: 0 },
+          { name: 'password', dataType: 'VARCHAR', isNullable: false, isPrimaryKey: false, isForeignKey: false, isIndexed: false, isSensitive: true, confidence: 'Confirmed' as const, discoveredAt: 0 },
+        ],
+        discoveredAt: 0,
+        status: 'columns_ready' as const,
+      };
+
+      let bitwiseQueriesSent = 0;
+
+      // Mock database backend that supports bitwise AND evaluation
+      const mockSender = async (payload: string) => {
+        let isTrue = false;
+        if (payload.includes("username='administrator'")) {
+          const lenMatch = /LENGTH\(password\)>(\d+)/.exec(payload);
+          if (lenMatch) {
+            isTrue = targetPassword.length > parseInt(lenMatch[1], 10);
+          }
+          const exactLenMatch = /LENGTH\(password\)=(\d+)/.exec(payload);
+          if (exactLenMatch) {
+            isTrue = targetPassword.length === parseInt(exactLenMatch[1], 10);
+          }
+          const bitMatch = /ASCII\(SUBSTRING\(password,(\d+),1\)\)[^&]*&\s*(\d+)\)\s*=\s*(\d+)/.exec(payload);
+          if (bitMatch) {
+            bitwiseQueriesSent++;
+            const pos = parseInt(bitMatch[1], 10);
+            const mask = parseInt(bitMatch[2], 10);
+            const expected = parseInt(bitMatch[3], 10);
+            const code = targetPassword.charCodeAt(pos - 1);
+            isTrue = (code & mask) === expected;
+          }
+          const asciiMatch = /ASCII\(SUBSTRING\(password,(\d+),1\)\)>(\d+)/.exec(payload);
+          if (asciiMatch) {
+            const pos = parseInt(asciiMatch[1], 10);
+            const mid = parseInt(asciiMatch[2], 10);
+            const code = targetPassword.charCodeAt(pos - 1);
+            isTrue = code > mid;
+          }
+          if (!lenMatch && !exactLenMatch && !bitMatch && !asciiMatch) {
+            isTrue = true; // entity existence check
+          }
+        }
+        return {
+          body: isTrue ? 'Internal Server Error' : 'OK',
+          status: isTrue ? 500 : 200,
+          durationMs: 25,
+        };
+      };
+
+      const { BlindDataExtractor } = await import('./engine/BlindDataExtractor');
+      const progressUpdates: string[] = [];
+
+      const extractor = new BlindDataExtractor(mockSender, {
+        dbms: 'PostgreSQL',
+        technique: 'CONDITIONAL_ERROR',
+        errorPolarity: 'error_on_true',
+        concurrencyLimit: 20,
+        onProgress: (_col, val) => {
+          progressUpdates.push(val);
+        },
+      });
+
+      const extracted = await extractor.extractTableRow(dummyTable, 'administrator');
+      expect(extracted).not.toBeNull();
+      expect(extracted?.username).toBe('administrator');
+      expect(extracted?.password).toBe(targetPassword);
+      expect(bitwiseQueriesSent).toBeGreaterThan(0);
+      expect(progressUpdates.length).toBeGreaterThan(0);
+      expect(progressUpdates[progressUpdates.length - 1]).toBe(targetPassword);
+    });
   });
 });
 

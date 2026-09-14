@@ -614,10 +614,11 @@ export const PayloadConfigurationPanel: React.FC<PayloadConfigurationPanelProps>
             <select
               value={config.numBase || 'decimal'}
               onChange={(e) => applyConfig({ ...config, numBase: e.target.value as any })}
+              style={{ colorScheme: 'dark' }}
               className="w-full bg-[#141517] text-white px-2 py-1 rounded border border-[#3e4249] font-mono"
             >
-              <option value="decimal">Decimal (10)</option>
-              <option value="hex">Hexadecimal (16)</option>
+              <option value="decimal" className="bg-[#2b2d30] text-[#dfdfdf]">Decimal (10)</option>
+              <option value="hex" className="bg-[#2b2d30] text-[#dfdfdf]">Hexadecimal (16)</option>
             </select>
           </div>
           <div>
@@ -647,12 +648,13 @@ export const PayloadConfigurationPanel: React.FC<PayloadConfigurationPanelProps>
           <select
             value={config.dateFormat || 'yyyy-MM-dd'}
             onChange={(e) => applyConfig({ ...config, dateFormat: e.target.value })}
+            style={{ colorScheme: 'dark' }}
             className="w-full bg-[#141517] text-white px-2 py-1 rounded border border-[#3e4249] font-mono"
           >
-            <option value="yyyy-MM-dd">yyyy-MM-dd (2026-08-25)</option>
-            <option value="dd/MM/yyyy">dd/MM/yyyy (25/08/2026)</option>
-            <option value="MM/dd/yyyy">MM/dd/yyyy (08/25/2026)</option>
-            <option value="yyyyMMdd">yyyyMMdd (20260825)</option>
+            <option value="yyyy-MM-dd" className="bg-[#2b2d30] text-[#dfdfdf]">yyyy-MM-dd (2026-08-25)</option>
+            <option value="dd/MM/yyyy" className="bg-[#2b2d30] text-[#dfdfdf]">dd/MM/yyyy (25/08/2026)</option>
+            <option value="MM/dd/yyyy" className="bg-[#2b2d30] text-[#dfdfdf]">MM/dd/yyyy (08/25/2026)</option>
+            <option value="yyyyMMdd" className="bg-[#2b2d30] text-[#dfdfdf]">yyyyMMdd (20260825)</option>
           </select>
         </div>
 
@@ -819,10 +821,11 @@ export const PayloadConfigurationPanel: React.FC<PayloadConfigurationPanelProps>
           <select
             value={config.bitFlipperMode || 'base64'}
             onChange={(e) => applyConfig({ ...config, bitFlipperMode: e.target.value as any })}
+            style={{ colorScheme: 'dark' }}
             className="w-full bg-[#141517] text-white px-2 py-1 rounded border border-[#3e4249] font-mono"
           >
-            <option value="base64">Base64 Encoded</option>
-            <option value="ascii">Raw ASCII / Plaintext</option>
+            <option value="base64" className="bg-[#2b2d30] text-[#dfdfdf]">Base64 Encoded</option>
+            <option value="ascii" className="bg-[#2b2d30] text-[#dfdfdf]">Raw ASCII / Plaintext</option>
           </select>
         </div>
       </div>
@@ -884,10 +887,11 @@ export const PayloadConfigurationPanel: React.FC<PayloadConfigurationPanelProps>
           <select
             value={config.ecbBlockSize || 16}
             onChange={(e) => applyConfig({ ...config, ecbBlockSize: parseInt(e.target.value, 10) || 16 })}
+            style={{ colorScheme: 'dark' }}
             className="w-full bg-[#141517] text-white px-2 py-1 rounded border border-[#3e4249] font-mono"
           >
-            <option value="16">16 bytes (AES-128 / AES-256)</option>
-            <option value="8">8 bytes (DES / 3DES / Blowfish)</option>
+            <option value="16" className="bg-[#2b2d30] text-[#dfdfdf]">16 bytes (AES-128 / AES-256)</option>
+            <option value="8" className="bg-[#2b2d30] text-[#dfdfdf]">8 bytes (DES / 3DES / Blowfish)</option>
           </select>
         </div>
       </div>

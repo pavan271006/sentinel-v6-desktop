@@ -11,6 +11,10 @@ import { useRepeaterStore } from '../stores/repeaterStore';
 import { useEventBusStore } from '../stores/eventBusStore';
 import { ipcClient } from '../ipc/client';
 import {
+  NucleiTemplateEngine,
+  BUILTIN_NUCLEI_TEMPLATES,
+} from '../services/scanner/NucleiTemplateEngine';
+import {
   Radio,
   Play,
   Pause,
@@ -26,6 +30,7 @@ import {
   Search,
   Terminal,
   Zap,
+  FileCode,
 } from 'lucide-react';
 
 export interface ScanCandidate {
@@ -240,11 +245,61 @@ export const ScannerWorkspaceView: React.FC = () => {
     }
   };
 
+  const handleRunNucleiTemplates = async (target?: string) => {
+    const defaultHost = uniqueEndpoints[0]?.url || (uniqueHosts[0] ? `https://${uniqueHosts[0]}` : 'http://127.0.0.1:8085');
+    const targetUrl = target || defaultHost;
+
+    addToast({
+      type: 'info',
+      title: 'Nuclei Template Runner Started',
+      description: `Executing ${BUILTIN_NUCLEI_TEMPLATES.length} zero-day & misconfiguration templates against ${targetUrl}...`,
+    });
+
+    const engine = new NucleiTemplateEngine();
+    const results = await engine.scanTarget(targetUrl);
+    let matchCount = 0;
+
+    for (const res of results) {
+      if (res.matched) {
+        matchCount++;
+        const newCand: ScanCandidate = {
+          id: `nuclei-${Date.now()}-${res.templateId}`,
+          title: `[Nuclei] ${res.templateName}`,
+          targetUri: res.matchedUrl || targetUrl,
+          severity: res.severity.toUpperCase() as any,
+          confidence: 99,
+          strategy: 'CONTENT_MATCH',
+          status: 'VERIFIED',
+          cwe: res.cve || 'CWE-200',
+          cvss: res.cvss || 7.5,
+          casEvidenceHash: res.evidence,
+          description: res.description,
+        };
+        addCandidate(newCand);
+        setSelectedCandId(newCand.id);
+      }
+    }
+
+    if (matchCount > 0) {
+      addToast({
+        type: 'danger',
+        title: `Nuclei Detection: ${matchCount} Vulnerabilities Found!`,
+        description: `Discovered verified security findings. Inspect the Candidate Verification Dossier.`,
+      });
+    } else {
+      addToast({
+        type: 'success',
+        title: 'Nuclei Template Run Clean',
+        description: `All ${BUILTIN_NUCLEI_TEMPLATES.length} template probes evaluated cleanly with 0 match anomalies.`,
+      });
+    }
+  };
+
   const handleStartScan = () => {
     if (!isScanning) {
       toggleScanning();
       setProgress(25);
-      addToast({ type: 'info', title: 'Active scan engine started with rate budget 50 req/s' });
+      addToast({ type: 'info', title: 'Active scan engine & Nuclei evaluators started with rate budget 50 req/s' });
       const interval = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 100) {
@@ -256,6 +311,7 @@ export const ScannerWorkspaceView: React.FC = () => {
           return prev + 15;
         });
       }, 600);
+      handleRunNucleiTemplates();
     }
   };
 
@@ -353,6 +409,15 @@ export const ScannerWorkspaceView: React.FC = () => {
             onClick={handleLaunchBrowser}
           >
             Open Browser
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<FileCode className="w-3.5 h-3.5 text-[#34d399]" />}
+            onClick={() => handleRunNucleiTemplates()}
+          >
+            Run Nuclei Zero-Day Suite
           </Button>
 
           {!isScanning ? (
@@ -506,13 +571,14 @@ export const ScannerWorkspaceView: React.FC = () => {
                   <select
                     value={filterSeverity}
                     onChange={(e) => setFilterSeverity(e.target.value)}
-                    className="text-xs bg-bg-app border border-border-subtle rounded px-2 py-0.5 text-text-primary focus:outline-none focus:border-accent-cyan"
+                    style={{ colorScheme: 'dark' }}
+                    className="text-xs bg-[#141517] border border-border-subtle rounded px-2 py-0.5 text-text-primary focus:outline-none focus:border-accent-cyan"
                   >
-                    <option value="ALL">All Severities</option>
-                    <option value="CRITICAL">Critical</option>
-                    <option value="HIGH">High</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="LOW">Low</option>
+                    <option value="ALL" className="bg-[#2b2d30] text-[#dfdfdf]">All Severities</option>
+                    <option value="CRITICAL" className="bg-[#2b2d30] text-[#dfdfdf]">Critical</option>
+                    <option value="HIGH" className="bg-[#2b2d30] text-[#dfdfdf]">High</option>
+                    <option value="MEDIUM" className="bg-[#2b2d30] text-[#dfdfdf]">Medium</option>
+                    <option value="LOW" className="bg-[#2b2d30] text-[#dfdfdf]">Low</option>
                   </select>
                 </div>
               </div>

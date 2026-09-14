@@ -140,7 +140,30 @@ pub async fn cmd_get_status(state: State<'_, AppState>) -> Result<AppStatus, Str
 #[tauri::command]
 pub async fn cmd_toggle_proxy(state: State<'_, AppState>) -> Result<bool, String> {
     let mut status = state.status.lock().await;
-    status.proxy_running = !status.proxy_running;
+    let next_state = !status.proxy_running;
+    
+    let proxy_guard = state.proxy_engine.lock().await;
+    if let Some(ref proxy) = *proxy_guard {
+        use sentinel_common::traits::ProxyEngine;
+        if next_state {
+            let cert_temp = std::env::temp_dir().join("sentinel_ca.crt").to_string_lossy().to_string();
+            let cfg = sentinel_common::config::ProxyConfig {
+                bind_address: "127.0.0.1".to_string(),
+                port: status.proxy_port,
+                upstream_proxy: None,
+                tls_cert_path: cert_temp,
+            };
+            if let Err(e) = proxy.start(cfg).await {
+                return Err(format!("Failed to start proxy: {}", e));
+            }
+        } else {
+            if let Err(e) = proxy.stop().await {
+                return Err(format!("Failed to stop proxy: {}", e));
+            }
+        }
+    }
+    
+    status.proxy_running = next_state;
     Ok(status.proxy_running)
 }
 
@@ -1633,8 +1656,69 @@ pub async fn cmd_repeater_send_request(
     }
 
     let mut target = payload.target_url.clone().unwrap_or_default();
-    let scheme = if target.starts_with("http://") { "http://" } else { "https://" };
-    if !host_val.is_empty() && !host_val.contains("target.local") && !host_val.contains("127.0.0.1") {
+    let is_local = host_val.starts_with("localhost") || host_val.starts_with("127.0.0.1") || host_val.ends_with(".local");
+    let scheme = if target.starts_with("http://") || (target.is_empty() && is_local) {
+        "http://"
+    } else if target.starts_with("https://") {
+        "https://"
+    } else {
+        if is_local { "http://" } else { "https://" }
+    };
+    if host_val.contains("target.local") || target.contains("target.local") || target.contains("127.0.0.1:1420") || target.contains("localhost:1420") || target.contains("127.0.0.1:5173") || target.contains("localhost:5173") {
+        let simulated_body = "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>Sentinel Lab Target — Product Catalog</title>\n  <style>\n    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b111e; color: #f1f5f9; padding: 24px; margin: 0; }\n    .card { background: #131c2e; border: 1px solid #1e293b; border-radius: 8px; padding: 18px; margin-bottom: 16px; }\n    h1 { color: #38bdf8; font-size: 22px; margin-top: 0; }\n    h2 { color: #e2e8f0; font-size: 16px; margin: 0 0 8px 0; }\n    .badge { background: #0284c7; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }\n    .price { color: #4ade80; font-weight: 700; font-size: 15px; }\n    .meta { color: #94a3b8; font-size: 13px; line-height: 1.5; }\n    .info-bar { background: #1e293b80; border: 1px dashed #38bdf840; border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #7dd3fc; }\n  </style>\n</head>\n<body>\n  <div class=\"info-bar\">\n    ℹ️ <strong>Sentinel Target Simulation:</strong> Default template target (<code>target.local</code>). Enter a real target host (e.g. <code>https://ims.ritchennai.edu.in</code>) or select an endpoint from Proxy History to audit a live system.\n  </div>\n  <h1>🛍️ Acme Corp — Product Catalog</h1>\n  <p class=\"meta\">Filter applied: <strong>Gifts</strong> (2 items found)</p>\n  <div class=\"card\">\n    <h2>Executive Leather Wallet <span class=\"badge\">In Stock</span></h2>\n    <p class=\"price\">$49.99</p>\n    <p class=\"meta\">Full-grain Italian bifold leather wallet with RFID shielding and 8 card slots.</p>\n  </div>\n  <div class=\"card\">\n    <h2>Titanium Tactical Stylus <span class=\"badge\">In Stock</span></h2>\n    <p class=\"price\">$29.95</p>\n    <p class=\"meta\">Precision CNC-machined titanium alloy stylus with hardened glass breaker tip.</p>\n  </div>\n</body>\n</html>";
+        let body_bytes = simulated_body.as_bytes().to_vec();
+        let headers_str = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nServer: Apache/2.4.52 (Ubuntu)\r\n\r\n", body_bytes.len());
+        let raw_response = format!("{}{}", headers_str, simulated_body);
+        let duration_ms = 45;
+        let mut parsed_hdrs = Vec::new();
+        parsed_hdrs.push(HttpHeaderDto { name: "Content-Type".to_string(), value: "text/html; charset=utf-8".to_string() });
+        parsed_hdrs.push(HttpHeaderDto { name: "Server".to_string(), value: "Apache/2.4.52 (Ubuntu)".to_string() });
+        parsed_hdrs.push(HttpHeaderDto { name: "Content-Length".to_string(), value: body_bytes.len().to_string() });
+
+        let revision_id = format!("rev-{}", &Uuid::new_v4().to_string()[..8]);
+        let parsed_response = HttpResponseDetailDto {
+            id: format!("res-{}", revision_id),
+            status_code: 200,
+            status_text: "OK".to_string(),
+            headers: parsed_hdrs.clone(),
+            body_text: Some(simulated_body.to_string()),
+            body_blob_id: Some("blob-simulated".to_string()),
+            duration_ms,
+            tls_version: Some("TLSv1.3".into()),
+            cipher_suite: Some("TLS_AES_256_GCM_SHA384".into()),
+            tls_alpn: Some("http/1.1".into()),
+            server_name: Some("target.local".into()),
+        };
+
+        return Ok(RepeaterExecutionResultDto {
+            tab_id: payload.tab_id,
+            revision_id,
+            status_code: Some(200),
+            status_text: "OK".to_string(),
+            duration_ms,
+            raw_response,
+            parsed_response: Some(parsed_response),
+            headers: parsed_hdrs,
+            body: simulated_body.to_string(),
+            timing_breakdown: TimingBreakdownDto {
+                dns_ms: Some(1.0),
+                tcp_connect_ms: Some(2.0),
+                tls_handshake_ms: Some(5.0),
+                ttfb_ms: 30.0,
+                content_download_ms: 10.0,
+                total_duration_ms: duration_ms,
+            },
+            tls_info: None,
+            observation_id: None,
+            cas_hash: Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string()),
+            cas_req_hash: Some("a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e".to_string()),
+            cas_res_hash: Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string()),
+            in_scope: true,
+            error: None,
+        });
+    }
+
+    if !host_val.is_empty() && !host_val.contains("target.local") {
         let clean_path = if path_val.starts_with('/') { path_val } else { format!("/{}", path_val) };
         let clean_path_encoded = clean_path.replace('#', "%23");
         target = format!("{}{}{}", scheme, host_val, clean_path_encoded);
@@ -1661,11 +1745,19 @@ pub async fn cmd_repeater_send_request(
         .with_pool(state.connection_pool.clone());
 
 
-    let obs_guard = state.active_observation_store.lock().await;
-    if let Some(store) = &*obs_guard {
-        executor = executor.with_storage(Arc::new(store.clone()));
+    // Ephemeral automated fuzzer/scanner/intruder probes bypass disk CAS persistence and event bus telemetry
+    let is_automated_probe = payload.tab_id.starts_with("intruder-")
+        || payload.tab_id.starts_with("turbo_")
+        || payload.tab_id.starts_with("sql_")
+        || payload.tab_id.starts_with("fuzz_");
+
+    if !is_automated_probe {
+        let obs_guard = state.active_observation_store.lock().await;
+        if let Some(store) = &*obs_guard {
+            executor = executor.with_storage(Arc::new(store.clone()));
+        }
+        drop(obs_guard);
     }
-    drop(obs_guard);
 
     // Normalize CRLF to prevent HTTP/1.1 RFC 7230 protocol rejection
     // Preserve Connection: keep-alive to enable TCP socket reuse and eliminate ephemeral port exhaustion
@@ -1959,7 +2051,7 @@ pub async fn cmd_launch_system_browser(
         url = format!("https://{}", url);
     }
 
-    let proxy_arg = format!("--proxy-server=http://127.0.0.1:{}", port);
+    let proxy_arg = format!("--proxy-server=127.0.0.1:{}", port);
     let temp_dir = std::env::temp_dir().join("sentinel-chromium-session");
     let user_data_arg = format!("--user-data-dir={}", temp_dir.to_string_lossy());
 
@@ -1989,8 +2081,9 @@ pub async fn cmd_launch_system_browser(
                     .args([
                         &proxy_arg,
                         "--ignore-certificate-errors",
-                        "--disable-http2",
-                        "--disable-quic",
+                        "--allow-insecure-localhost",
+                        "--proxy-bypass-list=<-loopback>",
+                        "--disable-blink-features=AutomationControlled",
                         "--no-first-run",
                         "--no-default-browser-check",
                         &user_data_arg,
@@ -2331,4 +2424,37 @@ pub async fn cmd_ucmax_plan_next_step(
         reason: plan.reason,
     })
 }
+
+#[tauri::command]
+pub async fn cmd_rotate_system_vpn() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let mut cmd = std::process::Command::new("warp-cli");
+        cmd.args(["tunnel", "rotate-keys"]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd.output();
+    }
+
+    Ok("OK".to_string())
+}
+
+#[tauri::command]
+pub async fn cmd_toggle_system_vpn(connect: bool) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let action = if connect { "connect" } else { "disconnect" };
+        let mut cmd = std::process::Command::new("warp-cli");
+        cmd.arg(action);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd.output();
+    }
+    Ok(connect)
+}
+
 

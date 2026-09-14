@@ -7,6 +7,8 @@ import { TimeBasedTester } from '../../TimeBasedTester';
 import { UnifiedResponseOracle } from '../../engine/UnifiedResponseOracle';
 import { InteractshClient } from '../../engine/InteractshClient';
 import { OobManager } from '../../OobManager';
+import { StackedTester } from '../../StackedTester';
+import { BypassEngine } from '../../BypassEngine';
 import { SqlScanFinding, SqlScanEvidence } from '../../../../types/sqlScanner';
 
 export class MultiOracleDiscoveryStage implements ScanStage {
@@ -21,6 +23,7 @@ export class MultiOracleDiscoveryStage implements ScanStage {
     }
 
     ctx.log('info', `Running Multi-Oracle Discovery across ${totalParams} parameter(s)...`);
+    const bypassEngine = new BypassEngine();
 
     for (let pIdx = 0; pIdx < totalParams; pIdx++) {
       const param = ctx.candidateParameters[pIdx];
@@ -28,6 +31,7 @@ export class MultiOracleDiscoveryStage implements ScanStage {
       if (!param.enabled) continue;
 
       let paramIsVulnerable = false;
+      const isParallel = ctx.scanProfile === 'hyper_turbo' || ctx.concurrencyLimit > 1;
       const baseProgress = 38 + Math.round((pIdx / totalParams) * 24);
       ctx.progress('Multi-Oracle Discovery', `Testing parameter "${param.name}"`, baseProgress, param.name);
       param.testsExecuted = (param.testsExecuted || 0) + 1;
@@ -37,85 +41,122 @@ export class MultiOracleDiscoveryStage implements ScanStage {
         const prog = 38 + Math.round(((pIdx + 0.1) / totalParams) * 24);
         ctx.progress('Multi-Oracle Discovery', `[1/5] Error oracle probing: "${param.name}"`, prog, param.name);
 
+        const recordErrorFinding = (probe: any, res: any, errorMatch: any) => {
+          ctx.log('success', `[ERROR ORACLE] Detected ${errorMatch.patternName} on "${param.name}" (${errorMatch.dbms})`);
+
+          if (ctx.dbmsFingerprint.dbms === 'Unknown' || errorMatch.confidence > ctx.dbmsFingerprint.confidenceScore) {
+            ctx.dbmsFingerprint = {
+              dbms: errorMatch.dbms,
+              confidence: 'Confirmed',
+              confidenceScore: errorMatch.confidence,
+              evidence: [`Error pattern: ${errorMatch.matchedText}`],
+            };
+            ctx.catalog.dbms = errorMatch.dbms;
+          }
+
+          ctx.verifiedVector = 'ERROR';
+          ctx.verifiedParamId = param.id;
+          paramIsVulnerable = true;
+
+          const ev: SqlScanEvidence = {
+            id: `ev-err-${Date.now()}`,
+            title: `Error Leaked on Parameter ${param.name}`,
+            timestamp: Date.now(),
+            injectionType: 'Error-based',
+            parameterName: param.name,
+            parameterLocation: param.location,
+            payload: probe.payload,
+            baselineStatus: ctx.baseline.status,
+            baselineLength: ctx.baseline.contentLength,
+            baselineDurationMs: ctx.baseline.durationMs,
+            testStatus: res.status,
+            testLength: res.body.length,
+            testDurationMs: res.durationMs,
+            rawRequest: res.rawRequest || '',
+            rawResponse: res.rawResponse || '',
+            matchedPattern: errorMatch.matchedText,
+            analysisSummary: `Direct database error output identified: ${errorMatch.matchedText}`,
+          };
+
+          const finding: SqlScanFinding = {
+            id: `finding-err-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            title: `Error-Based SQL Injection (${errorMatch.dbms})`,
+            parameterName: param.name,
+            parameterLocation: param.location,
+            url: ctx.target.url,
+            httpMethod: ctx.target.method,
+            dbms: errorMatch.dbms,
+            detectionMethod: 'Type-Casting Error Oracle',
+            injectionType: 'Error-based',
+            severity: 'Critical',
+            confidence: 'Confirmed',
+            confidenceScore: errorMatch.confidence,
+            confidenceBreakdown: {
+              score: errorMatch.confidence,
+              level: 'Confirmed',
+              factors: [
+                { name: 'Direct Error Signature Match', points: 60, description: errorMatch.patternName },
+                { name: 'Data Leakage Token', points: 40, description: `Leaked: ${errorMatch.leakedData || errorMatch.matchedText}` },
+              ],
+            },
+            evidence: [ev],
+            reproductionRequest: res.rawRequest || '',
+            reproductionResponse: res.rawResponse || '',
+            remediation: 'Implement parameterized queries / prepared statements immediately.',
+            cwe: 'CWE-89',
+            owaspCategory: 'A03:2021-Injection',
+            timestamp: Date.now(),
+            sqliDetected: true,
+            sqlStructureControl: true,
+          };
+          ctx.addFinding(finding);
+        };
+
         const errorProbes = ctx.safetyConfig.scanMode === 'quick'
           ? ErrorTester.getPrecisionErrorProbes().slice(0, 4)
           : ErrorTester.getPrecisionErrorProbes();
 
-        for (const probe of errorProbes) {
-          if (ctx.isAborted) return;
-          const res = await ctx.sendMutatedRequest(param, probe.payload);
-          const errorMatch = UnifiedResponseOracle.inspectError(res.body);
+        if (isParallel) {
+          const probeResponses = await Promise.all(
+            errorProbes.map(async (probe) => {
+              if (ctx.isAborted) return null;
+              try {
+                const res = await ctx.sendMutatedRequest(param, probe.payload);
+                return { probe, res };
+              } catch {
+                return null;
+              }
+            })
+          );
 
-          if (errorMatch) {
-            ctx.log('success', `[ERROR ORACLE] Detected ${errorMatch.patternName} on "${param.name}" (${errorMatch.dbms})`);
-
-            if (ctx.dbmsFingerprint.dbms === 'Unknown' || errorMatch.confidence > ctx.dbmsFingerprint.confidenceScore) {
-              ctx.dbmsFingerprint = {
-                dbms: errorMatch.dbms,
-                confidence: 'Confirmed',
-                confidenceScore: errorMatch.confidence,
-                evidence: [`Error pattern: ${errorMatch.matchedText}`],
-              };
-              ctx.catalog.dbms = errorMatch.dbms;
+          for (const item of probeResponses) {
+            if (!item || ctx.isAborted) continue;
+            const errorMatch = UnifiedResponseOracle.inspectError(item.res.body);
+            if (errorMatch) {
+              recordErrorFinding(item.probe, item.res, errorMatch);
+              break;
             }
-
-            ctx.verifiedVector = 'ERROR';
-            ctx.verifiedParamId = param.id;
-            paramIsVulnerable = true;
-
-            const ev: SqlScanEvidence = {
-              id: `ev-err-${Date.now()}`,
-              title: `Error Leaked on Parameter ${param.name}`,
-              timestamp: Date.now(),
-              injectionType: 'Error-based',
-              parameterName: param.name,
-              parameterLocation: param.location,
-              payload: probe.payload,
-              baselineStatus: ctx.baseline.status,
-              baselineLength: ctx.baseline.contentLength,
-              baselineDurationMs: ctx.baseline.durationMs,
-              testStatus: res.status,
-              testLength: res.body.length,
-              testDurationMs: res.durationMs,
-              rawRequest: res.rawRequest || '',
-              rawResponse: res.rawResponse || '',
-              matchedPattern: errorMatch.matchedText,
-              analysisSummary: `Direct database error output identified: ${errorMatch.matchedText}`,
-            };
-
-            const finding: SqlScanFinding = {
-              id: `finding-err-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-              title: `Error-Based SQL Injection (${errorMatch.dbms})`,
-              parameterName: param.name,
-              parameterLocation: param.location,
-              url: ctx.target.url,
-              httpMethod: ctx.target.method,
-              dbms: errorMatch.dbms,
-              detectionMethod: 'Type-Casting Error Oracle',
-              injectionType: 'Error-based',
-              severity: 'Critical',
-              confidence: 'Confirmed',
-              confidenceScore: errorMatch.confidence,
-              confidenceBreakdown: {
-                score: errorMatch.confidence,
-                level: 'Confirmed',
-                factors: [
-                  { name: 'Direct Error Signature Match', points: 60, description: errorMatch.patternName },
-                  { name: 'Data Leakage Token', points: 40, description: `Leaked: ${errorMatch.leakedData || errorMatch.matchedText}` },
-                ],
-              },
-              evidence: [ev],
-              reproductionRequest: res.rawRequest || '',
-              reproductionResponse: res.rawResponse || '',
-              remediation: 'Implement parameterized queries / prepared statements immediately.',
-              cwe: 'CWE-89',
-              owaspCategory: 'A03:2021-Injection',
-              timestamp: Date.now(),
-              sqliDetected: true,
-              sqlStructureControl: true,
-            };
-            ctx.addFinding(finding);
-            break;
+          }
+        } else {
+          for (const probe of errorProbes) {
+            if (ctx.isAborted) return;
+            const res = await ctx.sendMutatedRequest(param, probe.payload);
+            const errorMatch = UnifiedResponseOracle.inspectError(res.body);
+            if (errorMatch) {
+              recordErrorFinding(probe, res, errorMatch);
+              break;
+            } else if (res.status === 403 || res.status === 406) {
+              // WAF blocked probe - attempt evasion tamper
+              try {
+                const bypassedPayload = bypassEngine.apply(probe.payload, 'COMMENT_OBFUSCATION', probe.dbms);
+                const retryRes = await ctx.sendMutatedRequest(param, bypassedPayload);
+                const retryMatch = UnifiedResponseOracle.inspectError(retryRes.body);
+                if (retryMatch) {
+                  recordErrorFinding({ ...probe, payload: bypassedPayload }, retryRes, retryMatch);
+                  break;
+                }
+              } catch {}
+            }
           }
         }
       }
@@ -128,99 +169,161 @@ export class MultiOracleDiscoveryStage implements ScanStage {
         const booleanPairs = BooleanTester.getTestPairs(param);
         const pairsToTest = ctx.safetyConfig.scanMode === 'quick' ? booleanPairs.slice(0, 8) : booleanPairs;
 
-        for (const pair of pairsToTest) {
-          if (ctx.isAborted) return;
-          const trueRes = await ctx.sendMutatedRequest(param, pair.truePayload);
-          const falseRes = await ctx.sendMutatedRequest(param, pair.falsePayload);
+        const recordBooleanFinding = (pair: any, trueRes: any, _falseRes: any, evalResult: any) => {
+          ctx.log('success', `[BOOLEAN ORACLE] Confirmed differential on "${param.name}" (${evalResult.primaryChannel}, confidence: ${evalResult.confidence}%)`);
 
-          const evalResult = UnifiedResponseOracle.evaluatePair(
-            ctx.baseline.body,
-            ctx.baseline.status,
-            trueRes,
-            falseRes,
-            pair.truePayload,
-            pair.falsePayload
-          );
+          if (evalResult.uniqueMarker) {
+            ctx.activeMarker = evalResult.uniqueMarker;
+          }
+          if (evalResult.divergencePolarity) {
+            ctx.errorPolarity = evalResult.divergencePolarity === 'normal' ? 'standard' : evalResult.divergencePolarity;
+          }
 
-          if (evalResult.isVulnerable) {
-            ctx.log('success', `[BOOLEAN ORACLE] Confirmed differential on "${param.name}" (${evalResult.primaryChannel}, confidence: ${evalResult.confidence}%)`);
+          const dbms = (pair.dbms !== 'Generic SQL' ? pair.dbms : ctx.dbmsFingerprint.dbms !== 'Unknown' ? ctx.dbmsFingerprint.dbms : 'Generic SQL') as any;
 
-            if (evalResult.uniqueMarker) {
-              ctx.activeMarker = evalResult.uniqueMarker;
-            }
-            if (evalResult.divergencePolarity) {
-              ctx.errorPolarity = evalResult.divergencePolarity === 'normal' ? 'standard' : evalResult.divergencePolarity;
-            }
-
-            const dbms = (pair.dbms !== 'Generic SQL' ? pair.dbms : ctx.dbmsFingerprint.dbms !== 'Unknown' ? ctx.dbmsFingerprint.dbms : 'Generic SQL') as any;
-
-            if (pair.dbms !== 'Generic SQL' && ctx.dbmsFingerprint.dbms === 'Unknown') {
-              ctx.dbmsFingerprint = {
-                dbms: pair.dbms,
-                confidence: 'High',
-                confidenceScore: evalResult.confidence,
-                evidence: [`Divergence on ${pair.name}`],
-              };
-              ctx.catalog.dbms = pair.dbms;
-            }
-
-            ctx.verifiedVector = evalResult.isConditionalError ? 'CONDITIONAL_ERROR' : 'BOOLEAN';
-            ctx.verifiedParamId = param.id;
-            paramIsVulnerable = true;
-
-            const ev: SqlScanEvidence = {
-              id: `ev-bool-${Date.now()}`,
-              title: `Differential Probing on Parameter ${param.name}`,
-              timestamp: Date.now(),
-              injectionType: 'Boolean-based',
-              parameterName: param.name,
-              parameterLocation: param.location,
-              payload: `${pair.truePayload} vs ${pair.falsePayload}`,
-              baselineStatus: ctx.baseline.status,
-              baselineLength: ctx.baseline.contentLength,
-              baselineDurationMs: ctx.baseline.durationMs,
-              testStatus: trueRes.status,
-              testLength: trueRes.body.length,
-              testDurationMs: trueRes.durationMs,
-              rawRequest: trueRes.rawRequest || '',
-              rawResponse: trueRes.rawResponse || '',
-              matchedPattern: evalResult.uniqueMarker,
-              analysisSummary: evalResult.evidence,
-            };
-
-            const finding: SqlScanFinding = {
-              id: `finding-bool-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-              title: evalResult.isConditionalError ? `Conditional Error SQL Injection (${pair.dbms})` : `Boolean-Based Blind SQL Injection`,
-              parameterName: param.name,
-              parameterLocation: param.location,
-              url: ctx.target.url,
-              httpMethod: ctx.target.method,
-              dbms,
-              detectionMethod: 'Differential Invariant Oracle',
-              injectionType: 'Boolean-based',
-              severity: 'High',
-              confidence: evalResult.confidence >= 95 ? 'Confirmed' : 'High',
+          if (pair.dbms !== 'Generic SQL' && ctx.dbmsFingerprint.dbms === 'Unknown') {
+            ctx.dbmsFingerprint = {
+              dbms: pair.dbms,
+              confidence: 'High',
               confidenceScore: evalResult.confidence,
-              confidenceBreakdown: {
-                score: evalResult.confidence,
-                level: evalResult.confidence >= 95 ? 'Confirmed' : 'High',
-                factors: [
-                  { name: 'Deterministic Differential Divergence', points: 50, description: evalResult.evidence },
-                  { name: 'Differential Marker Isolation', points: 30, description: `Marker: ${evalResult.uniqueMarker || 'Status Divergence'}` },
-                ],
-              },
-              evidence: [ev],
-              reproductionRequest: trueRes.rawRequest || '',
-              reproductionResponse: trueRes.rawResponse || '',
-              remediation: 'Use parameterized queries / prepared statements and validate input bounds.',
-              cwe: 'CWE-89',
-              owaspCategory: 'A03:2021-Injection',
-              timestamp: Date.now(),
-              sqliDetected: true,
-              sqlStructureControl: true,
+              evidence: [`Divergence on ${pair.name}`],
             };
-            ctx.addFinding(finding);
-            break;
+            ctx.catalog.dbms = pair.dbms;
+          }
+
+          ctx.verifiedVector = evalResult.isConditionalError ? 'CONDITIONAL_ERROR' : 'BOOLEAN';
+          ctx.verifiedParamId = param.id;
+          paramIsVulnerable = true;
+
+          const ev: SqlScanEvidence = {
+            id: `ev-bool-${Date.now()}`,
+            title: `Differential Probing on Parameter ${param.name}`,
+            timestamp: Date.now(),
+            injectionType: 'Boolean-based',
+            parameterName: param.name,
+            parameterLocation: param.location,
+            payload: `${pair.truePayload} vs ${pair.falsePayload}`,
+            baselineStatus: ctx.baseline.status,
+            baselineLength: ctx.baseline.contentLength,
+            baselineDurationMs: ctx.baseline.durationMs,
+            testStatus: trueRes.status,
+            testLength: trueRes.body.length,
+            testDurationMs: trueRes.durationMs,
+            rawRequest: trueRes.rawRequest || '',
+            rawResponse: trueRes.rawResponse || '',
+            matchedPattern: evalResult.uniqueMarker,
+            analysisSummary: evalResult.evidence,
+          };
+
+          const finding: SqlScanFinding = {
+            id: `finding-bool-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            title: evalResult.isConditionalError ? `Conditional Error SQL Injection (${pair.dbms})` : `Boolean-Based Blind SQL Injection`,
+            parameterName: param.name,
+            parameterLocation: param.location,
+            url: ctx.target.url,
+            httpMethod: ctx.target.method,
+            dbms,
+            detectionMethod: 'Differential Invariant Oracle',
+            injectionType: 'Boolean-based',
+            severity: 'High',
+            confidence: evalResult.confidence >= 95 ? 'Confirmed' : 'High',
+            confidenceScore: evalResult.confidence,
+            confidenceBreakdown: {
+              score: evalResult.confidence,
+              level: evalResult.confidence >= 95 ? 'Confirmed' : 'High',
+              factors: [
+                { name: 'Deterministic Differential Divergence', points: 50, description: evalResult.evidence },
+                { name: 'Differential Marker Isolation', points: 30, description: `Marker: ${evalResult.uniqueMarker || 'Status Divergence'}` },
+              ],
+            },
+            evidence: [ev],
+            reproductionRequest: trueRes.rawRequest || '',
+            reproductionResponse: trueRes.rawResponse || '',
+            remediation: 'Use parameterized queries / prepared statements and validate input bounds.',
+            cwe: 'CWE-89',
+            owaspCategory: 'A03:2021-Injection',
+            timestamp: Date.now(),
+            sqliDetected: true,
+            sqlStructureControl: true,
+          };
+          ctx.addFinding(finding);
+        };
+
+        if (isParallel) {
+          const batchSize = ctx.scanProfile === 'hyper_turbo' ? Math.min(pairsToTest.length, 8) : 4;
+          for (let i = 0; i < pairsToTest.length; i += batchSize) {
+            if (ctx.isAborted || (paramIsVulnerable && ctx.safetyConfig.scanMode !== 'deep')) break;
+            const batch = pairsToTest.slice(i, i + batchSize);
+            const batchResults = await Promise.all(
+              batch.map(async (pair) => {
+                if (ctx.isAborted) return null;
+                try {
+                  const [trueRes, falseRes] = await Promise.all([
+                    ctx.sendMutatedRequest(param, pair.truePayload),
+                    ctx.sendMutatedRequest(param, pair.falsePayload),
+                  ]);
+                  return { pair, trueRes, falseRes };
+                } catch {
+                  return null;
+                }
+              })
+            );
+
+            for (const item of batchResults) {
+              if (!item || ctx.isAborted) continue;
+              const evalResult = UnifiedResponseOracle.evaluatePair(
+                ctx.baseline.body,
+                ctx.baseline.status,
+                item.trueRes,
+                item.falseRes,
+                item.pair.truePayload,
+                item.pair.falsePayload
+              );
+              if (evalResult.isVulnerable) {
+                recordBooleanFinding(item.pair, item.trueRes, item.falseRes, evalResult);
+                break;
+              }
+            }
+          }
+        } else {
+          for (const pair of pairsToTest) {
+            if (ctx.isAborted) return;
+            const trueRes = await ctx.sendMutatedRequest(param, pair.truePayload);
+            const falseRes = await ctx.sendMutatedRequest(param, pair.falsePayload);
+
+            const evalResult = UnifiedResponseOracle.evaluatePair(
+              ctx.baseline.body,
+              ctx.baseline.status,
+              trueRes,
+              falseRes,
+              pair.truePayload,
+              pair.falsePayload
+            );
+
+            if (evalResult.isVulnerable) {
+              recordBooleanFinding(pair, trueRes, falseRes, evalResult);
+              break;
+            } else if (trueRes.status === 403 || falseRes.status === 403) {
+              // WAF blocked boolean probe - retry with comment obfuscation
+              try {
+                const bypassedTrue = bypassEngine.apply(pair.truePayload, 'COMMENT_OBFUSCATION');
+                const bypassedFalse = bypassEngine.apply(pair.falsePayload, 'COMMENT_OBFUSCATION');
+                const retryTrue = await ctx.sendMutatedRequest(param, bypassedTrue);
+                const retryFalse = await ctx.sendMutatedRequest(param, bypassedFalse);
+                const retryEval = UnifiedResponseOracle.evaluatePair(
+                  ctx.baseline.body,
+                  ctx.baseline.status,
+                  retryTrue,
+                  retryFalse,
+                  bypassedTrue,
+                  bypassedFalse
+                );
+                if (retryEval.isVulnerable) {
+                  recordBooleanFinding({ ...pair, truePayload: bypassedTrue, falsePayload: bypassedFalse }, retryTrue, retryFalse, retryEval);
+                  break;
+                }
+              } catch {}
+            }
           }
         }
       }
@@ -251,90 +354,115 @@ export class MultiOracleDiscoveryStage implements ScanStage {
         const colsToTest = determinedColumns > 0
           ? [determinedColumns]
           : Array.from({ length: Math.min(maxCols, 12) }, (_, i) => i + 1);
+        const recordUnionFinding = (cp: any, colCount: number, res: any) => {
+          const matchedCanary = true;
+          const detectedDbms = cp.payload.includes('FROM DUAL') ? 'Oracle' : (cp.dbms || 'Generic SQL');
+          ctx.log('success', `[UNION ORACLE] Confirmed UNION SQLi on "${param.name}" (${colCount} columns, canary "${cp.canaryMarker}" reflected at column ${cp.targetColumnIndex}, DBMS: ${detectedDbms})`);
+
+          ctx.verifiedVector = 'UNION';
+          ctx.verifiedParamId = param.id;
+          ctx.unionColumnCount = colCount;
+          if (!ctx.unionRenderColumns.includes(cp.targetColumnIndex)) {
+            ctx.unionRenderColumns.push(cp.targetColumnIndex);
+          }
+          ctx.unionDbms = detectedDbms as any;
+          ctx.dbmsFingerprint = {
+            dbms: detectedDbms as any,
+            confidence: 'Confirmed',
+            confidenceScore: 100,
+            evidence: [`${detectedDbms} UNION reflection verified: canary rendered at column ${cp.targetColumnIndex} of ${colCount}`],
+          };
+          ctx.catalog.dbms = detectedDbms as any;
+          ctx.catalog.columnCount = colCount;
+          ctx.catalog.renderColumn = cp.targetColumnIndex;
+          paramIsVulnerable = true;
+
+          const ev: SqlScanEvidence = {
+            id: `ev-union-${Date.now()}`,
+            title: `UNION-Based SQL Injection on Parameter ${param.name}`,
+            timestamp: Date.now(),
+            injectionType: 'UNION-based',
+            parameterName: param.name,
+            parameterLocation: param.location,
+            payload: cp.payload,
+            baselineStatus: ctx.baseline.status,
+            baselineLength: ctx.baseline.contentLength,
+            baselineDurationMs: ctx.baseline.durationMs,
+            testStatus: res.status,
+            testLength: res.body.length,
+            testDurationMs: res.durationMs,
+            rawRequest: res.rawRequest || '',
+            rawResponse: res.rawResponse || '',
+            matchedPattern: matchedCanary ? cp.canaryMarker : 'UNION Output Reflected',
+            analysisSummary: `UNION query successfully executed with ${colCount} columns (${detectedDbms}).`,
+          };
+
+          const finding: SqlScanFinding = {
+            id: `finding-union-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            title: `UNION-Based SQL Injection (${colCount} Columns)`,
+            parameterName: param.name,
+            parameterLocation: param.location,
+            url: ctx.target.url,
+            httpMethod: ctx.target.method,
+            dbms: detectedDbms as any,
+            detectionMethod: 'UNION Reflection Oracle',
+            injectionType: 'UNION-based',
+            severity: 'Critical',
+            confidence: 'Confirmed',
+            confidenceScore: 100,
+            confidenceBreakdown: {
+              score: 100,
+              level: 'Confirmed',
+              factors: [
+                { name: 'UNION Column Layout Proven', points: 60, description: `${colCount} columns verified` },
+                { name: 'Canary Marker Reflection', points: 40, description: matchedCanary ? cp.canaryMarker : 'Response delta verified' },
+              ],
+            },
+            evidence: [ev],
+            reproductionRequest: res.rawRequest || '',
+            reproductionResponse: res.rawResponse || '',
+            remediation: 'Implement parameterized queries to completely isolate SQL command structure from user parameters.',
+            cwe: 'CWE-89',
+            owaspCategory: 'A03:2021-Injection',
+            timestamp: Date.now(),
+            sqliDetected: true,
+            sqlStructureControl: true,
+          };
+          ctx.addFinding(finding);
+        };
+
         for (const colCount of colsToTest) {
           if (ctx.isAborted || paramIsVulnerable) break;
           const canaryProbes = UnionTester.getPerColumnCanaryProbes(param, colCount);
 
-          for (const cp of canaryProbes) {
-            if (ctx.isAborted) return;
-            const res = await ctx.sendMutatedRequest(param, cp.payload);
+          if (isParallel) {
+            const canaryResponses = await Promise.all(
+              canaryProbes.map(async (cp) => {
+                if (ctx.isAborted) return null;
+                try {
+                  const res = await ctx.sendMutatedRequest(param, cp.payload);
+                  return { cp, res };
+                } catch {
+                  return null;
+                }
+              })
+            );
 
-            if (res.body.includes(cp.canaryMarker)) {
-              const matchedCanary = true;
-              const detectedDbms = cp.payload.includes('FROM DUAL') ? 'Oracle' : (cp.dbms || 'Generic SQL');
-              ctx.log('success', `[UNION ORACLE] Confirmed UNION SQLi on "${param.name}" (${colCount} columns, canary "${cp.canaryMarker}" reflected at column ${cp.targetColumnIndex}, DBMS: ${detectedDbms})`);
-
-              ctx.verifiedVector = 'UNION';
-              ctx.verifiedParamId = param.id;
-              ctx.unionColumnCount = colCount;
-              if (!ctx.unionRenderColumns.includes(cp.targetColumnIndex)) {
-                ctx.unionRenderColumns.push(cp.targetColumnIndex);
+            for (const item of canaryResponses) {
+              if (!item || ctx.isAborted) continue;
+              if (item.res.body.includes(item.cp.canaryMarker)) {
+                recordUnionFinding(item.cp, colCount, item.res);
+                break;
               }
-              ctx.unionDbms = detectedDbms as any;
-              ctx.dbmsFingerprint = {
-                dbms: detectedDbms as any,
-                confidence: 'Confirmed',
-                confidenceScore: 100,
-                evidence: [`${detectedDbms} UNION reflection verified: canary rendered at column ${cp.targetColumnIndex} of ${colCount}`],
-              };
-              ctx.catalog.dbms = detectedDbms as any;
-              ctx.catalog.columnCount = colCount;
-              ctx.catalog.renderColumn = cp.targetColumnIndex;
-              paramIsVulnerable = true;
-
-              const ev: SqlScanEvidence = {
-                id: `ev-union-${Date.now()}`,
-                title: `UNION-Based SQL Injection on Parameter ${param.name}`,
-                timestamp: Date.now(),
-                injectionType: 'UNION-based',
-                parameterName: param.name,
-                parameterLocation: param.location,
-                payload: cp.payload,
-                baselineStatus: ctx.baseline.status,
-                baselineLength: ctx.baseline.contentLength,
-                baselineDurationMs: ctx.baseline.durationMs,
-                testStatus: res.status,
-                testLength: res.body.length,
-                testDurationMs: res.durationMs,
-                rawRequest: res.rawRequest || '',
-                rawResponse: res.rawResponse || '',
-                matchedPattern: matchedCanary ? cp.canaryMarker : 'UNION Output Reflected',
-                analysisSummary: `UNION query successfully executed with ${colCount} columns (${detectedDbms}).`,
-              };
-
-              const finding: SqlScanFinding = {
-                id: `finding-union-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                title: `UNION-Based SQL Injection (${colCount} Columns)`,
-                parameterName: param.name,
-                parameterLocation: param.location,
-                url: ctx.target.url,
-                httpMethod: ctx.target.method,
-                dbms: detectedDbms as any,
-                detectionMethod: 'UNION Reflection Oracle',
-                injectionType: 'UNION-based',
-                severity: 'Critical',
-                confidence: 'Confirmed',
-                confidenceScore: 100,
-                confidenceBreakdown: {
-                  score: 100,
-                  level: 'Confirmed',
-                  factors: [
-                    { name: 'UNION Column Layout Proven', points: 60, description: `${colCount} columns verified` },
-                    { name: 'Canary Marker Reflection', points: 40, description: matchedCanary ? cp.canaryMarker : 'Response delta verified' },
-                  ],
-                },
-                evidence: [ev],
-                reproductionRequest: res.rawRequest || '',
-                reproductionResponse: res.rawResponse || '',
-                remediation: 'Implement parameterized queries to completely isolate SQL command structure from user parameters.',
-                cwe: 'CWE-89',
-                owaspCategory: 'A03:2021-Injection',
-                timestamp: Date.now(),
-                sqliDetected: true,
-                sqlStructureControl: true,
-              };
-              ctx.addFinding(finding);
-              break;
+            }
+          } else {
+            for (const cp of canaryProbes) {
+              if (ctx.isAborted) return;
+              const res = await ctx.sendMutatedRequest(param, cp.payload);
+              if (res.body.includes(cp.canaryMarker)) {
+                recordUnionFinding(cp, colCount, res);
+                break;
+              }
             }
           }
         }
@@ -450,7 +578,22 @@ export class MultiOracleDiscoveryStage implements ScanStage {
           const { token, fqdn } = OobManager.generateToken(param, ctx.target.url, ctx.dbmsFingerprint.dbms, oobDomain);
           oastClient.registerToken(token, param.name, ctx.dbmsFingerprint.dbms, 'dns', fqdn);
 
-          const oobProbes = OobManager.getOobPayloads(param, fqdn).slice(0, 3);
+          const allOobProbes = OobManager.getOobPayloads(param, fqdn);
+          // Prioritize: pick 1 probe per DBMS dialect to ensure coverage across Oracle, MSSQL, MySQL, PostgreSQL
+          const seenDbms = new Set<string>();
+          const oobProbes: typeof allOobProbes = [];
+          for (const op of allOobProbes) {
+            if (!seenDbms.has(op.dbms)) {
+              oobProbes.push(op);
+              seenDbms.add(op.dbms);
+            }
+          }
+          // Then add remaining probes (up to 8 total for thorough coverage)
+          for (const op of allOobProbes) {
+            if (!oobProbes.includes(op) && oobProbes.length < 8) {
+              oobProbes.push(op);
+            }
+          }
           for (const op of oobProbes) {
             if (ctx.isAborted) break;
             await ctx.sendMutatedRequest(param, op.payload, { append: true });
@@ -533,6 +676,97 @@ export class MultiOracleDiscoveryStage implements ScanStage {
           }
         } catch (err) {
           console.error('[MultiOracleDiscoveryStage] OOB Channel Error:', err);
+        }
+      }
+
+      // ─── Channel 6: Stacked Multi-Statement Execution Probes ───────────────────
+      if (ctx.target.testedInjectionTypes?.stackedBased !== false && (!paramIsVulnerable || ctx.safetyConfig.scanMode === 'deep')) {
+        const prog = 38 + Math.round(((pIdx + 0.95) / totalParams) * 24);
+        ctx.progress('Multi-Oracle Discovery', `[6/6] Stacked query multi-statement probing: "${param.name}"`, prog, param.name);
+
+        const stackedProbes = StackedTester.getStackedProbes(param, 3);
+        for (const probe of stackedProbes) {
+          if (ctx.isAborted) return;
+          try {
+            const res = await ctx.sendMutatedRequest(param, probe.payload, { append: true });
+            const thresholdMs = Math.max(2200, (ctx.baseline.meanDurationMs || ctx.baseline.durationMs || 300) + probe.expectedDelayMs * 0.7);
+
+            if (res.durationMs >= thresholdMs) {
+              // Two-stage SPRT confirmation re-probe
+              const confirmRes = await ctx.sendMutatedRequest(param, probe.payload, { append: true });
+              if (confirmRes.durationMs >= thresholdMs) {
+                ctx.log('success', `[STACKED ORACLE] Stacked multi-statement execution confirmed on "${param.name}" (${probe.dbms}, ${confirmRes.durationMs}ms delay)`);
+                ctx.verifiedVector = 'STACKED';
+                ctx.verifiedParamId = param.id;
+                paramIsVulnerable = true;
+
+                if (ctx.dbmsFingerprint.dbms === 'Unknown') {
+                  ctx.dbmsFingerprint = {
+                    dbms: probe.dbms,
+                    confidence: 'Confirmed',
+                    confidenceScore: 95,
+                    evidence: [`Stacked query multi-statement delay: ${confirmRes.durationMs}ms`],
+                  };
+                  ctx.catalog.dbms = probe.dbms;
+                }
+
+                const ev: SqlScanEvidence = {
+                  id: `ev-stacked-${Date.now()}`,
+                  title: `Stacked Multi-Statement Execution (${probe.dbms})`,
+                  timestamp: Date.now(),
+                  injectionType: 'Stacked-query indicator',
+                  parameterName: param.name,
+                  parameterLocation: param.location,
+                  payload: probe.payload,
+                  baselineStatus: ctx.baseline.status,
+                  baselineLength: ctx.baseline.contentLength,
+                  baselineDurationMs: ctx.baseline.durationMs,
+                  testStatus: confirmRes.status,
+                  testLength: confirmRes.body.length,
+                  testDurationMs: confirmRes.durationMs,
+                  rawRequest: confirmRes.rawRequest || '',
+                  rawResponse: confirmRes.rawResponse || '',
+                  analysisSummary: `Stacked multi-statement execution verified with ${confirmRes.durationMs}ms delay (expected >= ${thresholdMs}ms).`,
+                };
+
+                const finding: SqlScanFinding = {
+                  id: `finding-stacked-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                  title: `Stacked Multi-Statement SQL Injection (${probe.dbms})`,
+                  parameterName: param.name,
+                  parameterLocation: param.location,
+                  url: ctx.target.url,
+                  httpMethod: ctx.target.method,
+                  dbms: probe.dbms,
+                  detectionMethod: 'Multi-Statement Execution Timing Invariant Oracle',
+                  injectionType: 'Stacked-query indicator',
+                  severity: 'Critical',
+                  confidence: 'Confirmed',
+                  confidenceScore: 98,
+                  confidenceBreakdown: {
+                    score: 98,
+                    level: 'Confirmed',
+                    factors: [
+                      { name: 'Multi-Statement Execution Delay', points: 70, description: `Observed ${confirmRes.durationMs}ms delay` },
+                      { name: 'Two-Stage Confirmation', points: 28, description: 'Repeated probe confirmation' },
+                    ],
+                  },
+                  evidence: [ev],
+                  reproductionRequest: confirmRes.rawRequest || '',
+                  reproductionResponse: confirmRes.rawResponse || '',
+                  remediation: 'Disable multi-statement query execution in database client and use parameterized queries.',
+                  cwe: 'CWE-89',
+                  owaspCategory: 'A03:2021-Injection',
+                  timestamp: Date.now(),
+                  sqliDetected: true,
+                  sqlStructureControl: true,
+                };
+                ctx.addFinding(finding);
+                break;
+              }
+            }
+          } catch {
+            if (ctx.isAborted) return;
+          }
         }
       }
     }

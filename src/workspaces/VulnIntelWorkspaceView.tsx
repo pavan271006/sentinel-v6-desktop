@@ -141,12 +141,13 @@ export const VulnIntelWorkspaceView: React.FC = () => {
           <select
             value={filterMinSeverity}
             onChange={(e) => setMinSeverityFilter(e.target.value)}
+            style={{ colorScheme: 'dark' }}
             className="bg-[#1e1f22] text-white px-2 py-1 rounded border border-[#3e4249] text-xs focus:outline-none"
           >
-            <option value="ALL">All Severities</option>
-            <option value="CRITICAL">Critical Only</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
+            <option value="ALL" className="bg-[#2b2d30] text-[#dfdfdf]">All Severities</option>
+            <option value="CRITICAL" className="bg-[#2b2d30] text-[#dfdfdf]">Critical Only</option>
+            <option value="HIGH" className="bg-[#2b2d30] text-[#dfdfdf]">High</option>
+            <option value="MEDIUM" className="bg-[#2b2d30] text-[#dfdfdf]">Medium</option>
           </select>
         </div>
 

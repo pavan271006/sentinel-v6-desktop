@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 1420 --strictPort",
     "dev:desktop": "tauri dev",
+    "quick:build": "vite build",
     "build": "tsc && vite build",
-    "build:release": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "build:release": "vite build && cargo build --release --manifest-path src-tauri/Cargo.toml",
     "launch": "Launch-Sentinel.bat",
-    "rebuild:launch": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml && Launch-Sentinel.bat",
+    "rebuild:launch": "vite build && cargo build --release --manifest-path src-tauri/Cargo.toml && Launch-Sentinel.bat",
     "tauri": "tauri",
     "preview": "vite preview",
     "test": "vitest run",

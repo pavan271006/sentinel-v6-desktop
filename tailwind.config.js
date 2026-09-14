@@ -31,6 +31,7 @@ export default {
           blue: 'var(--accent-blue)',
           purple: 'var(--accent-purple)',
           green: 'var(--accent-green)',
+          orange: 'var(--accent-orange)',
         },
         severity: {
           critical: 'var(--severity-critical)',
@@ -51,8 +52,10 @@ export default {
       },
       boxShadow: {
         'panel': '0 4px 12px rgba(0, 0, 0, 0.4)',
-        'modal': '0 8px 32px rgba(0, 0, 0, 0.6)',
-        'dropdown': '0 6px 20px rgba(0, 0, 0, 0.5)',
+        'modal': '0 12px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+        'dropdown': '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06)',
+        'cyan-glow': '0 0 15px rgba(0, 240, 255, 0.3)',
+        'green-glow': '0 0 15px rgba(16, 185, 129, 0.3)',
       },
     },
   },

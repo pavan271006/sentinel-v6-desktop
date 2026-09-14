@@ -131,4 +131,78 @@ describe('Scanner Gap Fixes (Evidences A - F)', () => {
     expect(params.some(p => p.name.includes('user (CDATA)') && p.originalValue.includes('john_doe'))).toBe(true);
     expect(params.some(p => p.name === 'email' && p.originalValue === 'john@example.com')).toBe(true);
   });
+
+  // ─── Evidence G: Stacked Multi-Statement Probing in MultiOracleDiscoveryStage ──
+  test('Evidence G: Stacked multi-statement probing detects and records finding on delay', async () => {
+    const rawReq = 'POST /items HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\nid=10';
+    const target = {
+      id: 't-stacked',
+      name: 'Stacked Target',
+      url: 'https://example.com/items',
+      method: 'POST',
+      headers: [],
+      body: 'id=10',
+      parameters: [{ id: 'body_id', name: 'id', location: 'body_form', originalValue: '10', enabled: true, detectedContext: 'numeric' }],
+      rawRequest: rawReq,
+      testedInjectionTypes: { errorBased: false, booleanBased: false, unionBased: false, timeBased: false, stackedBased: true },
+    } as any;
+
+    const ctx = new ScanContext({
+      target,
+      safetyConfig: { authorizedTestingConfirmed: true, scanMode: 'standard' } as any,
+    });
+
+    // Mock sendMutatedRequest to return delay when stacked payload is sent
+    ctx.sendMutatedRequest = vi.fn().mockImplementation(async (_param: any, payload: string) => {
+      if (payload.includes('WAITFOR DELAY') || payload.includes('pg_sleep')) {
+        return { status: 200, body: 'Delayed response', durationMs: 3100, rawRequest: '', rawResponse: '' };
+      }
+      return { status: 200, body: 'Normal response', durationMs: 40, rawRequest: '', rawResponse: '' };
+    });
+
+    const stage = new MultiOracleDiscoveryStage();
+    await stage.execute(ctx);
+
+    expect(ctx.findings.some(f => f.injectionType === 'Stacked-query indicator')).toBe(true);
+    const stackedFinding = ctx.findings.find(f => f.injectionType === 'Stacked-query indicator');
+    expect(stackedFinding?.severity).toBe('Critical');
+  });
+
+  // ─── Evidence H: Multipart Filename Candidate Extraction and Injection ────
+  test('Evidence H: RequestParser extracts multipart filename and injects into filename attribute', () => {
+    const multipartBody = '--boundary123\r\nContent-Disposition: form-data; name="file"; filename="document.pdf"\r\nContent-Type: application/pdf\r\n\r\nBinaryDataHere\r\n--boundary123--';
+    const rawReq = `POST /upload HTTP/1.1\r\nHost: example.com\r\nContent-Type: multipart/form-data; boundary=boundary123\r\n\r\n${multipartBody}`;
+
+    const parsed = RequestParser.parse(rawReq);
+    const fnParam = parsed.parameters.find(p => p.name.includes('(filename)'));
+    expect(fnParam).toBeDefined();
+    expect(fnParam?.originalValue).toBe('document.pdf');
+
+    // Test injection into filename attribute
+    const injected = RequestParser.injectPayload(parsed, fnParam!, "shell.php'--", false);
+    expect(injected.bodyText).toContain('filename="shell.php\'--"');
+    expect(injected.bodyText).toContain('BinaryDataHere'); // File content remains intact
+  });
+
+  // ─── Evidence I: JSON Array Indexing & Path Injection ──────────────────
+  test('Evidence I: RequestParser injects nested JSON array and object paths cleanly', () => {
+    const jsonBody = JSON.stringify({
+      filters: [
+        { field: 'category', value: 'books' },
+        { field: 'price', value: '100' }
+      ]
+    });
+    const rawReq = `POST /api/search HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\n\r\n${jsonBody}`;
+
+    const parsed = RequestParser.parse(rawReq);
+    expect(parsed.parameters.some(p => p.name.includes('filters.0.value'))).toBe(true);
+
+    const valParam = parsed.parameters.find(p => p.name === 'filters.0.value')!;
+    const injected = RequestParser.injectPayload(parsed, valParam, "books' OR 1=1--", false);
+
+    const injectedObj = JSON.parse(injected.bodyText);
+    expect(Array.isArray(injectedObj.filters)).toBe(true);
+    expect(injectedObj.filters[0].value).toBe("books' OR 1=1--");
+    expect(injectedObj.filters[1].value).toBe('100');
+  });
 });

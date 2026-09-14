@@ -168,6 +168,36 @@ export class OrmRemediationEngine {
       diffExplanation: 'Use compile-time checked sqlx::query! macro or query().bind(input).',
       docsUrl: 'https://docs.rs/sqlx/latest/sqlx/macro.query.html',
     },
+    rust_diesel: {
+      id: 'rust_diesel',
+      ecosystem: 'Rust',
+      frameworkName: 'Diesel ORM',
+      language: 'rust',
+      vulnerablePattern: 'diesel::sql_query(format!("SELECT * FROM users WHERE id = {}", input)).load(&mut conn)',
+      remediatedCode: 'users.filter(id.eq(input)).load(&mut conn)',
+      diffExplanation: 'Use Diesel schema DSL filter() methods with typed expressions instead of raw sql_query() string formatting.',
+      docsUrl: 'https://diesel.rs/guides/getting-started',
+    },
+    go_database_sql: {
+      id: 'go_database_sql',
+      ecosystem: 'Go',
+      frameworkName: 'database/sql',
+      language: 'go',
+      vulnerablePattern: 'rows, err := db.Query(fmt.Sprintf("SELECT * FROM users WHERE email = \'%s\'", input))',
+      remediatedCode: 'rows, err := db.Query("SELECT * FROM users WHERE email = ?", input)',
+      diffExplanation: 'Pass variables as variadic arguments after the query string with ? placeholders.',
+      docsUrl: 'https://pkg.go.dev/database/sql#DB.Query',
+    },
+    go_gorm: {
+      id: 'go_gorm',
+      ecosystem: 'Go',
+      frameworkName: 'GORM',
+      language: 'go',
+      vulnerablePattern: 'db.Where(fmt.Sprintf("name = \'%s\'", input)).Find(&users)',
+      remediatedCode: 'db.Where("name = ?", input).Find(&users)',
+      diffExplanation: 'Use GORM parameterized condition syntax with question mark placeholders.',
+      docsUrl: 'https://gorm.io/docs/query.html#String-Conditions',
+    },
   };
 
   /**

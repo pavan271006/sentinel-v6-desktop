@@ -518,10 +518,11 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
                       <select
                         value={codec}
                         onChange={(e) => handleCodecChange(e.target.value as CodecType)}
+                        style={{ colorScheme: 'dark' }}
                         className="bg-[#2b2d30] text-white font-medium px-2 py-0.5 rounded border border-[#3e4249] outline-none text-xs"
                       >
                         {CODEC_OPTIONS.map((c) => (
-                          <option key={c.id} value={c.id}>
+                          <option key={c.id} value={c.id} className="bg-[#2b2d30] text-[#dfdfdf]">
                             {c.label}
                           </option>
                         ))}

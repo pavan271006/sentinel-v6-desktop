@@ -211,7 +211,16 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
     const anyTx = tx as any;
     const req = anyTx.request;
     const method: HttpMethod = (req?.method || anyTx.method || 'GET') as HttpMethod;
-    const url: string = req?.url || anyTx.url || 'https://target.local/';
+    let url: string = req?.url || anyTx.url || 'https://target.local/';
+
+    try {
+      if (url.includes('/https://') || url.includes('/http://')) {
+        const doubleMatch = url.match(/https?:\/\/[^/]+\/(https?:\/\/.+)/i);
+        if (doubleMatch && doubleMatch[1]) {
+          url = doubleMatch[1];
+        }
+      }
+    } catch {}
 
     const incomingHeaders = req?.headers || anyTx.reqHeaders;
     let headers: HeaderRowItem[] = [];
@@ -240,8 +249,10 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
     const protocol: HttpProtocol = req?.protocol === 'HTTP/2' || req?.protocol === 'HTTP/2.0' ? 'HTTP/2' : 'HTTP/1.1';
     const pathPart = url.replace(/^https?:\/\/[^/]+/, '') || '/';
     const title = `${method} ${pathPart}`;
-
-    const rawRequest = serializeHttpRequest(method, url, protocol, headers, body);
+    let rawRequest = anyTx.rawRequest || serializeHttpRequest(method, url, protocol, headers, body);
+    if (rawRequest.includes(' /https://') || rawRequest.includes(' /http://')) {
+      rawRequest = rawRequest.replace(/ (https?:\/\/[^/]+)?\/https?:\/\/[^/]+/gi, '');
+    }
 
     const tabId = get().createTab({
       title,
@@ -578,7 +589,17 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       if (hostHdr && !hostHdr.includes('target.local') && !hostHdr.includes('127.0.0.1')) {
         const isHttps = tab.url.startsWith('https://') || !tab.url.startsWith('http://');
         const scheme = isHttps ? 'https://' : 'http://';
-        const cleanPath = parsedReq.path.startsWith('/') ? parsedReq.path : `/${parsedReq.path}`;
+        let cleanPath = (parsedReq.path || '').trim();
+        if (cleanPath.startsWith('/http://') || cleanPath.startsWith('/https://')) {
+          cleanPath = cleanPath.substring(1);
+        }
+        if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+          try {
+            const u = new URL(cleanPath);
+            cleanPath = `${u.pathname}${u.search}`;
+          } catch {}
+        }
+        if (!cleanPath.startsWith('/')) cleanPath = `/${cleanPath}`;
         targetUrl = `${scheme}${hostHdr}${cleanPath}`;
       }
 

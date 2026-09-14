@@ -92,8 +92,7 @@ pub struct AppState {
     pub active_scope_engine: Arc<Mutex<DefaultScopeEngine>>,
     pub event_bus: Arc<SentinelEventBus>,
     pub connection_pool: Arc<sentinel_repeater::executor::HttpConnectionPool>,
-    #[allow(dead_code)]
-    pub proxy_engine: Arc<Mutex<Option<SentinelProxyEngine>>>,
+    pub proxy_engine: Arc<Mutex<Option<Arc<SentinelProxyEngine>>>>,
 }
 
 impl AppState {

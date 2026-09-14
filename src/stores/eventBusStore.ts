@@ -39,9 +39,9 @@ interface EventBusState {
 const MAX_RING_BUFFER_SIZE = 500;
 
 export const useEventBusStore = create<EventBusState>((set) => ({
-  trafficCount: 1420,
-  criticalFindingCount: 2,
-  runningTaskCount: 1,
+  trafficCount: 0,
+  criticalFindingCount: 0,
+  runningTaskCount: 0,
   scopeViolationsCount: 0,
 
   recentTraffic: [],
@@ -49,31 +49,9 @@ export const useEventBusStore = create<EventBusState>((set) => ({
   recentScanProgress: new Map(),
   recentTasks: new Map(),
   scopeViolations: [],
-  auditLogs: [
-    {
-      id: 'log-1',
-      timestamp: new Date(Date.now() - 60000).toLocaleTimeString(),
-      level: 'INFO',
-      source: 'sentinel_core',
-      message: 'Sentinel V6 Engine core initialized (28 crates operational)',
-    },
-    {
-      id: 'log-2',
-      timestamp: new Date(Date.now() - 45000).toLocaleTimeString(),
-      level: 'INFO',
-      source: 'sentinel_proxy',
-      message: 'MITM proxy listening on 127.0.0.1:8080 (Dual-write SQLite + CAS enabled)',
-    },
-    {
-      id: 'log-3',
-      timestamp: new Date(Date.now() - 30000).toLocaleTimeString(),
-      level: 'INFO',
-      source: 'sentinel_scope',
-      message: 'Fail-closed scope engine activated (SEC-01 active: 4 inclusion rules)',
-    },
-  ],
+  auditLogs: [],
 
-  ipcMessagesReceived: 1423,
+  ipcMessagesReceived: 0,
   ipcQueuePending: 0,
   isStreamingConnected: true,
 

@@ -172,6 +172,7 @@
   },
   "left-ribbon": {
     "hiddenItems": {
+      "omnisearch:Omnisearch": false,
       "obsidian-git:Open Git source control": false,
       "obsidian-excalidraw-plugin:New drawing": false,
       "switcher:Open quick switcher": false,
@@ -184,6 +185,39 @@
   },
   "active": "bc3292d411412d56",
   "lastOpenFiles": [
-    "99_DYNAMIC_VULNERABILITY_CATALOG.md"
+    "sql/sqli_intelligence.db-journal",
+    "sql/SENTINEL_V7_SQL_INTELLIGENCE_DATABASE.md",
+    "sql/sqli_intelligence_schema.sql",
+    "sql/sqli_intelligence.db",
+    "sql/coverage_audit_report.json",
+    "sql/SQLI_COVERAGE_MATRIX.md",
+    "sql/SENTINEL_V7_EXHAUSTIVE_AUDIT_REPORT.md",
+    "sql/SENTINEL_V6_SQL_INDEPENDENT_AUDIT_REPORT.md",
+    "sql/SCANNER_FORENSIC_MAP.md",
+    "sql/SCANNER_CALL_GRAPH.md",
+    "sql/BURP_ALTERNATIVE.md",
+    "sql/ADAPTIVE_PLANNER.md",
+    "sql/ACTUAL_RUNTIME_TRACE.md",
+    "sql/00_SENTINEL_KNOWLEDGE_DASHBOARD.md",
+    "sql/99_DYNAMIC_VULNERABILITY_CATALOG.md",
+    "archived_research/SENTINEL_TOTAL_SQL_SECURITY_BIBLE.md",
+    "sql/VALIDATION_BASELINE.md",
+    "sql/UCMA_RUNTIME_VALIDATION.md",
+    "sql/UCMA_RUNTIME_BOUNDARY.md",
+    "sql/UCMA_NEXT_ENGINEERING_PLAN.md",
+    "sql/UCMA_FINAL_VALIDATION_REPORT.md",
+    "sql/UCMAX_COMPLETE_ATTACK_CATALOG.md",
+    "sql/TEST_EXECUTION_POLICY.md",
+    "sql/TECHNIQUE_CATALOG.md",
+    "sql/SQL_SCANNER_ARCHITECTURE.md",
+    "sql/SQLI_COMPLETE_TAXONOMY.md",
+    "sql/SENTINEL_MASTER_SQL_ATTACK_UNIVERSE.md",
+    "sql/Sentinel_Architecture.canvas",
+    "sql/SCANNER_IDENTITY_REPORT.md",
+    "sql/SCANNER_COMPARISON_MATRIX.md",
+    "sql",
+    "Sentinel_Architecture.canvas",
+    "Untitled 1",
+    "Untitled"
   ]
 }

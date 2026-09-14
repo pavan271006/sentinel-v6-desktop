@@ -409,6 +409,144 @@ const SQLITE_QUERIES: DbmsQuerySet = {
   nullValue: 'NULL',
 };
 
+// ─── Snowflake ──────────────────────────────────────────────────────
+
+const SNOWFLAKE_QUERIES: DbmsQuerySet = {
+  dbmsType: 'Snowflake',
+  version: 'SELECT CURRENT_VERSION()',
+  currentUser: 'SELECT CURRENT_USER()',
+  currentDb: 'SELECT CURRENT_DATABASE()',
+  hostname: 'SELECT CURRENT_ACCOUNT()',
+  serverOs: 'SELECT CURRENT_REGION()',
+  allDatabases: "SELECT LISTAGG(DATABASE_NAME, 0x0a) FROM INFORMATION_SCHEMA.DATABASES",
+  allTables: (db) =>
+    `SELECT LISTAGG(TABLE_NAME, 0x0a) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='${db}'`,
+  allColumns: (db, table) =>
+    `SELECT LISTAGG(COLUMN_NAME, 0x0a) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='${db}' AND TABLE_NAME='${table}'`,
+  tableCount: (db) =>
+    `SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='${db}'`,
+  rowCount: (db, table) => `SELECT COUNT(*) FROM ${db}.${table}`,
+  concat: (cols) => cols.join('||'),
+  concatRows: (expr, sep = ':::') => `LISTAGG(${expr}, '${sep}')`,
+  substring: (str, pos, len) => `SUBSTR(${str}, ${pos}, ${len})`,
+  ascii: (c) => `ASCII(${c})`,
+  charFunc: (n) => `CHR(${n})`,
+  length: (str) => `LENGTH(${str})`,
+  castToString: (expr) => `CAST(${expr} AS string)`,
+  isDba: "SELECT IFF(CURRENT_ROLE()='ACCOUNTADMIN', 1, 0)",
+  filePrivilege: "SELECT 0",
+  currentPrivileges: "SELECT CURRENT_ROLE()",
+  credentials: "SELECT CURRENT_USER()",
+  readFile: (_p) => "SELECT 'file_read_unsupported_snowflake'",
+  writeFile: (_d, _p) => "SELECT 'file_write_unsupported_snowflake'",
+  osCommand: (_c) => "SELECT 'os_cmd_unsupported_snowflake'",
+  alternativeOsCommand: (_c) => "SELECT 'os_cmd_unsupported_snowflake'",
+  sleep: (s) => `SYSTEM$WAIT(${s})`,
+  conditional: (cond, t, f) => `IFF(${cond}, ${t}, ${f})`,
+  benchmarkHeavy: (_n) => `SYSTEM$WAIT(3)`,
+  errorExtract: {
+    primary: (sq) => `CAST((${sq}) AS integer)`,
+    secondary: (sq) => `IFF((${sq}) IS NOT NULL, 1/0, 1)`,
+  },
+  oobDns: (_d, _dom) => "SELECT 'oob_unsupported_snowflake'",
+  commentSingle: '--',
+  commentMulti: ['/*', '*/'],
+  stringConcatOp: '||',
+  nullValue: 'NULL',
+};
+
+// ─── Google BigQuery ────────────────────────────────────────────────
+
+const BIGQUERY_QUERIES: DbmsQuerySet = {
+  dbmsType: 'Google BigQuery',
+  version: "SELECT 'Google BigQuery'",
+  currentUser: 'SELECT SESSION_USER()',
+  currentDb: 'SELECT @@project_id',
+  hostname: 'SELECT @@project_id',
+  serverOs: "SELECT 'GCP'",
+  allDatabases: "SELECT STRING_AGG(schema_name, '\\n') FROM INFORMATION_SCHEMA.SCHEMATA",
+  allTables: (db) =>
+    `SELECT STRING_AGG(table_name, '\\n') FROM \`${db}\`.INFORMATION_SCHEMA.TABLES`,
+  allColumns: (db, table) =>
+    `SELECT STRING_AGG(column_name, '\\n') FROM \`${db}\`.INFORMATION_SCHEMA.COLUMNS WHERE table_name='${table}'`,
+  tableCount: (db) =>
+    `SELECT COUNT(*) FROM \`${db}\`.INFORMATION_SCHEMA.TABLES`,
+  rowCount: (db, table) => `SELECT COUNT(*) FROM \`${db}.${table}\``,
+  concat: (cols) => `CONCAT(${cols.join(',')})`,
+  concatRows: (expr, sep = ':::') => `STRING_AGG(CAST(${expr} AS STRING), '${sep}')`,
+  substring: (str, pos, len) => `SUBSTR(${str}, ${pos}, ${len})`,
+  ascii: (c) => `TO_CODE_POINTS(${c})[OFFSET(0)]`,
+  charFunc: (n) => `CODE_POINTS_TO_STRING([${n}])`,
+  length: (str) => `LENGTH(${str})`,
+  castToString: (expr) => `CAST(${expr} AS STRING)`,
+  isDba: "SELECT 0",
+  filePrivilege: "SELECT 0",
+  currentPrivileges: "SELECT SESSION_USER()",
+  credentials: "SELECT SESSION_USER()",
+  readFile: (_p) => "SELECT 'file_read_unsupported_bigquery'",
+  writeFile: (_d, _p) => "SELECT 'file_write_unsupported_bigquery'",
+  osCommand: (_c) => "SELECT 'os_cmd_unsupported_bigquery'",
+  alternativeOsCommand: (_c) => "SELECT 'os_cmd_unsupported_bigquery'",
+  sleep: (_s) => `(SELECT COUNT(*) FROM UNNEST(GENERATE_ARRAY(1, 2000000)))`,
+  conditional: (cond, t, f) => `IF(${cond}, ${t}, ${f})`,
+  benchmarkHeavy: (_n) => `(SELECT COUNT(*) FROM UNNEST(GENERATE_ARRAY(1, 5000000)))`,
+  errorExtract: {
+    primary: (sq) => `CAST((${sq}) AS INT64)`,
+    secondary: (sq) => `IF((${sq}) IS NOT NULL, 1/0, 1)`,
+  },
+  oobDns: (_d, _dom) => "SELECT 'oob_unsupported_bigquery'",
+  commentSingle: '--',
+  commentMulti: ['/*', '*/'],
+  stringConcatOp: '||',
+  nullValue: 'NULL',
+};
+
+// ─── ClickHouse ─────────────────────────────────────────────────────
+
+const CLICKHOUSE_QUERIES: DbmsQuerySet = {
+  dbmsType: 'ClickHouse',
+  version: 'SELECT version()',
+  currentUser: 'SELECT currentUser()',
+  currentDb: 'SELECT currentDatabase()',
+  hostname: 'SELECT hostName()',
+  serverOs: 'SELECT uptime()',
+  allDatabases: "SELECT arrayStringConcat(groupArray(name), '\\n') FROM system.databases",
+  allTables: (db) =>
+    `SELECT arrayStringConcat(groupArray(name), '\\n') FROM system.tables WHERE database='${db}'`,
+  allColumns: (db, table) =>
+    `SELECT arrayStringConcat(groupArray(name), '\\n') FROM system.columns WHERE database='${db}' AND table='${table}'`,
+  tableCount: (db) =>
+    `SELECT COUNT(*) FROM system.tables WHERE database='${db}'`,
+  rowCount: (db, table) => `SELECT COUNT(*) FROM ${db}.${table}`,
+  concat: (cols) => `concat(${cols.join(',')})`,
+  concatRows: (expr, sep = ':::') => `arrayStringConcat(groupArray(toString(${expr})), '${sep}')`,
+  substring: (str, pos, len) => `substring(${str}, ${pos}, ${len})`,
+  ascii: (c) => `ascii(${c})`,
+  charFunc: (n) => `char(${n})`,
+  length: (str) => `length(${str})`,
+  castToString: (expr) => `toString(${expr})`,
+  isDba: "SELECT 0",
+  filePrivilege: "SELECT 0",
+  currentPrivileges: "SELECT currentUser()",
+  credentials: "SELECT currentUser()",
+  readFile: (_p) => "SELECT 'file_read_unsupported_clickhouse'",
+  writeFile: (_d, _p) => "SELECT 'file_write_unsupported_clickhouse'",
+  osCommand: (_c) => "SELECT 'os_cmd_unsupported_clickhouse'",
+  alternativeOsCommand: (_c) => "SELECT 'os_cmd_unsupported_clickhouse'",
+  sleep: (s) => `sleep(${s})`,
+  conditional: (cond, t, f) => `if(${cond}, ${t}, ${f})`,
+  benchmarkHeavy: (_n) => `sleep(3)`,
+  errorExtract: {
+    primary: (sq) => `toInt64((${sq}))`,
+    secondary: (sq) => `if((${sq})!='', throwIf(1), 1)`,
+  },
+  oobDns: (_d, _dom) => "SELECT 'oob_unsupported_clickhouse'",
+  commentSingle: '--',
+  commentMulti: ['/*', '*/'],
+  stringConcatOp: ' ',
+  nullValue: 'NULL',
+};
+
 // ─── Registry & Accessor ──────────────────────────────────────────
 
 const QUERY_REGISTRY: Record<string, DbmsQuerySet> = {
@@ -418,6 +556,10 @@ const QUERY_REGISTRY: Record<string, DbmsQuerySet> = {
   PostgreSQL: POSTGRESQL_QUERIES,
   Oracle: ORACLE_QUERIES,
   SQLite: SQLITE_QUERIES,
+  Snowflake: SNOWFLAKE_QUERIES,
+  'Google BigQuery': BIGQUERY_QUERIES,
+  ClickHouse: CLICKHOUSE_QUERIES,
+  CockroachDB: { ...POSTGRESQL_QUERIES, dbmsType: 'CockroachDB' },
   'Generic SQL': MYSQL_QUERIES,
   Unknown: MYSQL_QUERIES,
 };

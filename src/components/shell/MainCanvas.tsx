@@ -32,95 +32,103 @@ import { SqlScannerWorkspaceView } from '../../workspaces/SqlScannerWorkspaceVie
 export const MainCanvas: React.FC = () => {
   const { activeWorkspace } = useAppShellStore();
 
-  switch (activeWorkspace) {
-    case 'scope':
-      return <ProjectScopeWorkspaceView />;
+  const renderWorkspace = () => {
+    switch (activeWorkspace) {
+      case 'scope':
+        return <ProjectScopeWorkspaceView />;
 
-    case 'traffic':
-      return <TrafficWorkspaceView />;
+      case 'traffic':
+        return <TrafficWorkspaceView />;
 
-    case 'repeater':
-      return <RepeaterWorkspaceView />;
+      case 'repeater':
+        return <RepeaterWorkspaceView />;
 
-    case 'sql':
-      return <SqlScannerWorkspaceView />;
+      case 'sql':
+        return <SqlScannerWorkspaceView />;
 
-    case 'scanner':
-      return <ScannerWorkspaceView />;
+      case 'scanner':
+        return <ScannerWorkspaceView />;
 
-    case 'fuzzer':
-      return <FuzzerWorkspaceView />;
+      case 'fuzzer':
+        return <FuzzerWorkspaceView />;
 
-    case 'identity':
-      return <IdentityVaultWorkspaceView />;
+      case 'identity':
+        return <IdentityVaultWorkspaceView />;
 
-    case 'authz':
-      return <AuthzMatrixWorkspaceView />;
+      case 'authz':
+        return <AuthzMatrixWorkspaceView />;
 
-    case 'apis':
-      return <ApiSecurityWorkspaceView />;
+      case 'apis':
+        return <ApiSecurityWorkspaceView />;
 
-    case 'browser':
-      return <TrafficWorkspaceView />;
+      case 'browser':
+        return <TrafficWorkspaceView />;
 
-    case 'oast':
-      return <OastWorkspaceView />;
+      case 'oast':
+        return <OastWorkspaceView />;
 
-    case 'findings':
-      return <FindingsWorkspaceView />;
+      case 'findings':
+        return <FindingsWorkspaceView />;
 
-    case 'graph':
-      return <AttackGraphWorkspaceView />;
+      case 'graph':
+        return <AttackGraphWorkspaceView />;
 
-    case 'notebook':
-      return <NotebookWorkspaceView />;
+      case 'notebook':
+        return <NotebookWorkspaceView />;
 
-    case 'reports':
-      return <ReportingWorkspaceView />;
+      case 'reports':
+        return <ReportingWorkspaceView />;
 
-    case 'settings':
-      return <SettingsWorkspaceView />;
+      case 'settings':
+        return <SettingsWorkspaceView />;
 
-    case 'jwt':
-      return <JwtWorkspaceView />;
+      case 'jwt':
+        return <JwtWorkspaceView />;
 
-    case 'hackvertor':
-      return <HackvertorWorkspaceView />;
+      case 'hackvertor':
+        return <HackvertorWorkspaceView />;
 
-    case 'decoder':
-      return <DecoderWorkspaceView />;
+      case 'decoder':
+        return <DecoderWorkspaceView />;
 
-    case 'comparer':
-      return <ComparerWorkspaceView />;
+      case 'comparer':
+        return <ComparerWorkspaceView />;
 
-    case 'turbo':
-      return <TurboIntruderWorkspaceView />;
+      case 'turbo':
+        return <TurboIntruderWorkspaceView />;
 
-    case 'paramminer':
-      return <ParamMinerWorkspaceView />;
+      case 'paramminer':
+        return <ParamMinerWorkspaceView />;
 
-    case 'sequencer':
-      return <SequencerWorkspaceView />;
+      case 'sequencer':
+        return <SequencerWorkspaceView />;
 
-    case 'logger':
-      return <LoggerWorkspaceView />;
+      case 'logger':
+        return <LoggerWorkspaceView />;
 
-    case 'organizer':
-      return <OrganizerWorkspaceView />;
+      case 'organizer':
+        return <OrganizerWorkspaceView />;
 
-    case 'extensions':
-      return <ExtensionsWorkspaceView />;
+      case 'extensions':
+        return <ExtensionsWorkspaceView />;
 
-    case 'discover':
-      return <DiscoverWorkspaceView />;
+      case 'discover':
+        return <DiscoverWorkspaceView />;
 
-    case 'inql':
-      return <InQLWorkspaceView />;
+      case 'inql':
+        return <InQLWorkspaceView />;
 
-    case 'vulnintel':
-      return <VulnIntelWorkspaceView />;
+      case 'vulnintel':
+        return <VulnIntelWorkspaceView />;
 
-    default:
-      return <TrafficWorkspaceView />;
-  }
+      default:
+        return <TrafficWorkspaceView />;
+    }
+  };
+
+  return (
+    <div key={activeWorkspace} className="w-full h-full overflow-hidden animate-fade-in-scale">
+      {renderWorkspace()}
+    </div>
+  );
 };

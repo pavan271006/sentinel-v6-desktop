@@ -16,17 +16,17 @@ export const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) 
   };
 
   const borderStyles = {
-    success: 'border-l-4 border-l-severity-low',
-    error: 'border-l-4 border-l-severity-critical',
-    danger: 'border-l-4 border-l-severity-critical',
-    warning: 'border-l-4 border-l-severity-medium',
-    info: 'border-l-4 border-l-severity-info',
+    success: 'border-l-4 border-l-accent-green shadow-[0_0_15px_rgba(16,185,129,0.2)]',
+    error: 'border-l-4 border-l-severity-critical shadow-[0_0_15px_rgba(244,63,94,0.2)]',
+    danger: 'border-l-4 border-l-severity-critical shadow-[0_0_15px_rgba(244,63,94,0.2)]',
+    warning: 'border-l-4 border-l-severity-medium shadow-[0_0_15px_rgba(234,179,8,0.2)]',
+    info: 'border-l-4 border-l-accent-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]',
   };
 
   return (
     <div
       className={cn(
-        'flex items-start gap-2.5 p-3 min-w-[280px] max-w-md bg-bg-panel border border-border-strong rounded shadow-modal select-none pointer-events-auto transition-all',
+        'flex items-start gap-3 p-3.5 min-w-[300px] max-w-md glass-panel bg-bg-panel-elevated/90 border border-border-strong rounded-lg shadow-modal select-none pointer-events-auto transition-all animate-slide-up',
         borderStyles[toast.type]
       )}
     >
@@ -34,14 +34,14 @@ export const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) 
       <div className="flex-1 min-w-0">
         <h4 className="text-xs font-semibold text-text-primary">{toast.title}</h4>
         {toast.description && (
-          <p className="text-xs text-text-secondary mt-0.5 whitespace-pre-wrap break-words">
+          <p className="text-xs text-text-secondary mt-0.5 whitespace-pre-wrap break-words leading-relaxed">
             {toast.description}
           </p>
         )}
       </div>
       <button
         onClick={() => onDismiss(toast.id)}
-        className="text-text-muted hover:text-text-primary rounded p-0.5"
+        className="text-text-muted hover:text-text-primary hover:bg-bg-panel-hover rounded p-1 transition-colors"
         aria-label="Close"
       >
         <X className="w-3.5 h-3.5" />

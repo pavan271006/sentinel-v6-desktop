@@ -48,7 +48,7 @@ export const BottomDrawer: React.FC = () => {
   ];
 
   return (
-    <div className="h-56 bg-bg-panel border-t border-border-subtle flex flex-col flex-shrink-0 select-none z-10">
+    <div className="h-56 bg-bg-panel border-t border-border-subtle flex flex-col flex-shrink-0 select-none z-10 animate-slide-up">
       {/* Header & Tabs */}
       <div className="h-7 bg-bg-panel-elevated border-b border-border-subtle flex items-center justify-between px-2">
         <div className="flex items-center gap-1">
@@ -59,16 +59,16 @@ export const BottomDrawer: React.FC = () => {
                 key={tab.id}
                 onClick={() => setBottomDrawerTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-0.5 text-xs rounded transition-colors',
+                  'flex items-center gap-1.5 px-2.5 py-0.5 text-xs rounded-full transition-all duration-150',
                   isActive
-                    ? 'bg-bg-panel text-accent-cyan font-semibold border border-border-subtle'
+                    ? 'bg-accent-cyan/15 text-accent-cyan font-semibold border border-accent-cyan/30 shadow-[0_0_8px_rgba(0,240,255,0.2)]'
                     : 'text-text-secondary hover:text-text-primary hover:bg-bg-panel'
                 )}
               >
                 {tab.icon}
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
-                  <span className="text-[10px] font-mono text-text-muted bg-bg-input px-1 rounded">
+                  <span className="text-[10px] font-mono text-text-muted bg-bg-input px-1.5 py-0.2 rounded-full border border-border-subtle">
                     {tab.count}
                   </span>
                 )}

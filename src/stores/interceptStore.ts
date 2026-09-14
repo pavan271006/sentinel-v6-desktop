@@ -137,52 +137,7 @@ export function parseRawHttpRequestToItem(
   };
 }
 
-export const INITIAL_GOOGLE_SEARCH_RAW = `GET /search?q=hi&oq=hi&gs_lcrp=EgZjYHJvbWUgBggAEEUYOTIGCAEQRRg7MgYIARBFGD0yBggCEEUYPTIGCAMQRRg90gEHNzU3ajBqN6gCALACAA&sourceid=chrome&ie=UTF-8 HTTP/1.1\r
-Host: www.google.com\r
-Cookie: SEARCH_SAMESITE=CgQIy6EB; AEC=AdJVEasCg6bUrXtt2ZWOZjXIEUvbv-olJWxykbfMeI-nl466auvA_UM40HU; NID=534=DcRd9dLDyCFrR1C-Po-Je6De5J-TbZliRogWo5I9FgI_GUsAvneijBAiLGo-VSsEFFpkpf-QiKNb4oSRs18WkbuzpZtSlcV5rYxQtdneO7CE3eg0yVTOYk8VGku1B5sDpVOoEs8-psxIylYFMPIL8TZo2no4wwBV9OdWwQnrpC9eqZTVPlNGBQ4BZdOVjkzBotXenZjxZezTMT8pEi8U4ZwiuxQpXqY4WfglFgJ1FK3ufh3ndB0ogVnJnoHUKBwwkNg_XBK3Mqw\r
-Rtt: 200\r
-Downlink: 0.4\r
-Sec-Ch-Ua: "Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"\r
-Sec-Ch-Ua-Mobile: ?0\r
-Sec-Ch-Ua-Platform: "Windows"\r
-Upgrade-Insecure-Requests: 1\r
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\r
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r
-Sec-Fetch-Site: same-origin\r
-Sec-Fetch-Mode: navigate\r
-Sec-Fetch-User: ?1\r
-Sec-Fetch-Dest: document\r
-Referer: https://www.google.com/\r
-Accept-Encoding: gzip, deflate, br, zstd\r
-Accept-Language: en-US,en;q=0.9\r
-Priority: u=0, i\r
-\r
-`;
 
-const INITIAL_QUEUE_ITEM_1 = parseRawHttpRequestToItem('int-req-1', INITIAL_GOOGLE_SEARCH_RAW, 'https://www.google.com/search?q=hi');
-
-const INITIAL_QUEUE_ITEM_2 = parseRawHttpRequestToItem(
-  'int-req-2',
-  `GET /xjs/_/ss/k=xjs.s.zTIQhDTr3zA.L.B1.O/am=CAAAAAAAABAAAAAAAAAAAAAAAAAACBAABEAAAAAAAAAAAAAAAAAAAAAAhABAAAAAAAAAAAEAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKPAAAC4AQAQAAAB7AAMAhAAAAAAAAAAAAAAAAAACAAAAAGAAABoAAAAAD4AAAQBAAAAAAAAAABAAAAAAAAACAAGABQAAAAAAAigAIAAAAAAAAGCQCAABAAACAAAAAAAAAAAAAAAAAaaOAAhAAAAAAAAAAAAAAAAAEAgAAAAAAAAAAAAAEBwaAAAgQJAAAAAAAAAAAMAAAACAAMAAAAAgAQAAMAAAAAAAAACAAAAAAAAAcGAQAQAAAAAAAAAAAACCAUAgAEAAMAEAAgAAAAAAAAAAAAAAAAAAECBAAABAAgCAIAAAAAAAAABAgAaAgAAAAAAAAAACAAACBAAAAAAAgKAAAAABAAFAAAQAAAAAAAcBACBAgBQAQAAgAACAIBgAAgAAEAACAAAUAAAAAAAAAAABA/d=1/ed=1/br=1/cb=loaded_h_0/rs=ACT90gBEpNYQnIWJQqDeC9XRICM3C5tqzA/m=X3nOBf,attn,cdos,gwc,hsm,jsa,mb4ZUb,cET9Ob,SNUn3,qddgKe,sTsDMc,dtlOhd,eHdf1,YV5bee,d,csi?cb=121509378 HTTP/1.1\r
-Host: www.google.com\r
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\r
-Accept: */*\r
-Referer: https://www.google.com/search?q=hi\r
-\r
-`,
-  'https://www.google.com/'
-);
-
-const INITIAL_QUEUE_ITEM_3 = parseRawHttpRequestToItem(
-  'int-req-3',
-  `POST /gen_204?s=web&t=cap&atyp=csi&ei=EXScaqX-BbDfseMPyurCkQM HTTP/1.1\r
-Host: www.google.com\r
-Content-Type: application/x-www-form-urlencoded\r
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\r
-\r
-`,
-  'https://www.google.com/'
-);
 
 export interface InterceptStoreState {
   isInterceptOn: boolean;
@@ -217,9 +172,9 @@ export interface InterceptStoreState {
 
 export const useInterceptStore = create<InterceptStoreState>((set, get) => ({
   isInterceptOn: true,
-  interceptedQueue: [INITIAL_QUEUE_ITEM_1, INITIAL_QUEUE_ITEM_2, INITIAL_QUEUE_ITEM_3],
-  selectedQueueId: INITIAL_QUEUE_ITEM_1.id,
-  editedRawRequest: INITIAL_GOOGLE_SEARCH_RAW,
+  interceptedQueue: [],
+  selectedQueueId: null,
+  editedRawRequest: '',
   viewMode: 'Pretty',
   inspectorOpen: true,
 

@@ -355,6 +355,15 @@ export class SentinelIpcClient {
   }> {
     return this.invoke('cmd_check_packet_capture_status');
   }
+
+  // VPN / Physical Egress Rotation Methods
+  public async rotateSystemVpn(): Promise<string> {
+    return this.invoke<string>('cmd_rotate_system_vpn');
+  }
+
+  public async toggleSystemVpn(connect: boolean): Promise<boolean> {
+    return this.invoke<boolean>('cmd_toggle_system_vpn', { connect });
+  }
 }
 
 export const ipcClient = SentinelIpcClient.getInstance();

@@ -9,7 +9,9 @@ import {
   Settings,
   Globe,
   ChevronRight,
+  RotateCw,
 } from 'lucide-react';
+import { useVpnRotatorStore } from '../../stores/vpnRotatorStore';
 import { useToastStore } from '../../stores/toastStore';
 import { ipcClient } from '../../ipc/client';
 import { Tooltip } from '../../design-system/Tooltip';
@@ -65,6 +67,7 @@ export const HeaderBar: React.FC = () => {
   const { trafficCount, criticalFindingCount } = useEventBusStore();
   const { openModal: openProjectModal, commitWalCheckpoint } = useProjectStore();
   const { addToast } = useToastStore();
+  const { isActive: isVpnActive, currentNode: vpnNode, isRotating, rotateVpn, toggleVpn } = useVpnRotatorStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -94,28 +97,28 @@ export const HeaderBar: React.FC = () => {
   return (
     <>
       {/* 1. Top Native Menu Bar */}
-      <div className="h-7 bg-[#1e1f22] border-b border-[#2b2d30] flex items-center justify-between px-3 select-none flex-shrink-0 z-30 font-sans text-xs text-[#c4c7c5]">
+      <div className="h-7 bg-[#1e1f22] border-b border-[#2b2d30] flex items-center justify-between px-3 select-none flex-shrink-0 z-30 font-sans text-xs text-[#9da5b4]">
         {/* Left: Sentinel V6 Branding + Project Menu + Open Browser */}
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-[#141517] border border-[#313438] shadow-sm">
             <Shield className="w-3.5 h-3.5 text-[#f37021]" />
             <span className="font-bold text-[#f37021] text-[11px] tracking-wide">Sentinel</span>
             <span className="font-bold text-white text-[11px] tracking-wide">V6</span>
           </div>
 
-          <div className="h-3 w-px bg-[#2b2d30]" />
+          <div className="h-3 w-px bg-[#313438]" />
 
           <Dropdown
             align="left"
             items={projectDropdownItems}
             trigger={
-              <button className="px-2 py-0.5 hover:bg-[#2b2d30] rounded hover:text-white transition-colors text-[11px] font-medium text-[#c4c7c5]">
+              <button className="px-2 py-0.5 hover:bg-[#2b2d30] rounded hover:text-white transition-colors text-[11px] font-medium text-[#dfdfdf]">
                 Project
               </button>
             }
           />
 
-          <div className="h-3 w-px bg-[#2b2d30]" />
+          <div className="h-3 w-px bg-[#313438]" />
 
           {/* Connected Browser Trigger Button */}
           <button
@@ -124,29 +127,59 @@ export const HeaderBar: React.FC = () => {
                 await ipcClient.launchSystemBrowser('https://www.google.com', 8085);
                 addToast({
                   type: 'success',
-                  title: 'Proxy Browser Launched (127.0.0.1:8085)',
-                  description: 'External browser opened and connected to Sentinel MITM proxy on port 8085.',
+                  title: isVpnActive ? `Browser Active • Egress: ${vpnNode.flag} ${vpnNode.ip}` : 'Proxy Browser Launched (127.0.0.1:8085)',
+                  description: isVpnActive
+                    ? `Chromium session connected to Sentinel proxy on port 8085 with egress via ${vpnNode.flag} ${vpnNode.ip} (${vpnNode.city}).`
+                    : 'External browser opened and connected to Sentinel MITM proxy on port 8085.',
                 });
               } catch {
                 addToast({
                   type: 'info',
-                  title: 'Proxy Browser Active (127.0.0.1:8085)',
+                  title: isVpnActive ? `Browser Proxy Active (${vpnNode.flag} ${vpnNode.ip})` : 'Proxy Browser Active (127.0.0.1:8085)',
                   description: 'Chromium session routed through Sentinel MITM proxy on port 8085.',
                 });
               }
             }}
             className="flex items-center gap-1.5 px-2 py-0.5 bg-[#f37021]/15 hover:bg-[#f37021]/25 text-[#f37021] hover:text-white border border-[#f37021]/40 rounded transition-colors text-[11px] font-semibold group shadow-sm"
-            title="Open Connected Proxy Browser (Alt+B)"
+            title={`Open Connected Proxy Browser (Alt+B) ${isVpnActive ? `• Egress: ${vpnNode.flag} ${vpnNode.ip}` : ''}`}
           >
             <Globe className="w-3 h-3 text-[#f37021] group-hover:text-white transition-colors" />
             <span>Open Browser</span>
           </button>
+
+          {/* Built-in VPN / Upstream Egress Rotator */}
+          <div className="flex items-center rounded bg-[#141517] border border-[#313438] overflow-hidden shadow-sm">
+            <button
+              onClick={() => toggleVpn()}
+              title={isVpnActive ? `VPN Shield Active: Egress via ${vpnNode.city}, ${vpnNode.country} (${vpnNode.ip}). Click to toggle.` : 'VPN Shield Disabled. Click to enable.'}
+              className={`flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                isVpnActive
+                  ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                  : 'bg-transparent text-[#6f737a] hover:text-white'
+              }`}
+            >
+              <span className="text-[12px]">{vpnNode.flag}</span>
+              <span>VPN: {vpnNode.ip}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${isVpnActive ? 'bg-emerald-400 animate-pulse' : 'bg-[#6f737a]'}`} />
+            </button>
+            <button
+              onClick={() => rotateVpn()}
+              disabled={isRotating}
+              title="Rotate Physical VPN Egress: Click to generate new WireGuard keys and switch physical exit IP"
+              className="px-1.5 py-0.5 bg-[#1e2024] hover:bg-[#2b2d30] text-[#a1a1aa] hover:text-white border-l border-[#313438] transition-colors flex items-center gap-1 text-[10px] disabled:opacity-60"
+            >
+              <RotateCw className={`w-2.5 h-2.5 ${isRotating ? 'animate-spin text-emerald-400' : 'hover:rotate-180'} transition-transform`} />
+              <span>{isRotating ? 'Rotating...' : 'Rotate'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Center: Title & Scope Status */}
-        <div className="text-[11px] font-medium text-[#8c9099] truncate flex items-center gap-2">
-          <span>SENTINEL V6 Workstation — {activeProjectName || 'Default Workspace'}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2b2d30] text-[#34d399] font-mono">
+        <div className="text-[11px] font-medium text-[#6f737a] truncate flex items-center gap-2">
+          <span className="text-[#dfdfdf] font-semibold">SENTINEL V6 Workstation</span>
+          <span>— {activeProjectName || 'Default Workspace'}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2b2d30] text-[#34d399] font-mono border border-[#313438] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
             Scope: Active ({scopeRulesCount} rules)
           </span>
         </div>
@@ -154,7 +187,7 @@ export const HeaderBar: React.FC = () => {
         {/* Far Right: Settings */}
         <div className="flex items-center gap-2">
           <Tooltip content="Open Settings">
-            <button onClick={() => setActiveWorkspace('settings')} className="p-1 hover:text-white text-[#8c9099]">
+            <button onClick={() => setActiveWorkspace('settings')} className="p-1 hover:text-white text-[#6f737a] hover:bg-[#2b2d30] rounded transition-colors">
               <Settings className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
@@ -176,10 +209,10 @@ export const HeaderBar: React.FC = () => {
                 aria-label={tab.ariaLabel}
                 onClick={() => setActiveWorkspace(tab.id)}
                 className={cn(
-                  'relative flex items-center gap-1 px-3 h-full font-medium transition-colors whitespace-nowrap cursor-pointer text-xs',
+                  'relative flex items-center gap-1.5 px-3 h-full font-medium transition-colors whitespace-nowrap cursor-pointer text-xs',
                   isActive
                     ? 'bg-[#1e1f22] text-[#f37021] font-semibold'
-                    : 'text-[#c4c7c5] hover:text-white hover:bg-[#35383f]/60'
+                    : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]/60'
                 )}
               >
                 <span>{tab.label}</span>
@@ -188,17 +221,17 @@ export const HeaderBar: React.FC = () => {
                 {badgeCount > 0 && (
                   <span
                     className={cn(
-                      'ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold',
-                      tab.badgeKey === 'criticalFindings' ? 'bg-[#ef4444] text-white' : 'bg-[#35383f] text-[#c4c7c5]'
+                      'ml-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold',
+                      tab.badgeKey === 'criticalFindings' ? 'bg-[#ef4444] text-white' : 'bg-[#35383f] text-[#dfdfdf] border border-[#313438]'
                     )}
                   >
                     {badgeCount > 999 ? '999+' : badgeCount}
                   </span>
                 )}
 
-                {/* Burp Suite Signature Orange Bottom Highlight Bar */}
+                {/* Classic bottom orange highlight indicator */}
                 {isActive && (
-                  <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[#f37021] shadow-[0_-1px_6px_rgba(243,112,33,0.6)]" />
+                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#f37021]" />
                 )}
               </button>
             );
@@ -206,10 +239,10 @@ export const HeaderBar: React.FC = () => {
         </div>
 
         {/* Right Tab Bar Controls */}
-        <div className="ml-auto flex items-center gap-1 text-[#8c9099] pr-1">
-          <button className="p-1 hover:text-white" title="Target Scope"><Shield className="w-3.5 h-3.5 text-[#34d399]" /></button>
-          <button className="p-1 hover:text-white" title="Scroll Tabs"><ChevronRight className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setActiveWorkspace('settings')} className="p-1 hover:text-white" title="Settings"><Settings className="w-3.5 h-3.5" /></button>
+        <div className="ml-auto flex items-center gap-1 text-[#6f737a] pr-1">
+          <button className="p-1 hover:text-[#34d399] hover:bg-[#35383f] rounded transition-colors" title="Target Scope"><Shield className="w-3.5 h-3.5 text-[#34d399]" /></button>
+          <button className="p-1 hover:text-white hover:bg-[#35383f] rounded transition-colors" title="Scroll Tabs"><ChevronRight className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setActiveWorkspace('settings')} className="p-1 hover:text-white hover:bg-[#35383f] rounded transition-colors" title="Settings"><Settings className="w-3.5 h-3.5" /></button>
         </div>
       </nav>
 

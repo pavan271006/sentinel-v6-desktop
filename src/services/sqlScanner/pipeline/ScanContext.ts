@@ -23,6 +23,7 @@ import { SQLDefenseLayerModel } from '../engine/SQLDefenseLayerModel';
 import { NegativeEvidenceCollector } from '../engine/NegativeEvidenceCollector';
 import { ProxyPool, ProxyEndpoint } from '../stealth/ProxyPool';
 import { TlsFingerprintEngine } from '../engine/TlsFingerprintEngine';
+import { ThreatConsequenceEngine } from '../engine/ThreatConsequenceEngine';
 
 export type LogCallback = (entry: ScanLogEntry) => void;
 export type ProgressCallback = (progress: ScanProgress) => void;
@@ -71,6 +72,8 @@ export interface ScanContextInit {
   target: ScanTargetConfig;
   safetyConfig?: SafetyConfig;
   scanProfile?: 'ultra_stealth' | 'fast_triage' | 'deep_forensic' | 'smt_strict' | 'hyper_turbo';
+  concurrencyLimit?: number;
+  concurrentExecutor?: ConcurrentExecutor;
   proxies?: ProxyEndpoint[];
   onLog?: LogCallback;
   onProgress?: ProgressCallback;
@@ -85,6 +88,7 @@ export interface ScanContextInit {
 
 import { SessionManager } from '../engine/SessionManager';
 import { MarkovNavigationEngine } from '../engine/MarkovNavigationEngine';
+import { ConcurrentExecutor } from '../engine/ConcurrentExecutor';
 
 export class ScanContext {
   public readonly target: ScanTargetConfig;
@@ -163,9 +167,13 @@ export class ScanContext {
   public unionColumnCount?: number;
   public unionRenderColumns: number[] = [];
   public unionDbms?: DbmsType;
+  public readonly concurrencyLimit: number;
+  public readonly concurrentExecutor: ConcurrentExecutor;
 
   constructor(init: ScanContextInit) {
     this.target = init.target;
+    this.concurrencyLimit = init.concurrencyLimit || (init.scanProfile === 'hyper_turbo' ? 100 : 10);
+    this.concurrentExecutor = init.concurrentExecutor || new ConcurrentExecutor(this.concurrencyLimit, 100);
     this.safetyConfig = init.safetyConfig || {
       authorizedTestingConfirmed: true,
       scanMode: 'standard',
@@ -267,6 +275,7 @@ export class ScanContext {
 
   public abort(): void {
     this.isAborted = true;
+    this.concurrentExecutor.abort();
     this.log('warn', 'Scan execution aborted by operator or circuit breaker.');
   }
 
@@ -329,10 +338,12 @@ export class ScanContext {
 
   public addFinding(finding: SqlScanFinding): void {
     if (this.isAborted) return;
-    const existing = this.findings.find(f => f.parameterName === finding.parameterName && f.injectionType === finding.injectionType);
+    const existing = this.findings.find(f => f.parameterName === finding.parameterName && f.injectionType === finding.injectionType && f.detectionMethod === finding.detectionMethod);
     if (!existing) {
+      const matchedParam = this.candidateParameters.find((p) => p.name === finding.parameterName);
+      ThreatConsequenceEngine.enrichFinding(finding, matchedParam);
       this.findings.push(finding);
-      this.log('success', `[CONFIRMED VULNERABILITY] ${finding.title} on parameter "${finding.parameterName}" (${finding.severity})`, finding.evidence[0]?.payload);
+      this.log('success', `[CONFIRMED VULNERABILITY] ${finding.title} on parameter "${finding.parameterName}" (${finding.severity}) [${finding.consequence?.threatBadge || 'EXPLOITABLE'}]`, finding.evidence[0]?.payload);
       if (this.onFinding) {
         try {
           this.onFinding(finding);
@@ -410,7 +421,13 @@ export class ScanContext {
   public async sendMutatedRequest(
     param: CandidateParameter,
     payload: string,
-    options: SendRequestOptions = {}
+    options: {
+      append?: boolean;
+      skipSafety?: boolean;
+      technique?: string;
+      category?: string;
+      isPositive?: (status: number, body: string) => boolean;
+    } = {}
   ): Promise<HttpResponse> {
     if (this.isAborted) {
       throw new Error('Scan aborted.');
@@ -544,11 +561,13 @@ export class ScanContext {
           id: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
           testIndex: this.testsExecuted,
           parameterName: param.name,
-          technique: options.skipSafety ? 'Baseline Calibration' : 'Multi-Oracle Injection Probe',
+          technique: options.technique || (options.skipSafety ? 'Baseline Calibration' : 'Multi-Oracle Injection Probe'),
           context: param.detectedContext || 'unknown',
           dbms: this.dbmsFingerprint.dbms || 'Generic SQL',
           payload,
-          status: finalStatus >= 500 ? 'positive' : 'passed',
+          status: options.isPositive
+            ? (options.isPositive(finalStatus, finalBody) ? 'positive' : 'passed')
+            : (finalStatus >= 500 ? 'positive' : 'passed'),
           durationMs,
           timestamp: Date.now(),
           rawRequest: mutated.rawRequest,
@@ -584,7 +603,7 @@ export class ScanContext {
       id: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       testIndex: this.testsExecuted,
       parameterName: param.name,
-      technique: 'Multi-Oracle Injection Probe',
+      technique: options.technique || 'Multi-Oracle Injection Probe',
       context: param.detectedContext || 'unknown',
       dbms: this.dbmsFingerprint.dbms || 'Generic SQL',
       payload,

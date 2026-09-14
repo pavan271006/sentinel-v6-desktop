@@ -31,7 +31,7 @@ export class BaselineProfilingStage implements ScanStage {
       } catch (err) {
         ctx.log('warn', `Baseline sample ${i + 1} failed: ${err}`);
       }
-      if (i < numSamples - 1) {
+      if (i < numSamples - 1 && ctx.scanProfile !== 'hyper_turbo') {
         await new Promise(r => setTimeout(r, 100));
       }
     }

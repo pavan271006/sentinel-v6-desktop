@@ -43,14 +43,14 @@ export const AppShell: React.FC = () => {
   }, [toggleSidebar, toggleTheme]);
 
   return (
-    <div className="flex flex-col w-screen h-screen overflow-hidden bg-[#1e1f22] text-[#c4c7c5]">
-      {/* 1. Header Bar with Burp Menu & Primary Horizontal Tabs */}
+    <div className="flex flex-col w-screen h-screen overflow-hidden bg-bg-app text-text-primary select-none">
+      {/* 1. Header Bar with Menu & Primary Horizontal Tabs */}
       <HeaderBar />
 
       {/* 2. Main Middle Workspace Area (Full Canvas) */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
         {/* Center Main Canvas (Takes Full Workspace Width & Height) */}
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden relative bg-[#141517]">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden relative bg-bg-input">
           <MainCanvas />
         </main>
       </div>

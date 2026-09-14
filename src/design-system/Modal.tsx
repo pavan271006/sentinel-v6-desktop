@@ -55,7 +55,7 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-200"
         onClick={onClose}
       />
 
@@ -65,7 +65,7 @@ export const Modal: React.FC<ModalProps> = ({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative w-full bg-bg-panel border border-border-strong rounded-lg shadow-modal overflow-hidden flex flex-col max-h-[90vh]',
+          'relative w-full bg-bg-panel border border-border-strong rounded-xl shadow-modal overflow-hidden flex flex-col max-h-[90vh] animate-pop-in',
           maxWidthStyles[effectiveMaxWidth],
           className
         )}

@@ -452,16 +452,17 @@ export const MatchReplaceView: React.FC = () => {
                 <select
                   value={httpForm.item}
                   onChange={(e) => setHttpForm({ ...httpForm, item: e.target.value as HttpMatchRuleItemType })}
+                  style={{ colorScheme: 'dark' }}
                   className="w-full bg-[#141517] text-white text-xs p-2 rounded border border-[#3e4249] focus:border-[#f37021] focus:outline-none"
                 >
-                  <option value="Request header">Request header</option>
-                  <option value="Request body">Request body</option>
-                  <option value="Request first line">Request first line</option>
-                  <option value="Response header">Response header</option>
-                  <option value="Response body">Response body</option>
-                  <option value="Response first line">Response first line</option>
-                  <option value="Request param name">Request param name</option>
-                  <option value="Request param value">Request param value</option>
+                  <option value="Request header" className="bg-[#2b2d30] text-[#dfdfdf]">Request header</option>
+                  <option value="Request body" className="bg-[#2b2d30] text-[#dfdfdf]">Request body</option>
+                  <option value="Request first line" className="bg-[#2b2d30] text-[#dfdfdf]">Request first line</option>
+                  <option value="Response header" className="bg-[#2b2d30] text-[#dfdfdf]">Response header</option>
+                  <option value="Response body" className="bg-[#2b2d30] text-[#dfdfdf]">Response body</option>
+                  <option value="Response first line" className="bg-[#2b2d30] text-[#dfdfdf]">Response first line</option>
+                  <option value="Request param name" className="bg-[#2b2d30] text-[#dfdfdf]">Request param name</option>
+                  <option value="Request param value" className="bg-[#2b2d30] text-[#dfdfdf]">Request param value</option>
                 </select>
               </div>
 
@@ -470,10 +471,11 @@ export const MatchReplaceView: React.FC = () => {
                 <select
                   value={httpForm.type}
                   onChange={(e) => setHttpForm({ ...httpForm, type: e.target.value as 'Regex' | 'Literal' })}
+                  style={{ colorScheme: 'dark' }}
                   className="w-full bg-[#141517] text-white text-xs p-2 rounded border border-[#3e4249] focus:border-[#f37021] focus:outline-none"
                 >
-                  <option value="Regex">Regex</option>
-                  <option value="Literal">Literal</option>
+                  <option value="Regex" className="bg-[#2b2d30] text-[#dfdfdf]">Regex</option>
+                  <option value="Literal" className="bg-[#2b2d30] text-[#dfdfdf]">Literal</option>
                 </select>
               </div>
             </div>
@@ -560,11 +562,12 @@ export const MatchReplaceView: React.FC = () => {
                   onChange={(e) =>
                     setWsForm({ ...wsForm, direction: e.target.value as 'To server' | 'To client' | 'Both' })
                   }
+                  style={{ colorScheme: 'dark' }}
                   className="w-full bg-[#141517] text-white text-xs p-2 rounded border border-[#3e4249] focus:border-[#f37021] focus:outline-none"
                 >
-                  <option value="To server">To server</option>
-                  <option value="To client">To client</option>
-                  <option value="Both">Both directions</option>
+                  <option value="To server" className="bg-[#2b2d30] text-[#dfdfdf]">To server</option>
+                  <option value="To client" className="bg-[#2b2d30] text-[#dfdfdf]">To client</option>
+                  <option value="Both" className="bg-[#2b2d30] text-[#dfdfdf]">Both directions</option>
                 </select>
               </div>
 
@@ -573,10 +576,11 @@ export const MatchReplaceView: React.FC = () => {
                 <select
                   value={wsForm.type}
                   onChange={(e) => setWsForm({ ...wsForm, type: e.target.value as 'Regex' | 'Literal' })}
+                  style={{ colorScheme: 'dark' }}
                   className="w-full bg-[#141517] text-white text-xs p-2 rounded border border-[#3e4249] focus:border-[#f37021] focus:outline-none"
                 >
-                  <option value="Regex">Regex</option>
-                  <option value="Literal">Literal</option>
+                  <option value="Regex" className="bg-[#2b2d30] text-[#dfdfdf]">Regex</option>
+                  <option value="Literal" className="bg-[#2b2d30] text-[#dfdfdf]">Literal</option>
                 </select>
               </div>
             </div>

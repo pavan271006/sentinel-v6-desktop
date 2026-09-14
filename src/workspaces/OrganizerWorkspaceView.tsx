@@ -133,12 +133,13 @@ export const OrganizerWorkspaceView: React.FC = () => {
                   <select
                     value={selectedItem.statusTag}
                     onChange={(e) => handleUpdateStatus(e.target.value as any)}
+                    style={{ colorScheme: 'dark' }}
                     className="bg-[#141517] text-white px-2.5 py-1 rounded border border-[#3e4249] text-xs font-semibold focus:outline-none"
                   >
-                    <option value="To Investigate">To Investigate</option>
-                    <option value="High Priority">High Priority</option>
-                    <option value="Exploited">Exploited</option>
-                    <option value="Reported">Reported</option>
+                    <option value="To Investigate" className="bg-[#2b2d30] text-[#dfdfdf]">To Investigate</option>
+                    <option value="High Priority" className="bg-[#2b2d30] text-[#dfdfdf]">High Priority</option>
+                    <option value="Exploited" className="bg-[#2b2d30] text-[#dfdfdf]">Exploited</option>
+                    <option value="Reported" className="bg-[#2b2d30] text-[#dfdfdf]">Reported</option>
                   </select>
                 </div>
               </div>

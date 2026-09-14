@@ -254,29 +254,29 @@ export const CommandPalette: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 p-4">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity" onClick={close} />
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-200" onClick={close} />
 
       {/* Palette Container */}
-      <div className="relative w-full max-w-xl bg-bg-panel border border-border-strong rounded-lg shadow-modal overflow-hidden flex flex-col max-h-[70vh]">
+      <div className="relative w-full max-w-xl glass-panel bg-bg-panel/95 border border-border-strong rounded-xl shadow-modal overflow-hidden flex flex-col max-h-[70vh] animate-pop-in">
         {/* Search Bar Input */}
-        <div className="flex items-center px-3 py-2.5 border-b border-border-subtle bg-bg-panel-elevated">
-          <Search className="w-4 h-4 text-text-muted mr-2.5 flex-shrink-0" />
+        <div className="flex items-center px-3.5 py-3 border-b border-border-subtle bg-bg-panel-elevated/80">
+          <Search className="w-4 h-4 text-accent-cyan mr-2.5 flex-shrink-0" />
           <input
             ref={inputRef}
             type="text"
-            placeholder="Type a command or search workspaces (e.g. Traffic, Proxy, Scope)..."
+            placeholder="Type a command or search workspaces (e.g. Traffic, Proxy, Scope, Sequencer)..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDownInList}
-            className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+            className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none font-medium"
           />
           <Kbd className="ml-2">ESC</Kbd>
         </div>
 
         {/* Command List */}
-        <div className="overflow-y-auto p-1.5 flex-1 select-none">
+        <div className="overflow-y-auto p-2 flex-1 select-none space-y-0.5">
           {filteredCommands.length === 0 ? (
-            <div className="py-6 text-center text-xs text-text-muted italic">No matching commands found</div>
+            <div className="py-8 text-center text-xs text-text-muted italic">No matching commands found</div>
           ) : (
             filteredCommands.map((cmd, idx) => {
               const isSelected = idx === selectedIndex;
@@ -286,14 +286,16 @@ export const CommandPalette: React.FC = () => {
                   onClick={() => handleSelect(cmd)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={cn(
-                    'flex items-center justify-between px-3 py-2 rounded text-xs transition-colors cursor-pointer',
-                    isSelected ? 'bg-accent-cyan/15 text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-panel-hover',
+                    'flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all duration-100 cursor-pointer',
+                    isSelected
+                      ? 'bg-accent-cyan/15 text-white font-medium border border-accent-cyan/30 shadow-[0_0_10px_rgba(0,240,255,0.15)]'
+                      : 'text-text-secondary hover:bg-bg-panel-hover hover:text-text-primary border border-transparent',
                     cmd.disabledReason && 'opacity-50 cursor-not-allowed'
                   )}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="flex-shrink-0">{categoryIcons[cmd.category] || <Terminal className="w-3.5 h-3.5 text-text-muted" />}</span>
-                    <span className="truncate text-text-primary">{cmd.title}</span>
+                    <span className="truncate text-text-primary font-medium">{cmd.title}</span>
                     {cmd.disabledReason && (
                       <span className="text-[10px] text-severity-medium italic truncate">({cmd.disabledReason})</span>
                     )}
@@ -306,7 +308,7 @@ export const CommandPalette: React.FC = () => {
         </div>
 
         {/* Footer info */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-border-subtle bg-bg-panel text-[11px] text-text-muted select-none">
+        <div className="flex items-center justify-between px-3.5 py-2 border-t border-border-subtle bg-bg-panel-elevated/60 text-[11px] text-text-muted select-none">
           <div className="flex items-center gap-3">
             <span>
               <Kbd>↑</Kbd> <Kbd>↓</Kbd> to navigate
@@ -315,7 +317,7 @@ export const CommandPalette: React.FC = () => {
               <Kbd>↵</Kbd> to select
             </span>
           </div>
-          <span className="font-mono">Sentinel V6 Productivity</span>
+          <span className="font-mono text-[10px] text-accent-cyan">Sentinel V6 Productivity</span>
         </div>
       </div>
     </div>

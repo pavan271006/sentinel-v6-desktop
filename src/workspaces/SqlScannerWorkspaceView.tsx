@@ -1,18 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useSqlScannerStore, DEFAULT_DEFENSE_LAYERS } from '../stores/sqlScannerStore';
+import React, { useState, useEffect } from 'react';
+import { useSqlScannerStore, extractRedirectLocation } from '../stores/sqlScannerStore';
 import { useToastStore } from '../stores/toastStore';
 import { useRepeaterStore } from '../stores/repeaterStore';
 import { RequestParser } from '../services/sqlScanner/RequestParser';
 import { MetadataExtractor } from '../services/sqlScanner/MetadataExtractor';
 import { OrmRemediationEngine } from '../services/sqlScanner/engine/OrmRemediationEngine';
 import { BountyTemplateExporter } from '../services/sqlScanner/engine/BountyTemplateExporter';
-import { DynamicGraphEngine } from '../services/sqlScanner/engine/DynamicGraphEngine';
-import { MetamorphicStudio } from '../services/sqlScanner/engine/MetamorphicStudio';
 import { SarifExporter } from '../services/sqlScanner/SarifExporter';
 import { HttpMethod, HttpProtocol } from '../types/repeater';
 import { DiscoveredTable, ColumnMetadata } from '../types/sqlScanner';
 import { ContextMenu, ContextMenuItem } from '../design-system/ContextMenu';
 import { ProxyTargetSiteMap } from '../components/sqlScanner/ProxyTargetSiteMap';
+import { generateRenderablePreviewHtml } from '../utils/repeaterUtils';
+import { ipcClient } from '../ipc/client';
+import { useTrafficStore } from '../stores/trafficStore';
 import {
   Play,
   Pause,
@@ -20,6 +21,7 @@ import {
   RotateCcw,
   Globe,
   Shield,
+  ShieldAlert,
   AlertTriangle,
   CheckCircle2,
   Database,
@@ -38,16 +40,13 @@ import {
   Copy,
   Search,
   X,
-  Brain,
   Cpu,
-  GitBranch,
-  Sparkles,
   Sliders,
   Download,
-  Code2,
   Terminal,
   ExternalLink,
   FileCode,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../design-system/Button';
 
@@ -73,9 +72,6 @@ export const SqlScannerWorkspaceView: React.FC = () => {
     setScanProfile,
     concurrencyLimit,
     setConcurrencyLimit,
-    contextBeliefs,
-    dbmsBeliefs,
-    defenseLayers,
     createScanTab,
     closeScanTab,
     setActiveScanTab,
@@ -98,50 +94,59 @@ export const SqlScannerWorkspaceView: React.FC = () => {
     clearLogs,
     fetchColumnsForTable,
     fetchSampleRowsForTable,
+    lastResponse,
+    isProbing,
+    probeTargetRequest,
+    followRedirect,
+    syncSessionFromProxy,
+    navigateRenderPreview,
+    submitRenderPreviewForm,
   } = useSqlScannerStore();
 
   const { addToast } = useToastStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showGrayBoxConfig, setShowGrayBoxConfig] = useState(false);
+  const [showVectorsSection, setShowVectorsSection] = useState(false);
   const [expandedSystemTables, setExpandedSystemTables] = useState(false);
   const [expandedAppTables, setExpandedAppTables] = useState(true);
   const [expandedTableMap, setExpandedTableMap] = useState<Record<string, boolean>>({});
   const [requestViewMode, setRequestViewMode] = useState<'pretty' | 'raw'>('raw');
+  const [responseViewMode, setResponseViewMode] = useState<'pretty' | 'raw' | 'headers' | 'render'>('pretty');
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabTitle, setEditingTabTitle] = useState('');
-  const [godRailSection, setGodRailSection] = useState<'ladder' | 'belief' | 'studio'>('ladder');
-  const [studioPayload, setStudioPayload] = useState<string>("' UNION SELECT username, password FROM users--");
-  const [studioTargetWaf, setStudioTargetWaf] = useState<string>('cloudflare');
-  const [studioSelectedTransforms, setStudioSelectedTransforms] = useState<string[]>(['E1_INLINE_COMMENT_SPACE']);
-  const [studioCategoryFilter, setStudioCategoryFilter] = useState<'all' | 'recommended' | 'comment' | 'whitespace' | 'encoding' | 'case' | 'ast_equivalence'>('all');
   const [selectedRemediationFramework, setSelectedRemediationFramework] = useState<string>('all');
   const [showSiteMap, setShowSiteMap] = useState<boolean>(true);
 
-  // Automatic WAF and Transform Inspection from active HTTP Request Wire
-  const detectedWafAnalysis = useMemo(() => {
-    return MetamorphicStudio.detectWafFromRequest(targetConfig.rawRequest, targetConfig.url);
-  }, [targetConfig.rawRequest, targetConfig.url]);
-
-  // Reactive auto-selection when raw request changes
+  // Live interactive bridge: intercept links and form submissions from the rendered preview iframe
   useEffect(() => {
-    if (detectedWafAnalysis.detectedWaf) {
-      setStudioTargetWaf(detectedWafAnalysis.detectedWaf);
-      if (detectedWafAnalysis.recommendedTransforms.length > 0) {
-        setStudioSelectedTransforms(detectedWafAnalysis.recommendedTransforms);
+    const handleIframeMessage = async (event: MessageEvent) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type === 'SENTINEL_IFRAME_NAVIGATE') {
+        const targetUrl = event.data.url;
+        if (targetUrl) {
+          addToast({
+            type: 'info',
+            title: 'Navigating Preview',
+            description: `Loading ${targetUrl} via Sentinel...`,
+          });
+          await navigateRenderPreview(targetUrl);
+        }
+      } else if (event.data.type === 'SENTINEL_IFRAME_SUBMIT') {
+        const { action, method, body } = event.data;
+        if (action) {
+          addToast({
+            type: 'info',
+            title: 'Submitting Form',
+            description: `${method || 'POST'} ${action} dispatching with captured inputs...`,
+          });
+          await submitRenderPreviewForm(action, method || 'POST', body || '');
+        }
       }
-    }
-  }, [detectedWafAnalysis.detectedWaf, targetConfig.rawRequest]);
+    };
 
-  const handleAutoDetectTransforms = () => {
-    const analysis = MetamorphicStudio.detectWafFromRequest(targetConfig.rawRequest, targetConfig.url);
-    setStudioTargetWaf(analysis.detectedWaf);
-    setStudioSelectedTransforms(analysis.recommendedTransforms);
-    addToast({
-      type: 'success',
-      title: `Auto-Selected for ${analysis.wafDisplayName}`,
-      description: `Applied ${analysis.recommendedTransforms.length} optimal transforms based on active HTTP request inspection.`,
-    });
-  };
+    window.addEventListener('message', handleIframeMessage);
+    return () => window.removeEventListener('message', handleIframeMessage);
+  }, [navigateRenderPreview, submitRenderPreviewForm, addToast]);
 
   const selectedTable =
     catalog.applicationTables.find((t) => t.id === selectedCatalogTableId) ||
@@ -155,6 +160,35 @@ export const SqlScannerWorkspaceView: React.FC = () => {
 
   const selectedExecutionLog =
     executionLogs.find((l) => l.id === selectedExecutionLogId) || executionLogs[0];
+
+  const activeFinding =
+    findings.find((f) => f.parameterName === catalog.injectableParamName) ||
+    findings[0];
+
+  const copyRowsAsJson = (rows: Record<string, string>[]) => {
+    navigator.clipboard.writeText(JSON.stringify(rows, null, 2));
+    addToast({ type: 'success', title: `Copied ${rows.length} rows as JSON!` });
+  };
+
+  const copyRowsAsCsv = (rows: Record<string, string>[]) => {
+    if (rows.length === 0) return;
+    const headers = Object.keys(rows[0]);
+    const lines = [headers.join(',')];
+    for (const r of rows) {
+      lines.push(headers.map((h) => `"${(r[h] || '').replace(/"/g, '""')}"`).join(','));
+    }
+    navigator.clipboard.writeText(lines.join('\n'));
+    addToast({ type: 'success', title: `Copied ${rows.length} rows as CSV!` });
+  };
+
+  const copyCredentials = (rows: Record<string, string>[]) => {
+    if (rows.length === 0) return;
+    const userCol = Object.keys(rows[0]).find((k) => /user|login|account|name/i.test(k)) || Object.keys(rows[0])[0];
+    const passCol = Object.keys(rows[0]).find((k) => /pass|pwd|secret|hash/i.test(k)) || Object.keys(rows[0])[1];
+    const lines = rows.map((r) => `${r[userCol] || 'admin'}:${r[passCol] || ''}`);
+    navigator.clipboard.writeText(lines.join('\n'));
+    addToast({ type: 'success', title: `Copied ${lines.length} credential pairs (user:pass)!` });
+  };
 
   const toggleTableExpand = (tableId: string) => {
     setExpandedTableMap((prev) => ({
@@ -436,25 +470,6 @@ export const SqlScannerWorkspaceView: React.FC = () => {
     });
   };
 
-  // Dynamic metrics for Bayesian Beliefs
-  const dynamicShannonEntropy = (contextBeliefs || []).reduce(
-    (acc, c) => acc + (c.probability > 0 ? -c.probability * Math.log2(c.probability) : 0),
-    0
-  );
-  const leadingContextItem = (contextBeliefs || []).find((c) => c.isLeading) || (contextBeliefs || [])[0];
-  const leadingDbmsItem = dbmsFingerprint.dbms !== 'Unknown'
-    ? { name: dbmsFingerprint.dbms, probability: 1.0 }
-    : ((dbmsBeliefs || []).find((d) => d.isLeading) || (dbmsBeliefs || [])[0]);
-
-  const dynamicConfidenceLabel = findings.length > 0
-    ? `Vulnerable (${findings[0].confidenceScore || 98}% Confirmed)`
-    : scanState === 'running'
-    ? `Active Probing (${((leadingContextItem?.probability || 0.5) * 100).toFixed(1)}% Posterior)`
-    : scanState === 'aborted'
-    ? 'Scan Aborted by Operator'
-    : scanState === 'completed'
-    ? 'Probed Negative (0% Posterior)'
-    : 'Prior Distribution (Idle)';
 
   return (
     <div className="flex flex-col h-full bg-[#0a0c10] text-text-primary select-none overflow-hidden font-sans">
@@ -631,13 +646,14 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                 setScanProfile(e.target.value as any);
                 addToast({ type: 'info', title: `Applied Scan Profile: ${e.target.value}` });
               }}
+              style={{ colorScheme: 'dark' }}
               className="bg-[#0a0c10] text-purple-300 border border-border-subtle rounded px-2 py-0.5 text-[11px] font-bold outline-none cursor-pointer hover:border-purple-400/60"
             >
-              <option value="deep_forensic">🔬 Deep Forensic Audit (L1-L17 Full)</option>
-              <option value="ultra_stealth">🥷 Ultra-Stealth (Ghost Jitter μ=3.5s)</option>
-              <option value="fast_triage">⚡ Fast Triage (High-Value Vectors)</option>
-              <option value="smt_strict">📐 SMT Strict (Formal Proof Only)</option>
-              <option value="hyper_turbo">🚀 Hyper-Turbo (100 Workers, 0ms Delay)</option>
+              <option value="deep_forensic" className="bg-[#2b2d30] text-[#dfdfdf]">🔬 Deep Forensic Audit (L1-L17 Full)</option>
+              <option value="ultra_stealth" className="bg-[#2b2d30] text-[#dfdfdf]">🥷 Ultra-Stealth (Ghost Jitter μ=3.5s)</option>
+              <option value="fast_triage" className="bg-[#2b2d30] text-[#dfdfdf]">⚡ Fast Triage (High-Value Vectors)</option>
+              <option value="smt_strict" className="bg-[#2b2d30] text-[#dfdfdf]">📐 SMT Strict (Formal Proof Only)</option>
+              <option value="hyper_turbo" className="bg-[#2b2d30] text-[#dfdfdf]">🚀 Hyper-Turbo (100 Workers, 0ms Delay)</option>
             </select>
           </div>
 
@@ -653,14 +669,15 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                 setConcurrencyLimit(val);
                 addToast({ type: 'info', title: `Scan Concurrency: ${val} Workers` });
               }}
+              style={{ colorScheme: 'dark' }}
               className="bg-[#0a0c10] text-amber-300 border border-border-subtle rounded px-1.5 py-0.5 text-[11px] font-bold outline-none cursor-pointer hover:border-amber-400/60"
             >
-              <option value="1">1 (Stealth)</option>
-              <option value="5">5 (Conservative)</option>
-              <option value="10">10 (Balanced)</option>
-              <option value="25">25 (Fast Triage)</option>
-              <option value="50">50 (High-Yield)</option>
-              <option value="100">100 (Hyper-Max)</option>
+              <option value="1" className="bg-[#2b2d30] text-[#dfdfdf]">1 (Stealth)</option>
+              <option value="5" className="bg-[#2b2d30] text-[#dfdfdf]">5 (Conservative)</option>
+              <option value="10" className="bg-[#2b2d30] text-[#dfdfdf]">10 (Balanced)</option>
+              <option value="25" className="bg-[#2b2d30] text-[#dfdfdf]">25 (Fast Triage)</option>
+              <option value="50" className="bg-[#2b2d30] text-[#dfdfdf]">50 (High-Yield)</option>
+              <option value="100" className="bg-[#2b2d30] text-[#dfdfdf]">100 (Hyper-Max)</option>
             </select>
           </div>
 
@@ -800,9 +817,10 @@ export const SqlScannerWorkspaceView: React.FC = () => {
         {/* SITE MAP & PROXY SINK EXPLORER SIDEBAR */}
         {showSiteMap && <ProxyTargetSiteMap />}
 
-        {/* LEFT PANE: Request & Vector Importer (380px) */}
-        <div className="w-96 border-r border-border-subtle flex flex-col bg-bg-panel flex-shrink-0">
-          <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated">
+        {/* LEFT PANE: Request, Response & Vector Importer (400px) */}
+        <div className="w-[420px] border-r border-border-subtle flex flex-col bg-bg-panel flex-shrink-0 overflow-hidden">
+          {/* 1. Request Header */}
+          <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated flex-shrink-0">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowSiteMap(!showSiteMap)}
@@ -835,6 +853,61 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                 Pretty
               </button>
               <button
+                onClick={() => {
+                  let host = '';
+                  try {
+                    if (targetConfig.url) host = new URL(targetConfig.url).host;
+                  } catch {}
+                  if (!host) {
+                    for (const l of targetConfig.rawRequest.split(/\r?\n/)) {
+                      if (l.toLowerCase().startsWith('host:')) {
+                        host = l.substring(5).trim();
+                        break;
+                      }
+                    }
+                  }
+                  const txs = useTrafficStore.getState().transactions.filter((t: any) => !host || t.host === host);
+                  const latestTx = txs[txs.length - 1];
+                  if (latestTx) {
+                    const method = latestTx.method || 'GET';
+                    const path = latestTx.path || '/';
+                    const txHost = latestTx.host || host || 'target.local';
+                    const headersStr = latestTx.reqHeaders
+                      ? latestTx.reqHeaders.map((h: any) => `${h.name}: ${h.value}`).join('\r\n')
+                      : `Host: ${txHost}\r\nUser-Agent: Sentinel/6.0`;
+                    const bodyStr = latestTx.reqBody || '';
+                    const raw = `${method} ${path} HTTP/1.1\r\n${headersStr}\r\n\r\n${bodyStr}`;
+                    setRawRequest(raw);
+                    probeTargetRequest(raw);
+                    addToast({
+                      type: 'success',
+                      title: 'Browser Session Synced',
+                      description: `Loaded latest ${method} ${path} with your active browser cookies!`,
+                    });
+                  } else {
+                    addToast({
+                      type: 'info',
+                      title: 'No Browser Traffic Captured',
+                      description: 'Browse the site in the Sentinel browser to capture your session.',
+                    });
+                  }
+                }}
+                className="px-2 py-0.5 text-[10px] font-mono rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1 transition-all shadow-sm"
+                title="Sync the latest authenticated request & cookies from your Sentinel browser session"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                <span>Sync Browser</span>
+              </button>
+              <button
+                onClick={() => probeTargetRequest()}
+                disabled={isProbing}
+                title="Send live probe request to target"
+                className="px-2 py-0.5 text-[10px] font-mono rounded bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20 flex items-center gap-1 border border-accent-cyan/30 disabled:opacity-50 font-bold transition-colors"
+              >
+                <Zap className={`w-2.5 h-2.5 ${isProbing ? 'animate-spin' : 'fill-current'}`} />
+                {isProbing ? 'Probing...' : 'Probe'}
+              </button>
+              <button
                 onClick={() => handleSendToRepeater(targetConfig.rawRequest, undefined, 'Target Request')}
                 title="Send target request to Repeater"
                 className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-[#12151c] text-accent-cyan hover:text-white flex items-center gap-1 border border-border-subtle"
@@ -844,25 +917,360 @@ export const SqlScannerWorkspaceView: React.FC = () => {
             </div>
           </div>
 
-          {/* Request Textarea - Clean dark styling */}
-          <div className="p-2 border-b border-border-subtle flex-1 flex flex-col min-h-[160px] bg-[#0c0e14]">
+          {/* Request Textarea */}
+          <div className="p-2 border-b border-border-subtle flex flex-col h-44 flex-shrink-0 bg-[#0c0e14]">
             <textarea
               value={targetConfig.rawRequest}
               onChange={(e) => setRawRequest(e.target.value)}
               disabled={scanState === 'running'}
               placeholder="Paste raw HTTP request here..."
-              className="w-full flex-1 bg-[#12151c] p-2.5 font-mono text-xs rounded border border-border-subtle resize-none text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-cyan leading-relaxed"
+              className="w-full h-full bg-[#12151c] p-2.5 font-mono text-xs rounded border border-border-subtle resize-none text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-cyan leading-relaxed"
               spellCheck={false}
             />
           </div>
 
-          {/* Candidate Parameters Table */}
-          <div className="h-64 flex flex-col border-b border-border-subtle">
-            <div className="h-8 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated">
-              <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider text-[10px]">
-                Vectors ({targetConfig.parameters.length})
-              </span>
+          {/* 2. HTTP Response Viewer - Displayed Directly Below Request */}
+            {/* 2. HTTP Response Viewer - Displayed Directly Below Request */}
+            {(() => {
+              const redirectLoc = extractRedirectLocation(lastResponse, targetConfig.url);
+              return (
+                <div className="flex-1 flex flex-col min-h-[180px] border-b border-border-subtle bg-[#080a0f] overflow-hidden">
+                  <div className="h-8 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider text-[10px] flex items-center gap-1">
+                        <Activity className="w-3 h-3 text-emerald-400" /> Response
+                      </span>
+                      {lastResponse && (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                            lastResponse.statusCode >= 200 && lastResponse.statusCode < 300
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                              : lastResponse.statusCode >= 300 && lastResponse.statusCode < 400
+                              ? 'bg-cyan-950 text-cyan-300 border-cyan-500/40'
+                              : lastResponse.statusCode >= 400 && lastResponse.statusCode < 500
+                              ? 'bg-amber-950 text-amber-300 border-amber-500/40'
+                              : 'bg-rose-950 text-rose-300 border-rose-500/40'
+                          }`}
+                        >
+                          {lastResponse.statusCode > 0 ? `${lastResponse.statusCode} ${lastResponse.statusText}` : 'Error'}
+                        </span>
+                      )}
+                      {lastResponse && lastResponse.durationMs > 0 && (
+                        <span className="text-[9px] text-text-muted font-mono">
+                          {lastResponse.durationMs}ms
+                        </span>
+                      )}
+                      {redirectLoc && (
+                        <button
+                          onClick={() => followRedirect(redirectLoc)}
+                          className="px-2 py-0.5 text-[9px] font-mono rounded bg-accent-cyan/20 text-accent-cyan hover:bg-accent-cyan/30 border border-accent-cyan/50 flex items-center gap-1 font-bold transition-all shadow-sm cursor-pointer"
+                          title={`Follow redirect to ${redirectLoc}`}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                          Follow ➔
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setResponseViewMode('pretty')}
+                        className={`px-1.5 py-0.5 text-[9px] font-mono rounded ${
+                          responseViewMode === 'pretty' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted hover:text-white'
+                        }`}
+                      >
+                        Pretty
+                      </button>
+                      <button
+                        onClick={() => setResponseViewMode('raw')}
+                        className={`px-1.5 py-0.5 text-[9px] font-mono rounded ${
+                          responseViewMode === 'raw' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted hover:text-white'
+                        }`}
+                      >
+                        Raw
+                      </button>
+                      <button
+                        onClick={() => setResponseViewMode('headers')}
+                        className={`px-1.5 py-0.5 text-[9px] font-mono rounded ${
+                          responseViewMode === 'headers' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted hover:text-white'
+                        }`}
+                      >
+                        Headers ({lastResponse?.headers?.length || 0})
+                      </button>
+                      <button
+                        onClick={() => setResponseViewMode('render')}
+                        className={`px-1.5 py-0.5 text-[9px] font-mono rounded transition-colors ${
+                          responseViewMode === 'render'
+                            ? 'bg-accent-cyan/20 text-accent-cyan font-bold border border-accent-cyan/40'
+                            : 'text-text-muted hover:text-accent-cyan'
+                        }`}
+                        title="Render live HTML website preview"
+                      >
+                        Render
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Redirect & Authentication Banner */}
+                  {redirectLoc && (
+                    <div className="px-3 py-1.5 bg-[#0f1420] border-b border-accent-cyan/30 flex items-center justify-between text-xs font-mono select-none flex-shrink-0 gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-text-muted truncate min-w-0 flex-1">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
+                        <span className="truncate">Redirected to: <strong className="text-accent-cyan">{redirectLoc}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => followRedirect(redirectLoc)}
+                          className="px-2.5 py-0.5 rounded bg-accent-cyan text-black font-bold text-[10px] hover:bg-accent-cyan/90 transition-colors flex items-center gap-1 flex-shrink-0 cursor-pointer shadow-sm"
+                          title="Fetch and display destination landing page"
+                        >
+                          Follow Redirect ➔
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await ipcClient.launchSystemBrowser(redirectLoc, 8085);
+                              useToastStore.getState().addToast({
+                                type: 'success',
+                                title: 'Proxy Browser Launched',
+                                description: `Browser opened to ${redirectLoc} via 127.0.0.1:8085. Log in with your credentials, then click "Sync Cookies".`,
+                              });
+                            } catch (e: any) {
+                              useToastStore.getState().addToast({
+                                type: 'error',
+                                title: 'Launch Failed',
+                                description: e?.message || 'Could not launch browser',
+                              });
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                          title="Launch browser via Sentinel proxy (127.0.0.1:8085) to log into the portal and capture authenticated sessions"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>Login via Browser</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const count = syncSessionFromProxy();
+                            if (count > 0) {
+                              useToastStore.getState().addToast({
+                                type: 'success',
+                                title: 'Cookies Synced',
+                                description: `Injected ${count} live session cookies from proxy into scanner request!`,
+                              });
+                            } else {
+                              useToastStore.getState().addToast({
+                                type: 'info',
+                                title: 'No Proxy Cookies Found',
+                                description: 'Log into the portal using "Login via Browser" first to capture session cookies.',
+                              });
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                          title="Sync active session cookies captured by the proxy for this host"
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-purple-400" />
+                          <span>Sync Cookies</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+            {/* Response Body Area */}
+            <div className="flex-1 overflow-y-auto bg-[#0a0c10] select-text">
+              {isProbing ? (
+                <div className="h-full flex flex-col items-center justify-center p-6 text-center space-y-2">
+                  <div className="w-5 h-5 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-text-muted font-mono">Probing target endpoint & capturing response...</span>
+                </div>
+              ) : lastResponse ? (
+                responseViewMode === 'headers' ? (
+                  <div className="p-2 space-y-1 font-mono text-[11px]">
+                    {lastResponse.headers && lastResponse.headers.length > 0 ? (
+                      lastResponse.headers.map((h, i) => (
+                        <div key={i} className="flex gap-2 border-b border-border-subtle/30 pb-0.5">
+                          <span className="text-cyan-400 font-bold flex-shrink-0">{h.name}:</span>
+                          <span className="text-text-primary break-all">{h.value}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-text-muted italic p-2 text-xs">No response headers recorded</div>
+                    )}
+                  </div>
+                ) : responseViewMode === 'raw' ? (
+                  <pre className="p-2.5 font-mono text-xs text-text-primary whitespace-pre-wrap break-all leading-relaxed">
+                    {lastResponse.rawResponse || `HTTP/1.1 ${lastResponse.statusCode} ${lastResponse.statusText}\n\n${lastResponse.body}`}
+                  </pre>
+                ) : responseViewMode === 'render' ? (
+                  <div className="flex flex-col h-full bg-white overflow-hidden relative min-h-[220px]">
+                    <div className="flex items-center justify-between px-2.5 py-1 bg-[#12151c] border-b border-border-subtle text-[10px] font-mono select-none flex-wrap gap-1">
+                      <span className="text-text-muted flex items-center gap-1.5 truncate">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan" />
+                        Sandboxed HTML Render (Interactive)
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            const count = syncSessionFromProxy();
+                            if (count > 0) {
+                              useToastStore.getState().addToast({
+                                type: 'success',
+                                title: 'Cookies Synced',
+                                description: `Injected ${count} live session cookies from proxy!`,
+                              });
+                            } else {
+                              useToastStore.getState().addToast({
+                                type: 'info',
+                                title: 'No Proxy Cookies Found',
+                                description: 'Log into the portal using "Login via Browser" first.',
+                              });
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[9px] font-bold flex items-center gap-1 transition-all"
+                          title="Sync cookies from Sentinel proxy"
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-purple-400" />
+                          <span>Sync Cookies</span>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const dest = redirectLoc || targetConfig.url;
+                              await ipcClient.launchSystemBrowser(dest, 8085);
+                              useToastStore.getState().addToast({
+                                type: 'success',
+                                title: 'Proxy Browser Launched',
+                                description: `Navigating to ${dest} via Sentinel Proxy (127.0.0.1:8085). Log in to harvest session.`,
+                              });
+                            } catch (e: any) {
+                              useToastStore.getState().addToast({
+                                type: 'error',
+                                title: 'Launch Failed',
+                                description: e?.message || 'Could not launch browser',
+                              });
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[9px] font-bold flex items-center gap-1 transition-all"
+                          title="Open in system browser via Sentinel proxy to authenticate"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>Browser Login</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const blob = new Blob(
+                              [generateRenderablePreviewHtml(lastResponse.body || lastResponse.rawResponse || '', undefined, targetConfig.url)],
+                              { type: 'text/html' }
+                            );
+                            const blobUrl = URL.createObjectURL(blob);
+                            window.open(blobUrl, '_blank');
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#1a1d24] border border-border-subtle hover:border-accent-cyan text-accent-cyan text-[10px] transition-colors flex items-center gap-1"
+                          title="Open rendered page in new browser window"
+                        >
+                          Full Window ↗
+                        </button>
+                      </div>
+                    </div>
+                    {(() => {
+                      const isChallenge =
+                        lastResponse.body &&
+                        (/Please wait while your request is being verified|cf-turnstile|just a moment|checking your browser|attention required.*cloudflare/i.test(lastResponse.body) ||
+                         (lastResponse.statusCode === 403 && /cloudflare|waf|imperva|challenge/i.test(lastResponse.body)));
+                      if (!isChallenge) return null;
+                      return (
+                        <div className="bg-amber-950/70 border-b border-amber-500/50 px-3 py-1.5 flex items-center justify-between text-[11px] font-mono text-amber-200 z-10 flex-wrap gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <ShieldAlert className="w-4 h-4 text-amber-400 animate-pulse flex-shrink-0" />
+                            <span><strong>Anti-Bot Challenge Active:</strong> Browser verification required to pass WAF.</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={async () => {
+                                const dest = redirectLoc || targetConfig.url;
+                                await ipcClient.launchSystemBrowser(dest, 8085);
+                                useToastStore.getState().addToast({
+                                  type: 'info',
+                                  title: 'Proxy Browser Launched',
+                                  description: 'Solve the verification check in Chrome/Edge, then click Sync Clearance.',
+                                });
+                              }}
+                              className="px-2 py-0.5 rounded bg-amber-500/30 hover:bg-amber-500/50 text-amber-200 border border-amber-500/50 text-[10px] font-bold flex items-center gap-1 transition-all"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Solve in Browser ➔</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                const count = syncSessionFromProxy();
+                                if (count > 0) {
+                                  useToastStore.getState().addToast({
+                                    type: 'success',
+                                    title: 'Clearance Token Synced',
+                                    description: `Injected ${count} live cookies! Re-rendering target...`,
+                                  });
+                                  probeTargetRequest();
+                                } else {
+                                  useToastStore.getState().addToast({
+                                    type: 'warning',
+                                    title: 'No Token Found',
+                                    description: 'Complete the verification in the browser window first.',
+                                  });
+                                }
+                              }}
+                              className="px-2 py-0.5 rounded bg-purple-500/30 hover:bg-purple-500/50 text-purple-200 border border-purple-500/50 text-[10px] font-bold flex items-center gap-1 transition-all"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>Sync Clearance</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <div className="flex-1 w-full h-full bg-white relative">
+                      <iframe
+                        title="Response HTML Preview"
+                        srcDoc={generateRenderablePreviewHtml(lastResponse.body || lastResponse.rawResponse || '', undefined, targetConfig.url)}
+                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                        className="w-full h-full border-0 bg-white"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <pre className="p-2.5 font-mono text-xs text-text-primary whitespace-pre-wrap break-all leading-relaxed">
+                    {lastResponse.body || '(Empty Response Body)'}
+                  </pre>
+                )
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center p-6 text-center space-y-2 text-text-muted">
+                  <Activity className="w-6 h-6 text-text-muted/40" />
+                  <span className="text-xs font-mono">No live response recorded yet.</span>
+                  <button
+                    onClick={() => probeTargetRequest()}
+                    className="px-2.5 py-1 text-[11px] font-mono rounded bg-[#161a24] hover:bg-[#1e2330] text-accent-cyan border border-border-subtle transition-colors flex items-center gap-1.5 mt-1"
+                  >
+                    <Zap className="w-3 h-3 fill-current" /> Probe Endpoint Now
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+          {/* 3. Collapsible Candidate Parameters Table */}
+          <div className="border-b border-border-subtle flex-shrink-0">
+            <div
+              onClick={() => setShowVectorsSection(!showVectorsSection)}
+              className="h-8 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated cursor-pointer hover:bg-bg-panel-elevated/80 transition-colors"
+            >
               <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider text-[10px]">
+                  Vectors ({targetConfig.parameters.length})
+                </span>
+                <ChevronDown className={`w-3 h-3 text-text-muted transition-transform duration-200 ${showVectorsSection ? 'rotate-180' : ''}`} />
+              </div>
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => toggleAllParameters(true)}
                   className="text-[10px] text-accent-cyan hover:underline"
@@ -878,45 +1286,47 @@ export const SqlScannerWorkspaceView: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-border-subtle font-mono text-xs">
-              {targetConfig.parameters.length === 0 ? (
-                <div className="p-4 text-center text-text-muted text-xs italic">
-                  No parameters detected. Paste or import a request with query/body/cookie parameters.
-                </div>
-              ) : (
-                targetConfig.parameters.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => toggleParameter(p.id)}
-                    className={`p-2 flex items-center justify-between cursor-pointer transition-colors ${
-                      p.enabled
-                        ? 'bg-bg-panel hover:bg-bg-panel-hover text-text-primary'
-                        : 'bg-[#0c0e14]/50 text-text-muted line-through'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <input
-                        type="checkbox"
-                        checked={p.enabled}
-                        onChange={() => {}}
-                        className="rounded border-border-subtle text-accent-cyan focus:ring-0"
-                      />
-                      <span className="font-bold text-white truncate">{p.name}</span>
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-[#12151c] text-text-muted">
-                        {p.location}
+            {showVectorsSection && (
+              <div className="max-h-48 overflow-y-auto divide-y divide-border-subtle font-mono text-xs">
+                {targetConfig.parameters.length === 0 ? (
+                  <div className="p-3 text-center text-text-muted text-xs italic">
+                    No parameters detected.
+                  </div>
+                ) : (
+                  targetConfig.parameters.map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => toggleParameter(p.id)}
+                      className={`p-1.5 px-3 flex items-center justify-between cursor-pointer transition-colors ${
+                        p.enabled
+                          ? 'bg-bg-panel hover:bg-bg-panel-hover text-text-primary'
+                          : 'bg-[#0c0e14]/50 text-text-muted line-through'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <input
+                          type="checkbox"
+                          checked={p.enabled}
+                          onChange={() => {}}
+                          className="rounded border-border-subtle text-accent-cyan focus:ring-0"
+                        />
+                        <span className="font-bold text-white truncate">{p.name}</span>
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-[#12151c] text-text-muted">
+                          {p.location}
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-emerald-400 font-semibold px-1 py-0.2 rounded bg-emerald-950/40 border border-emerald-500/20">
+                        {p.detectedContext || 'string'}
                       </span>
                     </div>
-                    <span className="text-[10px] text-emerald-400 font-semibold px-1 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/20">
-                      {p.detectedContext || 'string'}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Gray-Box & IAST Boundary Engine Panel */}
-          <div className="border-t border-border-subtle bg-bg-panel-elevated/40">
+          {/* 4. Gray-Box & IAST Boundary Engine Panel */}
+          <div className="border-t border-border-subtle bg-bg-panel-elevated/40 flex-shrink-0">
             <div
               onClick={() => setShowGrayBoxConfig(!showGrayBoxConfig)}
               className="p-2 px-3 flex items-center justify-between cursor-pointer hover:bg-bg-panel-elevated transition-colors"
@@ -955,12 +1365,13 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                       <select
                         value={targetConfig.grayBoxConfig?.mode || 'hybrid'}
                         onChange={(e) => setGrayBoxConfig({ mode: e.target.value as any })}
+                        style={{ colorScheme: 'dark' }}
                         className="bg-[#0a0c10] text-fuchsia-300 border border-border-subtle rounded px-1.5 py-0.5 text-[10px]"
                       >
-                        <option value="hybrid">Hybrid Full Spectrum</option>
-                        <option value="iast_only">IAST Air-Gap Only</option>
-                        <option value="dom_only">DOM WebCrypto Only</option>
-                        <option value="macro_only">Macro 2FA Only</option>
+                        <option value="hybrid" className="bg-[#2b2d30] text-[#dfdfdf]">Hybrid Full Spectrum</option>
+                        <option value="iast_only" className="bg-[#2b2d30] text-[#dfdfdf]">IAST Air-Gap Only</option>
+                        <option value="dom_only" className="bg-[#2b2d30] text-[#dfdfdf]">DOM WebCrypto Only</option>
+                        <option value="macro_only" className="bg-[#2b2d30] text-[#dfdfdf]">Macro 2FA Only</option>
                       </select>
                     </div>
 
@@ -1021,7 +1432,7 @@ export const SqlScannerWorkspaceView: React.FC = () => {
           </div>
 
           {/* Safety Status Pill */}
-          <div className="p-2.5 bg-bg-panel-elevated flex items-center justify-between text-[11px] font-mono">
+          <div className="p-2.5 bg-bg-panel-elevated flex items-center justify-between text-[11px] font-mono flex-shrink-0">
             <span className="text-text-muted flex items-center gap-1">
               <Shield className="w-3.5 h-3.5 text-emerald-400" /> Non-Destructive
             </span>
@@ -1033,36 +1444,18 @@ export const SqlScannerWorkspaceView: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0c10] overflow-hidden">
           {/* Sub-navigation Tabs */}
           <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setActiveTab('god_rail' as any)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors ${
-                  activeTab === ('god_rail' as any) ||
-                  activeTab === ('trigraph' as any) ||
-                  activeTab === ('belief' as any) ||
-                  activeTab === ('knowledge' as any) ||
-                  activeTab === ('ai_copilot' as any)
-                    ? 'bg-bg-panel-elevated text-accent-cyan border border-accent-cyan/50 font-bold shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5 text-accent-cyan" /> ⚡ Pipeline & Engine
-                <span className="px-1.5 py-0.2 rounded-full bg-accent-cyan/20 text-accent-cyan text-[10px] font-mono font-bold">
-                  9 Stages
-                </span>
-              </button>
-
+            <div className="flex items-center gap-1.5 py-1">
               <button
                 onClick={() => setActiveTab('database')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                className={`px-3 py-1 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-all duration-150 ${
                   activeTab === 'database'
-                    ? 'bg-bg-panel-elevated text-white border border-border-subtle font-bold'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+                    : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
                 }`}
               >
-                <Database className="w-3.5 h-3.5 text-accent-cyan" /> Database Explorer
+                <Database className="w-3.5 h-3.5 text-emerald-400" /> Database Explorer
                 {catalog.applicationTables.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-accent-cyan/20 text-accent-cyan text-[10px] font-mono">
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/40 text-[10px] font-mono">
                     {catalog.applicationTables.length}
                   </span>
                 )}
@@ -1070,15 +1463,15 @@ export const SqlScannerWorkspaceView: React.FC = () => {
 
               <button
                 onClick={() => setActiveTab('logs')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                className={`px-3 py-1 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-all duration-150 ${
                   activeTab === 'logs'
-                    ? 'bg-bg-panel-elevated text-white border border-border-subtle font-bold'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+                    : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
                 }`}
               >
                 <Activity className="w-3.5 h-3.5 text-amber-400" /> Payload Engine Log
                 {executionLogs.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-bg-panel text-text-muted text-[10px] font-mono">
+                  <span className="px-1.5 py-0.2 rounded-full bg-[#141517] text-[#9da5b4] text-[10px] font-mono border border-[#313438]">
                     {executionLogs.length}
                   </span>
                 )}
@@ -1086,21 +1479,26 @@ export const SqlScannerWorkspaceView: React.FC = () => {
 
               <button
                 onClick={() => setActiveTab('vulnerabilities')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                className={`px-3 py-1 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-all duration-150 ${
                   activeTab === 'vulnerabilities' || activeTab === ('causal' as any)
-                    ? 'bg-bg-panel-elevated text-white border border-border-subtle font-bold'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+                    : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
                 }`}
               >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> Findings & Proofs ({findings.length})
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> Findings & Proofs
+                {findings.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-300 border border-rose-800/40 text-[10px] font-mono font-bold">
+                    {findings.length}
+                  </span>
+                )}
               </button>
 
               <button
                 onClick={() => setActiveTab('report')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                className={`px-3 py-1 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-all duration-150 ${
                   activeTab === 'report'
-                    ? 'bg-bg-panel-elevated text-white border border-border-subtle font-bold'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+                    : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5 text-emerald-400" /> Final Report
@@ -1108,857 +1506,8 @@ export const SqlScannerWorkspaceView: React.FC = () => {
             </div>
           </div>
 
-          {/* UNIFIED TAB 0: GOD-RAIL (v20) COGNITIVE INTELLIGENCE MATRIX (ALL-IN-ONE) */}
-          {(activeTab === ('god_rail' as any) ||
-            activeTab === ('trigraph' as any) ||
-            activeTab === ('belief' as any) ||
-            activeTab === ('knowledge' as any) ||
-            activeTab === ('ai_copilot' as any)) && (
-            <div className="flex-1 flex flex-col overflow-y-auto p-4 space-y-4 bg-[#080a0f] font-mono text-xs">
-              {/* REAL-TIME DATA DISCOVERY NOTIFICATION BANNER */}
-              {(catalog.applicationTables.length > 0 || findings.length > 0) && (
-                <div className="p-3.5 rounded-lg bg-gradient-to-r from-emerald-950/80 via-cyan-950/60 to-bg-panel border border-emerald-500/50 shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fade-in">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                      <Database className="w-5 h-5 animate-pulse" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-sm text-white">
-                          🎯 Active Extraction Succeeded: {catalog.applicationTables.length} Table(s) Discovered
-                        </span>
-                        {findings.length > 0 && (
-                          <span className="px-2 py-0.5 rounded bg-rose-950/80 text-rose-300 font-bold border border-rose-500/40 text-[10px]">
-                            {findings.length} Finding(s) Proved
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-text-muted">
-                        <span>Extracted:</span>
-                        {catalog.applicationTables.slice(0, 6).map((tbl) => (
-                          <span key={tbl.id} className="px-1.5 py-0.2 rounded bg-[#12151c] text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                            {tbl.name} {tbl.columns.length > 0 ? `(${tbl.columns.length} cols)` : ''}
-                          </span>
-                        ))}
-                        {catalog.applicationTables.length > 6 && (
-                          <span className="text-[10px] text-text-muted">+{catalog.applicationTables.length - 6} more</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => setActiveTab('database')}
-                      className="font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-500 text-white"
-                    >
-                      <Database className="w-3.5 h-3.5" /> OPEN DATABASE EXPLORER
-                    </Button>
-                    {findings.length > 0 && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setActiveTab('vulnerabilities')}
-                        className="font-bold flex items-center gap-1.5"
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> View Findings
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Cockpit Overview & Tri-Plane Executive Telemetry */}
-              <div className="p-4 rounded-lg bg-bg-panel border border-accent-cyan/50 shadow-lg space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded bg-accent-cyan/10 border border-accent-cyan/30 text-accent-cyan">
-                      <Cpu className="w-6 h-6 text-accent-cyan" />
-                    </div>
-                    <div>
-                      <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
-                        ⚡ 9-STAGE AUTONOMOUS PIPELINE & SMT VERIFIER
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-accent-cyan/20 text-accent-cyan font-bold border border-accent-cyan/30">
-                          Active Engine
-                        </span>
-                      </h3>
-                      <p className="text-text-muted text-[11px]">
-                        9-Stage Monadic Autonomous Pipeline: Baseline Profiling ➔ Perimeter Shaping ➔ Context Inference ➔ Multi-Oracle Discovery ➔ Causal Invariants & TLP ➔ Gray-Box & IAST ➔ Adaptive Schema ➔ Vectorized Extraction ➔ Evidence Certification.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <div className="px-2.5 py-1 rounded bg-[#12151c] border border-border-subtle text-text-secondary">
-                      Entropy H(P): <span className="text-emerald-400 font-bold">{dynamicShannonEntropy.toFixed(2)} bits</span>
-                    </div>
-                    <div className="px-2.5 py-1 rounded bg-[#12151c] border border-border-subtle text-text-secondary">
-                      False Positive Rate: <span className="text-emerald-400 font-bold">0.00% (SMT Proved)</span>
-                    </div>
-                    <div className="px-2.5 py-1 rounded bg-[#12151c] border border-border-subtle text-text-secondary">
-                      Confidence: <span className="text-accent-cyan font-bold">{dynamicConfidenceLabel}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Subsystem Metric Quad */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-border-subtle/50 text-[11px]">
-                  <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-0.5">
-                    <span className="text-text-muted text-[10px] block font-semibold flex items-center gap-1">
-                      <Shield className="w-3 h-3 text-accent-cyan" /> STAGE 1-3: PERIMETER & CONTEXT
-                    </span>
-                    <span className="text-accent-cyan font-bold">Baseline Jitter & AST Inference</span>
-                  </div>
-                  <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-0.5">
-                    <span className="text-text-muted text-[10px] block font-semibold flex items-center gap-1">
-                      <Brain className="w-3 h-3 text-purple-400" /> STAGE 4: MULTI-ORACLE DISCOVERY
-                    </span>
-                    <span className="text-purple-400 font-bold">SPRT Wald + Diff + Polyglot</span>
-                  </div>
-                  <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-0.5">
-                    <span className="text-text-muted text-[10px] block font-semibold flex items-center gap-1">
-                      <Zap className="w-3 h-3 text-emerald-400" /> STAGE 5-6: CAUSAL & GRAY-BOX
-                    </span>
-                    <span className="text-emerald-400 font-bold">TLP Proofs & IAST Sensor</span>
-                  </div>
-                  <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-0.5">
-                    <span className="text-text-muted text-[10px] block font-semibold flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-amber-400" /> STAGE 7-9: SCHEMA & EXTRACTION
-                    </span>
-                    <span className="text-amber-400 font-bold">Adaptive Topology & Batch Dump</span>
-                  </div>
-                </div>
-
-                {/* Quick Section View Filter Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border-subtle/40">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] text-text-muted uppercase tracking-wider font-semibold mr-1">
-                      Execution Focus:
-                    </span>
-                    <button
-                      onClick={() => setGodRailSection('ladder')}
-                      className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
-                        godRailSection === 'ladder'
-                          ? 'bg-accent-cyan/20 text-accent-cyan border border-accent-cyan/50 font-bold'
-                          : 'bg-[#12151c] text-text-secondary hover:text-white border border-border-subtle'
-                      }`}
-                    >
-                      🪜 9-Stage Pipeline & SMT Proofs
-                    </button>
-                    <button
-                      onClick={() => setGodRailSection('belief')}
-                      className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
-                        godRailSection === 'belief'
-                          ? 'bg-purple-950/60 text-purple-300 border border-purple-500/50 font-bold'
-                          : 'bg-[#12151c] text-text-secondary hover:text-white border border-border-subtle'
-                      }`}
-                    >
-                      🧠 Bayesian Belief & Context ({contextBeliefs.length + dbmsBeliefs.length})
-                    </button>
-                    <button
-                      onClick={() => setGodRailSection('studio')}
-                      className={`px-3 py-1 rounded text-[11px] font-semibold transition-all ${
-                        godRailSection === 'studio'
-                          ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/50 font-bold'
-                          : 'bg-[#12151c] text-text-secondary hover:text-white border border-border-subtle'
-                      }`}
-                    >
-                      🧪 Metamorphic Studio & WAF Simulator
-                    </button>
-                  </div>
-
-                  <div className="text-[10px] text-text-muted">
-                    Leading: <span className="text-white font-bold">{leadingContextItem ? DynamicGraphEngine.formatContextName(leadingContextItem.name) : 'Pending'}</span> • <span className="text-emerald-400 font-bold">{leadingDbmsItem ? leadingDbmsItem.name : 'Unknown'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* MODULE 1: 9-STAGE MONADIC AUTONOMOUS PIPELINE & SMT PROOFS */}
-              {godRailSection === 'ladder' && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-3">
-                    <div className="flex items-center justify-between border-b border-border-subtle pb-2">
-                      <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                        <GitBranch className="w-4 h-4 text-accent-cyan" /> 9-Stage Monadic Autonomous Pipeline
-                      </span>
-                      <span className="text-[10px] text-text-muted font-mono">
-                        Perimeter Fingerprint ➔ AST Invariance ➔ Multi-Oracle ➔ Gray-Box IAST ➔ Vectorized Extraction
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                      {[
-                        { id: 'S1', name: 'Baseline Profiling', desc: 'WAF Jitter distribution, dynamic boundary & latency baseline', tech: 'Ghost Transport', color: 'text-accent-cyan' },
-                        { id: 'S2', name: 'Perimeter Profiling', desc: 'WAF signature detection, token encoding & header shaping', tech: 'Perimeter Shield', color: 'text-purple-400' },
-                        { id: 'S3', name: 'Context Inference', desc: 'AST quote escape boundaries & dialect token invariants', tech: 'AST Analysis', color: 'text-blue-400' },
-                        { id: 'S4', name: 'Multi-Oracle Discovery', desc: 'Differential boolean, Wald SPRT timing & polyglot probes', tech: 'Discovery Oracle', color: 'text-amber-400' },
-                        { id: 'S5', name: 'Causal & TLP Proofs', desc: 'Pearl do-calculus counterfactuals & SMT invariant proof', tech: 'Formal Invariant', color: 'text-emerald-400' },
-                        { id: 'S6', name: 'Gray-Box & IAST', desc: 'Air-gapped sinks, DOM WebCrypto & 2FA macro workflows', tech: 'Hybrid Sensor', color: 'text-fuchsia-400' },
-                        { id: 'S7', name: 'Adaptive Schema Enum', desc: 'Dynamic column topology mapping & dialect system catalog', tech: 'Schema Topology', color: 'text-accent-cyan' },
-                        { id: 'S8', name: 'Vectorized Extraction', desc: 'High-throughput frequency bisection & adaptive batch dump', tech: 'Batch Extract', color: 'text-emerald-400' },
-                        { id: 'S9', name: 'Evidence Synthesis', desc: 'Cryptographic proof hash, audit log & RFC executive report', tech: 'Certification', color: 'text-purple-400' },
-                      ].map((lvl, idx) => {
-                        const isPassed = scanVerdict === 'VULNERABLE' && idx < 5;
-                        const isScanning = scanState === 'running' && idx === 1;
-
-                        return (
-                          <div
-                            key={lvl.id}
-                            className={`p-2.5 rounded bg-[#12151c] border transition-all ${
-                              isScanning
-                                ? 'border-accent-cyan bg-accent-cyan/5 shadow-md animate-pulse'
-                                : isPassed
-                                ? 'border-emerald-500/50 bg-emerald-950/20'
-                                : 'border-border-subtle hover:border-border-subtle/80'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className={`font-extrabold text-[11px] font-mono ${lvl.color}`}>
-                                {lvl.id}: {lvl.name}
-                              </span>
-                              <span
-                                className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                                  isScanning
-                                    ? 'bg-accent-cyan/20 text-accent-cyan'
-                                    : isPassed
-                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                                    : 'bg-[#0a0c10] text-text-muted'
-                                }`}
-                              >
-                                {isScanning ? 'Probing' : isPassed ? 'Proved' : 'Ready'}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-text-muted mt-1 leading-snug">{lvl.desc}</p>
-                            <div className="flex items-center justify-between text-[9px] text-text-secondary mt-1.5 pt-1 border-t border-border-subtle/40">
-                              <span className="text-text-muted">Tech:</span>
-                              <span className="font-semibold text-text-primary">{lvl.tech}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Dual Formal Invariant & Metamorphic Proof Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Formal Invariants */}
-                    <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-border-subtle pb-2">
-                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                          <Shield className="w-4 h-4 text-emerald-400" /> Formal Immunity Theorems (SMT)
-                        </span>
-                        <span className="text-[10px] text-emerald-400 font-bold">Mathematical Proof</span>
-                      </div>
-
-                      <div className="space-y-2 text-[11px]">
-                        <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                          <div className="flex items-center justify-between text-white font-bold">
-                            <span>Theorem 1: Lexical Confinement</span>
-                            <span className="text-emerald-400">VERIFIED</span>
-                          </div>
-                          <p className="text-text-muted text-[10px] mt-0.5">
-                            Probe character set cannot break literal AST node boundary.
-                          </p>
-                        </div>
-
-                        <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                          <div className="flex items-center justify-between text-white font-bold">
-                            <span>Theorem 2: Type Confinement</span>
-                            <span className="text-emerald-400">VERIFIED</span>
-                          </div>
-                          <p className="text-text-muted text-[10px] mt-0.5">
-                            Strict type validation and integer/UUID parsing enforces schema safety.
-                          </p>
-                        </div>
-
-                        <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                          <div className="flex items-center justify-between text-white font-bold">
-                            <span>Theorem 3: Grammar Shape Invariance</span>
-                            <span className="text-emerald-400">VERIFIED</span>
-                          </div>
-                          <p className="text-text-muted text-[10px] mt-0.5">
-                            Tautology and contradiction yield isomorphic execution graphs.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Metamorphic TLP & Ghost Transport */}
-                    <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-border-subtle pb-2">
-                        <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                          <Zap className="w-4 h-4 text-purple-400" /> Metamorphic TLP & Ghost Transport
-                        </span>
-                        <span className="text-[10px] text-purple-400 font-bold">Zero False Positives</span>
-                      </div>
-
-                      <div className="space-y-2 text-[11px]">
-                        <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle">
-                          <span className="text-text-muted text-[10px] block font-semibold">TERNARY LOGIC PARTITIONING (TLP)</span>
-                          <p className="text-accent-cyan font-bold font-mono text-[11px] mt-0.5">
-                            |R(Q)| = |R(Q[p])| + |R(Q[¬p])| + |R(Q[p IS NULL])|
-                          </p>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                            <span className="text-text-muted text-[10px] block">TLS PROFILE</span>
-                            <span className="text-white font-bold text-[11px]">JA4+ Aligned</span>
-                          </div>
-                          <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                            <span className="text-text-muted text-[10px] block">JITTER DISTRIBUTION</span>
-                            <span className="text-emerald-400 font-bold text-[11px]">Lognormal (μ=2.0s)</span>
-                          </div>
-                          <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                            <span className="text-text-muted text-[10px] block">SERIALIZATION</span>
-                            <span className="text-amber-400 font-bold text-[11px]">JSON/XML/Multipart</span>
-                          </div>
-                          <div className="p-2 rounded bg-[#12151c] border border-border-subtle">
-                            <span className="text-text-muted text-[10px] block">DIALECT PROBING</span>
-                            <span className="text-accent-cyan font-bold text-[11px]">1-Probe Polyglot</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* MODULE 3: BAYESIAN BELIEF & 8-LAYER DEFENSE RESILIENCE DIAGNOSTICS */}
-              {godRailSection === 'belief' && (
-                <div className="space-y-4">
-                  {/* Header Shannon Entropy Summary */}
-                  <div className="p-4 rounded-lg bg-bg-panel border border-purple-500/40 shadow-lg flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded bg-purple-500/10 border border-purple-500/30 text-purple-400">
-                        <Brain className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h3 className="font-extrabold text-sm text-white font-mono flex items-center gap-2">
-                          BAYESIAN BELIEF DISTRIBUTION & 8-LAYER DEFENSE DIAGNOSTICS
-                        </h3>
-                        <p className="text-text-muted text-xs">
-                          Tracks real-time posterior probability distributions over 56 Syntactic AST Contexts, 32 DBMS Dialects, and 8-Layer Architectural Defenses.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs font-mono">
-                      <div className="p-2 rounded bg-[#12151c] border border-border-subtle text-right">
-                        <span className="text-text-muted text-[10px] block">SHANNON ENTROPY H(P)</span>
-                        <span className="text-emerald-400 font-extrabold text-sm">{dynamicShannonEntropy.toFixed(2)} bits</span>
-                      </div>
-                      <div className="p-2 rounded bg-[#12151c] border border-border-subtle text-right">
-                        <span className="text-text-muted text-[10px] block">CONFIDENCE STATE</span>
-                        <span className="text-accent-cyan font-extrabold text-sm">{dynamicConfidenceLabel}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Two-Column Deep Belief & Defense Layer Grid */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Left: 56 AST Contexts & 32 DBMS Dialects */}
-                    <div className="space-y-4">
-                      {/* 56 AST Contexts */}
-                      <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-xs font-mono font-bold text-white uppercase">
-                            <Cpu className="w-4 h-4 text-purple-400" />
-                            <span>Syntactic AST Context Beliefs (56 Evaluated)</span>
-                          </div>
-                          <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                            Leading: {leadingContextItem ? DynamicGraphEngine.formatContextName(leadingContextItem.name) : 'Pending Probing'}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 font-mono text-xs max-h-56 overflow-y-auto pr-1">
-                          {contextBeliefs.map((ctx) => (
-                            <div key={ctx.name} className="space-y-1 p-2 rounded bg-[#12151c] border border-border-subtle">
-                              <div className="flex justify-between items-center text-[11px]">
-                                <span className={ctx.isLeading ? 'text-white font-bold' : 'text-text-secondary'}>
-                                  {DynamicGraphEngine.formatContextName(ctx.name)} {ctx.isLeading && '★'}
-                                </span>
-                                <span className="text-purple-300 font-bold">{(ctx.probability * 100).toFixed(1)}% ({ctx.shannonBits.toFixed(2)}b)</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-bg-panel rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    ctx.isLeading ? 'bg-purple-400' : 'bg-purple-800/60'
-                                  }`}
-                                  style={{ width: `${ctx.probability * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 32 DBMS Dialects */}
-                      <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-xs font-mono font-bold text-white uppercase">
-                            <Database className="w-4 h-4 text-emerald-400" />
-                            <span>DBMS Dialect Posterior Distribution (32 Dialects)</span>
-                          </div>
-                          <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                            Leading: {leadingDbmsItem ? leadingDbmsItem.name : 'Unknown'}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 font-mono text-xs max-h-56 overflow-y-auto pr-1">
-                          {dbmsBeliefs.map((dbms) => (
-                            <div key={dbms.name} className="space-y-1 p-2 rounded bg-[#12151c] border border-border-subtle">
-                              <div className="flex justify-between items-center text-[11px]">
-                                <span className={dbms.isLeading ? 'text-white font-bold' : 'text-text-secondary'}>
-                                  {dbms.name} {dbms.isLeading && '★'}
-                                </span>
-                                <span className="text-emerald-300 font-bold">{(dbms.probability * 100).toFixed(1)}% ({dbms.shannonBits.toFixed(2)}b)</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-bg-panel rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    dbms.isLeading ? 'bg-emerald-400' : 'bg-emerald-800/60'
-                                  }`}
-                                  style={{ width: `${dbms.probability * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: 8-Layer Defense Resilience Diagnostics */}
-                    <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-3 font-mono">
-                      <div className="flex items-center justify-between border-b border-border-subtle pb-2">
-                        <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-amber-400" /> 8-Layer Defense Model Real-Time Diagnostics
-                        </h4>
-                        <span className="text-[10px] text-text-muted">
-                          Epistemic States: OBSERVED | INFERRED | UNKNOWN
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        {(defenseLayers && defenseLayers.length > 0 ? defenseLayers : DEFAULT_DEFENSE_LAYERS).map((layer, idx) => {
-                          const certainty = layer.certainty || (layer.status === 'OBSERVED' ? 'OBSERVED' : layer.status === 'INFERRED' ? 'INFERRED' : 'UNKNOWN');
-                          const isBlocked = layer.status === 'BLOCKED';
-                          const layerId = layer.layer || (layer as any).id || `L${idx + 1}`;
-                          return (
-                            <div key={idx} className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-1">
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-bold text-accent-cyan">{layerId}: {layer.name}</span>
-                                <span
-                                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-                                    isBlocked
-                                      ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                                      : certainty === 'OBSERVED'
-                                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40'
-                                      : certainty === 'INFERRED'
-                                      ? 'bg-amber-950 text-amber-300 border border-amber-800/40'
-                                      : 'bg-bg-panel text-text-muted border border-border-subtle/50'
-                                  }`}
-                                >
-                                  {isBlocked ? 'BLOCKED' : certainty}
-                                </span>
-                              </div>
-                              <p className="text-[10px] text-text-muted truncate" title={layer.details || (layer as any).role || layer.status}>
-                                {layer.details || (layer as any).role || layer.status}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* MODULE 3: METAMORPHIC AST PAYLOAD STUDIO & WAF SIMULATOR */}
-              {godRailSection === 'studio' && (() => {
-                const studioTransformed = MetamorphicStudio.applyTransformPipeline(studioPayload, studioSelectedTransforms);
-                const studioTokens = MetamorphicStudio.tokenize(studioTransformed);
-                const studioWafSim = MetamorphicStudio.simulateWafInspection(studioTransformed, studioTargetWaf);
-                const allTransforms = MetamorphicStudio.getAllTransforms();
-
-                const filteredTransforms = allTransforms.filter((t) => {
-                  if (studioCategoryFilter === 'all') return true;
-                  if (studioCategoryFilter === 'recommended') return detectedWafAnalysis.recommendedTransforms.includes(t.id);
-                  return t.category === studioCategoryFilter;
-                });
-
-                return (
-                  <div className="space-y-4">
-                    {/* Studio Header & Auto-Detect Status */}
-                    <div className="p-4 rounded-lg bg-bg-panel border border-cyan-500/40 shadow-lg space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-                            <Code2 className="w-6 h-6" />
-                          </div>
-                          <div>
-                            <h3 className="font-extrabold text-sm text-white font-mono flex items-center gap-2">
-                              🧪 METAMORPHIC AST PAYLOAD STUDIO & WAF SIMULATOR
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-bold">
-                                30 Bypass Heuristics Active
-                              </span>
-                            </h3>
-                            <p className="text-text-muted text-xs">
-                              Live syntax-aware transformation sandbox for testing SQL payloads against commercial WAF rule engines with real-time token inspection.
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Presets & Auto-Detect Trigger */}
-                        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-                          <button
-                            onClick={handleAutoDetectTransforms}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold transition-all shadow-sm"
-                            title="Inspect active HTTP request headers and cookies to auto-select target WAF and optimal transforms"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>Auto-Detect from HTTP Req</span>
-                          </button>
-
-                          <div className="flex items-center gap-1.5 bg-[#12151c] px-2 py-1 rounded border border-border-subtle">
-                            <span className="text-text-muted font-bold">Target WAF:</span>
-                            <select
-                              value={studioTargetWaf}
-                              onChange={(e) => setStudioTargetWaf(e.target.value)}
-                              className="bg-[#0a0c10] text-cyan-300 border border-border-subtle rounded px-2 py-0.5 text-xs font-bold outline-none cursor-pointer"
-                            >
-                              <option value="cloudflare">Cloudflare Managed OWASP CRS</option>
-                              <option value="aws">AWS WAF (SQLi Rule Set)</option>
-                              <option value="modsecurity">ModSecurity OWASP CRS v3.3</option>
-                              <option value="imperva">Imperva SecureSphere</option>
-                              <option value="akamai">Akamai Kona Site Defender</option>
-                              <option value="generic">Generic Perimeter Filter</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Live Wire Inspection Indicators */}
-                      <div className="pt-2 border-t border-border-subtle/50 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-text-muted flex items-center gap-1 font-semibold">
-                            <Activity className="w-3.5 h-3.5 text-emerald-400" /> Auto-Detected Wire Profile:
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-200 border border-cyan-500/40 font-bold">
-                            {detectedWafAnalysis.wafDisplayName} ({detectedWafAnalysis.confidence}% Conf)
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-[#12151c] text-text-muted border border-border-subtle text-[11px]">
-                            Body: {detectedWafAnalysis.inferredContentType.toUpperCase()}
-                          </span>
-
-                          {detectedWafAnalysis.detectedIndicators.cookies.map((c, i) => (
-                            <span key={`ck-${i}`} className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-500/30 text-[10px]">
-                              🍪 {c}
-                            </span>
-                          ))}
-                          {detectedWafAnalysis.detectedIndicators.headers.map((h, i) => (
-                            <span key={`hd-${i}`} className="px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-500/30 text-[10px]">
-                              📋 {h}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="text-[11px] text-text-muted">
-                          {detectedWafAnalysis.recommendedTransforms.length} transforms recommended for this profile
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Studio Work Area */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Left Column: Input SQL & Transform Selector */}
-                      <div className="space-y-3">
-                        <div className="p-3.5 rounded-lg bg-bg-panel border border-border-subtle space-y-2">
-                          <div className="flex items-center justify-between font-mono text-xs">
-                            <span className="font-bold text-white flex items-center gap-1.5">
-                              <Terminal className="w-3.5 h-3.5 text-cyan-400" /> Base SQL Payload
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => setStudioPayload("' UNION SELECT username, password FROM users--")}
-                                className="px-1.5 py-0.5 rounded bg-[#12151c] text-[10px] text-text-muted hover:text-white"
-                              >
-                                UNION
-                              </button>
-                              <button
-                                onClick={() => setStudioPayload("' OR '1'='1'--")}
-                                className="px-1.5 py-0.5 rounded bg-[#12151c] text-[10px] text-text-muted hover:text-white"
-                              >
-                                OR 1=1
-                              </button>
-                              <button
-                                onClick={() => setStudioPayload("'; WAITFOR DELAY '0:0:5'--")}
-                                className="px-1.5 py-0.5 rounded bg-[#12151c] text-[10px] text-text-muted hover:text-white"
-                              >
-                                SLEEP
-                              </button>
-                              <button
-                                onClick={() => setStudioPayload("' AND (SELECT UTL_HTTP.REQUEST('http://oast.sentinel.local') FROM DUAL)--")}
-                                className="px-1.5 py-0.5 rounded bg-[#12151c] text-[10px] text-text-muted hover:text-white"
-                              >
-                                OAST
-                              </button>
-                            </div>
-                          </div>
-                          <textarea
-                            value={studioPayload}
-                            onChange={(e) => setStudioPayload(e.target.value)}
-                            rows={3}
-                            className="w-full bg-[#0a0c10] border border-border-subtle rounded p-2 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-400"
-                            placeholder="Type or paste any SQL payload..."
-                          />
-                        </div>
-
-                        {/* Transform Selector List */}
-                        <div className="p-3.5 rounded-lg bg-bg-panel border border-border-subtle space-y-2.5">
-                          <div className="flex items-center justify-between font-mono text-xs">
-                            <span className="font-bold text-white flex items-center gap-1.5">
-                              <Zap className="w-3.5 h-3.5 text-amber-400" /> Metamorphic Transforms (E1–E30)
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setStudioSelectedTransforms(detectedWafAnalysis.recommendedTransforms)}
-                                className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
-                              >
-                                <Sparkles className="w-3 h-3" /> Apply Recommended ({detectedWafAnalysis.recommendedTransforms.length})
-                              </button>
-                              <button
-                                onClick={() => setStudioSelectedTransforms(allTransforms.map((t) => t.id))}
-                                className="text-[10px] text-text-muted hover:text-white"
-                              >
-                                All
-                              </button>
-                              <button
-                                onClick={() => setStudioSelectedTransforms([])}
-                                className="text-[10px] text-text-muted hover:text-white"
-                              >
-                                Clear
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Category Filter Pills */}
-                          <div className="flex flex-wrap items-center gap-1 font-mono text-[10px]">
-                            <button
-                              onClick={() => setStudioCategoryFilter('all')}
-                              className={`px-2 py-0.5 rounded ${studioCategoryFilter === 'all' ? 'bg-cyan-500 text-black font-bold' : 'bg-[#12151c] text-text-muted hover:text-white'}`}
-                            >
-                              All ({allTransforms.length})
-                            </button>
-                            <button
-                              onClick={() => setStudioCategoryFilter('recommended')}
-                              className={`px-2 py-0.5 rounded flex items-center gap-1 ${studioCategoryFilter === 'recommended' ? 'bg-amber-500 text-black font-bold' : 'bg-amber-950/40 text-amber-300 border border-amber-500/30'}`}
-                            >
-                              ⭐ Recommended ({detectedWafAnalysis.recommendedTransforms.length})
-                            </button>
-                            <button
-                              onClick={() => setStudioCategoryFilter('comment')}
-                              className={`px-2 py-0.5 rounded ${studioCategoryFilter === 'comment' ? 'bg-cyan-500 text-black font-bold' : 'bg-[#12151c] text-text-muted hover:text-white'}`}
-                            >
-                              Comment
-                            </button>
-                            <button
-                              onClick={() => setStudioCategoryFilter('whitespace')}
-                              className={`px-2 py-0.5 rounded ${studioCategoryFilter === 'whitespace' ? 'bg-cyan-500 text-black font-bold' : 'bg-[#12151c] text-text-muted hover:text-white'}`}
-                            >
-                              Whitespace
-                            </button>
-                            <button
-                              onClick={() => setStudioCategoryFilter('encoding')}
-                              className={`px-2 py-0.5 rounded ${studioCategoryFilter === 'encoding' ? 'bg-cyan-500 text-black font-bold' : 'bg-[#12151c] text-text-muted hover:text-white'}`}
-                            >
-                              Encoding
-                            </button>
-                            <button
-                              onClick={() => setStudioCategoryFilter('case')}
-                              className={`px-2 py-0.5 rounded ${studioCategoryFilter === 'case' ? 'bg-cyan-500 text-black font-bold' : 'bg-[#12151c] text-text-muted hover:text-white'}`}
-                            >
-                              Case
-                            </button>
-                            <button
-                              onClick={() => setStudioCategoryFilter('ast_equivalence')}
-                              className={`px-2 py-0.5 rounded ${studioCategoryFilter === 'ast_equivalence' ? 'bg-cyan-500 text-black font-bold' : 'bg-[#12151c] text-text-muted hover:text-white'}`}
-                            >
-                              AST Equiv
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-1.5 max-h-64 overflow-y-auto pr-1">
-                            {filteredTransforms.map((t) => {
-                              const isSelected = studioSelectedTransforms.includes(t.id);
-                              const isRecommended = detectedWafAnalysis.recommendedTransforms.includes(t.id);
-                              const rationaleText = detectedWafAnalysis.transformRationale[t.id];
-
-                              return (
-                                <div
-                                  key={t.id}
-                                  onClick={() => {
-                                    setStudioSelectedTransforms((prev) =>
-                                      isSelected ? prev.filter((id) => id !== t.id) : [...prev, t.id]
-                                    );
-                                  }}
-                                  className={`p-2 rounded text-[11px] font-mono cursor-pointer transition-all border ${
-                                    isSelected
-                                      ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-200'
-                                      : 'bg-[#12151c] border-border-subtle text-text-secondary hover:text-white'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 truncate">
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={() => {}}
-                                        className="accent-cyan-400 cursor-pointer"
-                                      />
-                                      <span className="font-bold truncate">{t.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 flex-shrink-0">
-                                      {isRecommended && (
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-0.5">
-                                          ✨ Optimal
-                                        </span>
-                                      )}
-                                      <span className="text-[9px] px-1 py-0.2 rounded bg-[#0a0c10] text-text-muted">
-                                        {t.category}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  {rationaleText && (
-                                    <div className="mt-1 text-[10px] text-cyan-300/80 leading-tight">
-                                      💡 {rationaleText}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Column: Transformed Payload + WAF Simulation Verdict */}
-                      <div className="space-y-3">
-                        {/* Transformed Result Card */}
-                        <div className="p-3.5 rounded-lg bg-bg-panel border border-border-subtle space-y-2 font-mono text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-emerald-400 flex items-center gap-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Metamorphic Output Payload
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(studioTransformed);
-                                  addToast({ type: 'success', title: 'Copied Metamorphic Payload' });
-                                }}
-                                className="text-cyan-400 hover:underline flex items-center gap-1 text-[11px]"
-                              >
-                                <Copy className="w-3 h-3" /> Copy
-                              </button>
-                              <button
-                                onClick={() => handleSendToRepeater(undefined, undefined, `Studio Payload (${studioTargetWaf})`)}
-                                className="text-cyan-400 hover:underline flex items-center gap-1 text-[11px] font-semibold"
-                              >
-                                <Send className="w-3 h-3" /> Repeater
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="p-2.5 rounded bg-[#0a0c10] border border-border-subtle text-cyan-200 font-mono text-xs whitespace-pre-wrap select-text max-h-32 overflow-y-auto">
-                            {studioTransformed}
-                          </div>
-
-                          {/* Token Breakdown stream */}
-                          <div className="pt-1.5 border-t border-border-subtle/50 space-y-1">
-                            <span className="text-[10px] text-text-muted block uppercase font-bold">
-                              Semantic AST Token Stream ({studioTokens.length} tokens):
-                            </span>
-                            <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                              {studioTokens.map((tok, idx) => (
-                                <span
-                                  key={idx}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                                    tok.type === 'keyword'
-                                      ? 'bg-purple-950/80 text-purple-300 border border-purple-500/40 font-bold'
-                                      : tok.type === 'literal'
-                                      ? 'bg-amber-950/80 text-amber-300 border border-amber-500/40'
-                                      : tok.type === 'comment'
-                                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 italic'
-                                      : tok.type === 'operator'
-                                      ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40'
-                                      : 'bg-[#12151c] text-text-secondary'
-                                  }`}
-                                  title={`Type: ${tok.type}`}
-                                >
-                                  {tok.value}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* WAF Simulation Verdict Card */}
-                        <div className={`p-4 rounded-lg border font-mono text-xs space-y-2.5 ${
-                          studioWafSim.verdict === 'EVADED'
-                            ? 'bg-emerald-950/20 border-emerald-500/60'
-                            : studioWafSim.verdict === 'SUSPICIOUS_PASS'
-                            ? 'bg-amber-950/20 border-amber-500/60'
-                            : 'bg-rose-950/20 border-rose-500/60'
-                        }`}>
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-xs">
-                              {studioWafSim.wafDisplayName} Simulation
-                            </span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                              studioWafSim.verdict === 'EVADED'
-                                ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-500/50'
-                                : studioWafSim.verdict === 'SUSPICIOUS_PASS'
-                                ? 'bg-amber-900/80 text-amber-200 border border-amber-500/50'
-                                : 'bg-rose-900/80 text-rose-200 border border-rose-500/50'
-                            }`}>
-                              {studioWafSim.verdict === 'EVADED' ? '🛡️ EVADED / BYPASS' : studioWafSim.verdict === 'SUSPICIOUS_PASS' ? '⚠️ SUSPICIOUS PASS' : '🛑 HARD BLOCKED'}
-                            </span>
-                          </div>
-
-                          <p className="text-[11px] text-text-secondary leading-relaxed">
-                            {studioWafSim.analysis}
-                          </p>
-
-                          <div className="flex items-center justify-between pt-1 border-t border-border-subtle/40 text-[11px]">
-                            <span>Evasion Probability:</span>
-                            <span className={`font-bold ${studioWafSim.evasionProbability >= 70 ? 'text-emerald-400' : studioWafSim.evasionProbability >= 40 ? 'text-amber-400' : 'text-rose-400'}`}>
-                              {studioWafSim.evasionProbability}%
-                            </span>
-                          </div>
-
-                          {studioWafSim.matchedRules.length > 0 && (
-                            <div className="space-y-1 pt-1">
-                              <span className="text-[10px] text-text-muted block uppercase font-bold">Triggered Signatures:</span>
-                              <div className="space-y-0.5">
-                                {studioWafSim.matchedRules.map((r, rIdx) => (
-                                  <div key={rIdx} className="text-[10px] text-rose-300 font-mono truncate">
-                                    • {r}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
           {/* TAB 1: RECURSIVE DATABASE EXPLORER */}
-          {activeTab === 'database' && (
+          {(activeTab === 'database' || (activeTab as string) === 'god_rail' || (activeTab as string) === 'dashboard') && (
             <div className="flex-1 flex overflow-hidden">
               {/* Left Column: Recursive Tree (320px) */}
               <div className="w-80 border-r border-border-subtle flex flex-col bg-bg-panel overflow-hidden">
@@ -2171,6 +1720,124 @@ export const SqlScannerWorkspaceView: React.FC = () => {
 
               {/* Right Column: Object Detail & Row Explorer */}
               <div className="flex-1 flex flex-col bg-[#0a0c10] overflow-y-auto p-4 space-y-4">
+                {/* ─── VULNERABILITY TYPE & BUSINESS CONSEQUENCE BANNER ─── */}
+                {activeFinding && (
+                  <div className={`p-4 rounded-lg border space-y-3 font-mono ${
+                    activeFinding.consequence?.threatClassification === 'OS_COMMAND_INJECTION'
+                      ? 'border-rose-500/60 bg-[#160b0f]'
+                      : activeFinding.consequence?.threatClassification === 'AUTHENTICATION_BYPASS'
+                      ? 'border-amber-500/60 bg-[#18120a]'
+                      : 'border-cyan-500/60 bg-[#0a141c]'
+                  }`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="w-4 h-4 text-rose-400" />
+                        <span className="font-bold text-xs text-white uppercase tracking-wider">
+                          CONFIRMED VULNERABILITY TYPE & IMPACT ANALYSIS
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700">
+                          {activeFinding.consequence?.threatBadge || '💥 CONFIRMED EXPLOITABLE'}
+                        </span>
+                        <span className="text-[10px] text-text-muted">
+                          Parameter: <strong className="text-accent-cyan">{activeFinding.parameterName}</strong> ({activeFinding.parameterLocation})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-sm font-bold text-rose-300 flex items-center gap-2">
+                        <span>{activeFinding.consequence?.consequenceTitle || activeFinding.title}</span>
+                      </div>
+                      <p className="text-xs text-text-secondary leading-relaxed font-sans">
+                        {activeFinding.consequence?.consequenceSummary || activeFinding.remediation}
+                      </p>
+                    </div>
+
+                    {/* Technical Impact & Risk Pills */}
+                    {activeFinding.consequence && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] pt-1 font-sans">
+                        <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-1">
+                          <span className="text-[10px] font-bold font-mono text-accent-cyan uppercase">⚡ Technical Exploit Impact:</span>
+                          <ul className="list-disc pl-4 space-y-0.5 text-text-secondary text-[11px]">
+                            {activeFinding.consequence.technicalImpact.slice(0, 3).map((imp: string, i: number) => (
+                              <li key={i}>{imp}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-1">
+                          <span className="text-[10px] font-bold font-mono text-rose-400 uppercase">🚨 Real-World Business Risk:</span>
+                          <ul className="list-disc pl-4 space-y-0.5 text-text-secondary text-[11px]">
+                            {activeFinding.consequence.businessRisk.slice(0, 3).map((risk: string, i: number) => (
+                              <li key={i}>{risk}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Live Invariant & Exfiltrated Data Proof Strip */}
+                    <div className="p-3 rounded bg-[#0a0c10] border border-border-subtle space-y-2 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-accent-cyan flex items-center gap-1.5 font-mono">
+                          <Zap className="w-3.5 h-3.5 text-accent-cyan" /> ZERO-FALSE-POSITIVE INVARIANT PROOF:
+                        </span>
+                        {activeFinding.proofDetails?.cleanRoomVerificationToken && (
+                          <span className="text-[9px] text-text-muted font-mono">
+                            CAS Invariant Token: <code className="text-purple-300">{activeFinding.proofDetails.cleanRoomVerificationToken}</code>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="p-2 rounded bg-[#12151c] font-mono text-[10px] text-white flex items-center justify-between">
+                        <span className="truncate">
+                          <strong>Formula:</strong> <code>{activeFinding.proofDetails?.mathematicalInvariant || 'Δ(s₁, s₂) > 0 ∧ Noise(s₀) = Clean'}</code>
+                        </span>
+                        <span className="text-text-muted text-[9px] flex-shrink-0 ml-2">
+                          Oracle: {activeFinding.detectionMethod}
+                        </span>
+                      </div>
+
+                      {activeFinding.proofDetails?.extractedProofSnippet && (
+                        <div className="p-2 rounded bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-[10px] flex items-center gap-2 font-mono">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                          <span className="truncate font-semibold">
+                            Live Exfiltrated Proof: {activeFinding.proofDetails.extractedProofSnippet}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border-subtle/50">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const curl = BountyTemplateExporter.generateCurlCommand(activeFinding);
+                              navigator.clipboard.writeText(curl);
+                              addToast({ type: 'success', title: 'Copied Minimal Reproduction cURL PoC!' });
+                            }}
+                            className="px-2.5 py-1 rounded bg-[#12151c] hover:bg-bg-panel text-emerald-400 border border-emerald-500/30 text-[10px] font-bold font-mono flex items-center gap-1"
+                          >
+                            <Terminal className="w-3 h-3" /> Copy Reproduction cURL
+                          </button>
+                          <button
+                            onClick={() => handleSendToRepeater(activeFinding.reproductionRequest, activeFinding.reproductionResponse, activeFinding.title)}
+                            className="px-2.5 py-1 rounded bg-[#12151c] hover:bg-bg-panel text-accent-cyan border border-accent-cyan/30 text-[10px] font-bold font-mono flex items-center gap-1"
+                          >
+                            <Send className="w-3 h-3" /> Send Proof to Repeater
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => setActiveTab('vulnerabilities')}
+                          className="text-text-muted hover:text-white text-[10px] font-mono flex items-center gap-1"
+                        >
+                          View Invariant Audit Matrix <ExternalLink className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {selectedTable ? (
                   <>
                     {/* Header Detail Card */}
@@ -2273,30 +1940,63 @@ export const SqlScannerWorkspaceView: React.FC = () => {
 
                     {/* LAB DATA INSPECTION / SAMPLE ROWS */}
                     <div className="p-4 rounded-lg bg-bg-panel border border-border-subtle space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <Eye className="w-4 h-4 text-emerald-400" />
-                          <h3 className="font-bold text-sm text-white">
+                          <h3 className="font-bold text-sm text-white flex items-center gap-2">
                             Table Data ({selectedTable.name})
+                            {selectedTable.sampleRows && selectedTable.sampleRows.length > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                {selectedTable.sampleRows.length} Row(s) Exfiltrated Proof
+                              </span>
+                            )}
                           </h3>
                         </div>
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => fetchSampleRowsForTable(selectedTable)}
-                          disabled={selectedTable.sampleRowsStatus === 'loading'}
-                          className="font-bold text-xs"
-                        >
-                          {selectedTable.sampleRowsStatus === 'loading' ? (
-                            <span className="flex items-center gap-1.5">
-                              <RefreshCw className="w-3 h-3 animate-spin" /> Querying Rows...
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1.5">
-                              <RefreshCw className="w-3 h-3" /> Refresh Data
-                            </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {selectedTable.sampleRows && selectedTable.sampleRows.length > 0 && (
+                            <>
+                              <button
+                                onClick={() => copyCredentials(selectedTable.sampleRows!)}
+                                className="px-2 py-1 rounded bg-[#12151c] hover:bg-bg-panel text-emerald-300 border border-emerald-500/30 text-[11px] font-mono font-bold flex items-center gap-1"
+                                title="Copy user:pass credentials"
+                              >
+                                <Copy className="w-3 h-3 text-emerald-300" /> Copy Credentials
+                              </button>
+                              <button
+                                onClick={() => copyRowsAsJson(selectedTable.sampleRows!)}
+                                className="px-2 py-1 rounded bg-[#12151c] hover:bg-bg-panel text-cyan-300 border border-cyan-500/30 text-[11px] font-mono font-bold flex items-center gap-1"
+                                title="Copy all rows as formatted JSON"
+                              >
+                                <FileCode className="w-3 h-3 text-cyan-300" /> Copy JSON
+                              </button>
+                              <button
+                                onClick={() => copyRowsAsCsv(selectedTable.sampleRows!)}
+                                className="px-2 py-1 rounded bg-[#12151c] hover:bg-bg-panel text-amber-300 border border-amber-500/30 text-[11px] font-mono font-bold flex items-center gap-1"
+                                title="Copy all rows as CSV"
+                              >
+                                <FileText className="w-3 h-3 text-amber-300" /> Copy CSV
+                              </button>
+                            </>
                           )}
-                        </Button>
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            onClick={() => fetchSampleRowsForTable(selectedTable)}
+                            disabled={selectedTable.sampleRowsStatus === 'loading'}
+                            className="font-bold text-xs"
+                          >
+                            {selectedTable.sampleRowsStatus === 'loading' ? (
+                              <span className="flex items-center gap-1.5">
+                                <RefreshCw className="w-3 h-3 animate-spin" /> Querying Rows...
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5">
+                                <RefreshCw className="w-3 h-3" /> Refresh Data
+                              </span>
+                            )}
+                          </Button>
+                        </div>
                       </div>
 
                       {selectedTable.sampleRowsStatus === 'loading' ? (
@@ -2706,6 +2406,102 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* ─── VULNERABILITY CLASSIFICATION & CONSEQUENCE ANALYSIS ─── */}
+                    <div className="p-3.5 rounded-lg bg-[#0a0c10] border border-border-subtle space-y-2.5 font-mono">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="w-4 h-4 text-rose-400" />
+                          <span className="font-bold text-xs text-white uppercase tracking-wider">
+                            VULNERABILITY TYPE & IMPACT ANALYSIS
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-700">
+                            {f.consequence?.threatBadge || '💥 CONFIRMED EXPLOITABLE'}
+                          </span>
+                          <span className="text-[10px] text-text-muted">
+                            Parameter: <strong className="text-accent-cyan">{f.parameterName}</strong> ({f.parameterLocation})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="text-xs font-bold text-rose-300">
+                          {f.consequence?.consequenceTitle || f.title}
+                        </div>
+                        <p className="text-[11px] text-text-secondary leading-relaxed font-sans">
+                          {f.consequence?.consequenceSummary || f.remediation}
+                        </p>
+                      </div>
+
+                      {f.consequence && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] pt-1 font-sans">
+                          <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-1">
+                            <span className="text-[10px] font-bold font-mono text-accent-cyan uppercase">⚡ Technical Exploit Impact:</span>
+                            <ul className="list-disc pl-4 space-y-0.5 text-text-secondary text-[11px]">
+                              {f.consequence.technicalImpact.map((imp, i) => (
+                                <li key={i}>{imp}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-1">
+                            <span className="text-[10px] font-bold font-mono text-rose-400 uppercase">🚨 Real-World Business Risk:</span>
+                            <ul className="list-disc pl-4 space-y-0.5 text-text-secondary text-[11px]">
+                              {f.consequence.businessRisk.map((risk, i) => (
+                                <li key={i}>{risk}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Live Invariant & Extracted Data Proof */}
+                      <div className="p-2.5 rounded bg-[#12151c] border border-border-subtle space-y-1.5 text-[10px]">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-accent-cyan flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-accent-cyan" /> Mathematical Invariant Proof:
+                          </span>
+                          {f.proofDetails?.cleanRoomVerificationToken && (
+                            <span className="text-text-muted">
+                              Token: <code className="text-purple-300">{f.proofDetails.cleanRoomVerificationToken}</code>
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-white truncate">
+                          <code>{f.proofDetails?.mathematicalInvariant || 'Δ(s₁, s₂) > 0 ∧ Noise(s₀) = Clean'}</code>
+                        </div>
+                        {f.proofDetails?.positiveProbeObservation && (
+                          <div className="text-emerald-400">
+                            <strong>Truth Probe (s₁):</strong> {f.proofDetails.positiveProbeObservation}
+                          </div>
+                        )}
+                        {f.proofDetails?.negativeProbeDivergence && (
+                          <div className="text-rose-400">
+                            <strong>Contradiction Divergence (s₂):</strong> {f.proofDetails.negativeProbeDivergence}
+                          </div>
+                        )}
+                        {f.proofDetails?.extractedProofSnippet && (
+                          <div className="p-2 rounded bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-[10px] flex items-center justify-between font-mono mt-1">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                              <span className="truncate">
+                                <strong>Live Exfiltrated Proof:</strong> {f.proofDetails.extractedProofSnippet}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setActiveTab('database');
+                              }}
+                              className="px-2 py-0.5 rounded bg-emerald-900/60 hover:bg-emerald-800 text-white font-bold text-[9px] flex items-center gap-1 flex-shrink-0 ml-2"
+                            >
+                              <Database className="w-3 h-3" /> Inspect in Explorer
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     <p className="text-xs text-text-secondary leading-relaxed">{f.remediation}</p>
 
                     {/* 1-Click Verified Multi-Language Remediation Engine */}
@@ -2725,7 +2521,7 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                                   : 'bg-[#12151c] text-text-muted hover:text-white border border-border-subtle'
                               }`}
                             >
-                              {eco === 'all' ? 'All Frameworks (14)' : eco}
+                              {eco === 'all' ? 'All Frameworks (18)' : eco}
                             </button>
                           ))}
                         </div>

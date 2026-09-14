@@ -14,6 +14,12 @@ import {
 } from 'lucide-react';
 import { useWebSocketStore, WebSocketMessageItem } from '../../stores/websocketStore';
 import { useToastStore } from '../../stores/toastStore';
+import { useRepeaterStore } from '../../stores/repeaterStore';
+import { useIntruderStore } from '../../stores/intruderStore';
+import { useDecoderStore } from '../../stores/decoderStore';
+import { useComparerStore } from '../../stores/comparerStore';
+import { useAppShellStore } from '../../stores/appShellStore';
+import { ContextMenu, ContextMenuItem } from '../../design-system/ContextMenu';
 import { SplitPane } from '../../design-system/SplitPane';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
 import { HttpSyntaxHighlighter } from '../common/HttpSyntaxHighlighter';
@@ -61,6 +67,7 @@ function renderHexView(text: string) {
 
 export const WebSocketHistoryView: React.FC = () => {
   const { addToast } = useToastStore();
+  const { setActiveWorkspace } = useAppShellStore();
 
   const {
     messages,
@@ -84,6 +91,17 @@ export const WebSocketHistoryView: React.FC = () => {
   const [showWhitespace, setShowWhitespace] = useState(false);
   const [customMsgInput, setCustomMsgInput] = useState('');
   const [showSendModal, setShowSendModal] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    x: number;
+    y: number;
+    targetMsg: WebSocketMessageItem | null;
+  }>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    targetMsg: null,
+  });
 
   // Filter messages
   const filteredMessages = useMemo(() => {
@@ -171,6 +189,109 @@ export const WebSocketHistoryView: React.FC = () => {
       type: 'success',
       title: 'WebSocket Frame Sent',
       description: `Sent payload to ${url}`,
+    });
+  };
+
+  const buildWsContextMenuItems = (msg: WebSocketMessageItem): ContextMenuItem[] => {
+    return [
+      {
+        label: 'Send to Repeater',
+        shortcut: 'Ctrl+R',
+        onClick: () => {
+          let host = 'target.local';
+          try {
+            host = new URL(msg.url).host;
+          } catch {}
+          const rawRequest = `GET /ws HTTP/1.1\r\nHost: ${host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n${msg.payload}`;
+          useRepeaterStore.getState().createTab({
+            title: `WS ${msg.direction === 'To server' ? '→' : '←'} #${msg.seqNumber}`,
+            url: msg.url,
+            method: 'GET',
+            body: msg.payload,
+            rawRequest,
+          });
+          setActiveWorkspace('repeater');
+          addToast({ type: 'success', title: 'Sent to Repeater', description: msg.url });
+        },
+      },
+      {
+        label: 'Send to Intruder',
+        shortcut: 'Ctrl+I',
+        onClick: () => {
+          useIntruderStore.getState().sendToIntruder({
+            url: msg.url,
+            method: 'GET',
+            reqBody: msg.payload,
+          });
+          setActiveWorkspace('fuzzer');
+          addToast({ type: 'success', title: 'Sent to Intruder', description: msg.url });
+        },
+      },
+      {
+        label: 'Send to Decoder',
+        onClick: () => {
+          useDecoderStore.getState().sendToDecoder(msg.payload);
+          setActiveWorkspace('decoder');
+          addToast({ type: 'info', title: 'Sent to Decoder', description: 'Transferred frame payload' });
+        },
+      },
+      {
+        label: 'Send to Comparer',
+        onClick: () => {
+          useComparerStore.getState().sendToComparer({
+            id: msg.id,
+            url: msg.url,
+            method: 'GET',
+            reqBody: msg.payload,
+            response: null,
+          });
+          setActiveWorkspace('comparer');
+          addToast({ type: 'info', title: 'Sent to Comparer', description: 'Added payload to comparer buffer' });
+        },
+      },
+      { divider: true },
+      {
+        label: 'Copy message',
+        onClick: () => {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(msg.payload);
+            addToast({ type: 'success', title: 'Copied Message', description: `${msg.payload.length} characters` });
+          }
+        },
+      },
+      {
+        label: 'Copy URL',
+        onClick: () => {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(msg.url);
+            addToast({ type: 'success', title: 'Copied URL', description: msg.url });
+          }
+        },
+      },
+    ];
+  };
+
+  const handleRowContextMenu = (e: React.MouseEvent, item: WebSocketMessageItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    selectMessage(item.id);
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      targetMsg: item,
+    });
+  };
+
+  const handleInspectorContextMenu = (e: React.MouseEvent) => {
+    if (!activeMessage) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      targetMsg: activeMessage,
     });
   };
 
@@ -351,6 +472,7 @@ export const WebSocketHistoryView: React.FC = () => {
                         <tr
                           key={item.id}
                           onClick={() => selectMessage(item.id)}
+                          onContextMenu={(e) => handleRowContextMenu(e, item)}
                           className={`cursor-pointer transition-colors ${
                             isSelected
                               ? 'bg-[#1e4976] text-white font-medium'
@@ -447,7 +569,10 @@ export const WebSocketHistoryView: React.FC = () => {
               </div>
 
               {/* Message Content Body */}
-              <div className="flex-1 overflow-auto p-2 bg-[#141517] relative">
+              <div
+                className="flex-1 overflow-auto p-2 bg-[#141517] relative"
+                onContextMenu={handleInspectorContextMenu}
+              >
                 {activeMessage ? (
                   viewMode === 'Hex' ? (
                     renderHexView(activeMessage.payload)
@@ -528,7 +653,8 @@ export const WebSocketHistoryView: React.FC = () => {
               <input
                 type="text"
                 disabled
-                value={activeMessage?.url || 'https://0a68003d033b87c3807eda3900a2004e.web-security-academy.net/chat'}
+                value={activeMessage?.url || ''}
+                placeholder="wss://target.local/chat"
                 className="w-full bg-[#141517] text-[#9da5b4] text-xs p-2 rounded border border-[#313438] font-mono"
               />
             </div>
@@ -560,6 +686,17 @@ export const WebSocketHistoryView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* WebSocket Right-Click Context Menu */}
+      {contextMenu.isOpen && contextMenu.targetMsg && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          isOpen={contextMenu.isOpen}
+          onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
+          items={buildWsContextMenuItems(contextMenu.targetMsg)}
+        />
       )}
     </div>
   );

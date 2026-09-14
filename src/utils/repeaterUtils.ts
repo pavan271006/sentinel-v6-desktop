@@ -531,31 +531,96 @@ export function generateRenderablePreviewHtml(
 
   let htmlResult = '';
 
-  // 1. Real captured HTML documents rendered directly
+  // 1. Real captured HTML documents or fragments rendered directly
   const isHtml =
     trimmed.startsWith('<!DOCTYPE') ||
     trimmed.startsWith('<html') ||
     trimmed.startsWith('<?xml') ||
     trimmed.startsWith('<svg') ||
-    trimmed.startsWith('<div') ||
-    trimmed.startsWith('<form') ||
-    trimmed.startsWith('<table') ||
     trimmed.includes('<html') ||
     trimmed.includes('<!DOCTYPE') ||
     trimmed.includes('<head') ||
     trimmed.includes('<body') ||
-    trimmed.includes('</title>');
+    trimmed.includes('</title>') ||
+    trimmed.includes('</form>') ||
+    trimmed.includes('</div>') ||
+    trimmed.includes('</span>') ||
+    trimmed.includes('</p>') ||
+    trimmed.includes('</table>') ||
+    trimmed.includes('</section>') ||
+    trimmed.includes('</main>') ||
+    trimmed.includes('</nav>') ||
+    /<(div|form|table|p|h[1-6]|span|input|select|textarea|button|section|main|article|header|footer|nav|ul|ol|li)\b[^>]*>/i.test(trimmed);
 
   if (isHtml) {
     let baseTag = '';
-    if (urlOrHost && urlOrHost.startsWith('http')) {
+    // Only inject <base> if the document does not already define one
+    if (!trimmed.includes('<base ') && urlOrHost && urlOrHost.startsWith('http')) {
       try {
         const u = new URL(urlOrHost);
-        baseTag = `<base href="${u.origin}${u.pathname}">`;
+        baseTag = `<base href="${u.href}">`;
       } catch {}
     }
 
-    if (!trimmed.includes('<html') && !trimmed.startsWith('<!DOCTYPE')) {
+    const INTERACTIVE_BRIDGE_SCRIPT = `
+<script>
+  (function() {
+    // Intercept clicks on links so clicking links inside preview navigates via Sentinel
+    document.addEventListener('click', function(e) {
+      var a = e.target && e.target.closest('a');
+      if (a) {
+        var href = a.getAttribute('href') || a.href || '';
+        if (href && !href.startsWith('javascript:') && !href.startsWith('about:') && href !== '#') {
+          e.preventDefault();
+          window.parent.postMessage({ type: 'SENTINEL_IFRAME_NAVIGATE', url: a.href || href }, '*');
+        }
+      }
+    }, true);
+
+    // Intercept form submissions so submitting login forms inside preview logs in via Sentinel
+    document.addEventListener('submit', function(e) {
+      var form = e.target;
+      e.preventDefault();
+      var formData = new FormData(form);
+      var entries = [];
+      formData.forEach(function(val, key) {
+        entries.push(encodeURIComponent(key) + '=' + encodeURIComponent(val));
+      });
+      var body = entries.join('&');
+      var rawAction = form.getAttribute('action') || '';
+      var action = rawAction;
+      if (!action || action.startsWith('about:')) {
+        action = (form.action && !form.action.startsWith('about:')) ? form.action : '';
+      }
+      var method = (form.method || 'POST').toUpperCase();
+      window.parent.postMessage({
+        type: 'SENTINEL_IFRAME_SUBMIT',
+        action: action,
+        method: method,
+        body: body
+      }, '*');
+    }, true);
+  })();
+</script>`;
+
+    // Format plain "Redirecting to <a href="...">" bodies into a helpful interactive card
+    let displayBody = trimmed;
+    const redirectLinkMatch = trimmed.match(/Redirecting to <a href=["']([^"']+)["']/i) || trimmed.match(/Redirecting to (https?:\/\/[^\s<]+)/i);
+    if (redirectLinkMatch && (trimmed.length < 300 || !trimmed.includes('<body'))) {
+      const destUrl = redirectLinkMatch[1];
+      displayBody = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;margin:36px auto;padding:24px;border:1px solid #0284c740;border-radius:12px;background:#0b111e;color:#e2e8f0;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.6);">
+  <div style="font-size:28px;margin-bottom:8px;">🔀</div>
+  <h3 style="margin:0 0 6px;color:#38bdf8;font-size:16px;font-weight:700;">HTTP 302 Found — Redirect to Authentication</h3>
+  <p style="margin:0 0 16px;color:#94a3b8;font-size:12px;">This endpoint requires an authenticated session. Click below to load the portal login page:</p>
+  <div style="background:#131c2e;border:1px solid #1e293b;border-radius:6px;padding:10px;font-family:monospace;font-size:11px;color:#7dd3fc;word-break:break-all;margin-bottom:18px;">
+    ${destUrl}
+  </div>
+  <a href="${destUrl}" style="background:#0284c7;color:#ffffff;text-decoration:none;padding:9px 22px;border-radius:6px;font-weight:700;font-size:12px;display:inline-block;cursor:pointer;">Load Login Portal Page ➔</a>
+</div>`;
+    }
+
+    if (!displayBody.includes('<html') && !displayBody.startsWith('<!DOCTYPE')) {
       htmlResult = `<!DOCTYPE html>
 <html>
 <head>
@@ -564,24 +629,44 @@ export function generateRenderablePreviewHtml(
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #ffffff; color: #1e293b; padding: 16px; margin: 0; line-height: 1.5; }
   </style>
+  ${INTERACTIVE_BRIDGE_SCRIPT}
 </head>
 <body>
-${trimmed}
+${displayBody}
 </body>
 </html>`;
     } else {
-      if (baseTag && trimmed.includes('<head>')) {
-        htmlResult = trimmed.replace('<head>', `<head>\n  ${baseTag}`);
-      } else if (baseTag && /<head[^>]*>/i.test(trimmed)) {
-        htmlResult = trimmed.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`);
-      } else if (baseTag) {
-        htmlResult = `${baseTag}\n${trimmed}`;
+      let augmented = displayBody;
+      if (baseTag && augmented.includes('<head>')) {
+        augmented = augmented.replace('<head>', `<head>\n  ${baseTag}\n  ${INTERACTIVE_BRIDGE_SCRIPT}`);
+      } else if (baseTag && /<head[^>]*>/i.test(augmented)) {
+        augmented = augmented.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}\n  ${INTERACTIVE_BRIDGE_SCRIPT}`);
+      } else if (augmented.includes('<head>')) {
+        augmented = augmented.replace('<head>', `<head>\n  ${INTERACTIVE_BRIDGE_SCRIPT}`);
+      } else if (/<head[^>]*>/i.test(augmented)) {
+        augmented = augmented.replace(/(<head[^>]*>)/i, `$1\n  ${INTERACTIVE_BRIDGE_SCRIPT}`);
       } else {
-        htmlResult = trimmed;
+        augmented = `${baseTag}\n${INTERACTIVE_BRIDGE_SCRIPT}\n${augmented}`;
       }
+      htmlResult = augmented;
     }
+  } else if (!isHtml && (urlOrHost?.endsWith('.css') || trimmed.startsWith('@charset') || trimmed.startsWith('@import'))) {
+    // 2. Pure CSS Stylesheet - display cleanly formatted in a code viewer
+    htmlResult = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { background-color: #12151c; color: #a5b4fc; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; padding: 16px; margin: 0; }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <pre>${trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+</body>
+</html>`;
   } else if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-    // 2. Real JSON response rendered cleanly (Burp Suite theme: Gold keys, Green strings, Orange booleans, Blue numbers)
+    // 3. Real JSON response rendered cleanly (Burp Suite theme: Gold keys, Green strings, Orange booleans, Blue numbers)
     try {
       const parsed = JSON.parse(trimmed);
       const prettyJson = JSON.stringify(parsed, null, 2);

@@ -134,10 +134,10 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_idle_per_host: 16,
-            max_total_idle: 128,
-            idle_timeout: Duration::from_secs(45),
-            connect_timeout: Duration::from_secs(10),
+            max_idle_per_host: 256,
+            max_total_idle: 1024,
+            idle_timeout: Duration::from_secs(60),
+            connect_timeout: Duration::from_secs(15),
         }
     }
 }

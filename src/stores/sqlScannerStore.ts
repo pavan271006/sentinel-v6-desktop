@@ -18,6 +18,7 @@ import {
   ColumnMetadata,
   SqlScannerSessionTab,
   GrayBoxConfig,
+  SqlScanLiveResponse,
 } from '../types/sqlScanner';
 import { RequestParser } from '../services/sqlScanner/RequestParser';
 import { SqlScanOrchestrator } from '../services/sqlScanner/SqlScanOrchestrator';
@@ -26,7 +27,9 @@ import { serializeHttpRequest } from '../utils/repeaterUtils';
 import { ipcClient } from '../ipc/client';
 import { DynamicGraphEngine } from '../services/sqlScanner/engine/DynamicGraphEngine';
 import { BlindDataExtractor } from '../services/sqlScanner/engine/BlindDataExtractor';
+import { ThreatConsequenceEngine } from '../services/sqlScanner/engine/ThreatConsequenceEngine';
 import { useCollaboratorStore } from './collaboratorStore';
+import { useTrafficStore } from './trafficStore';
 
 import {
   InvestigationNode,
@@ -76,6 +79,8 @@ export interface SqlScannerState {
     confidence: number;
     details?: string;
   }[];
+  lastResponse: SqlScanLiveResponse | null;
+  isProbing: boolean;
 
   // Actions
   createScanTab: (seedRequest?: string, title?: string) => string;
@@ -104,6 +109,12 @@ export interface SqlScannerState {
   resetScan: () => void;
   clearLogs: () => void;
   importFromTransaction: (tx: any) => void;
+  probeTargetRequest: (overrideRaw?: string) => Promise<void>;
+  followRedirect: (targetRedirectUrl?: string) => Promise<void>;
+  mergeCookiesIntoRawRequest: (setCookieValues: string[]) => void;
+  syncSessionFromProxy: (targetHost?: string) => number;
+  navigateRenderPreview: (url: string) => Promise<void>;
+  submitRenderPreviewForm: (actionUrl: string, method: string, formDataString: string) => Promise<void>;
   fetchColumnsForTable: (table: DiscoveredTable) => Promise<void>;
   fetchSampleRowsForTable: (table: DiscoveredTable) => Promise<void>;
 }
@@ -274,7 +285,7 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
 
   targetConfig: defaultInitialTab.targetConfig,
   safetyConfig: defaultInitialTab.safetyConfig,
-  activeTab: 'god_rail',
+  activeTab: 'database',
   scanState: 'idle',
   scanVerdict: 'IDLE',
   progress: defaultInitialTab.progress,
@@ -301,6 +312,8 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
   dbmsBeliefs: DEFAULT_DBMS_BELIEFS,
   aiReasoningLogs: DEFAULT_AI_REASONING,
   defenseLayers: DEFAULT_DEFENSE_LAYERS,
+  lastResponse: null,
+  isProbing: false,
 
   createScanTab: (seedRequest?: string, title?: string) => {
     // Snapshot current active tab first
@@ -431,13 +444,15 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         dbmsFingerprint: newTab.dbmsFingerprint,
         engineMode: newTab.engineMode,
         orchestrator: null,
-        activeTab: 'god_rail',
+        activeTab: 'database',
         investigationNodes: newTab.investigationNodes,
         investigationEdges: newTab.investigationEdges,
         contextBeliefs: newTab.contextBeliefs,
         dbmsBeliefs: newTab.dbmsBeliefs,
         aiReasoningLogs: newTab.aiReasoningLogs,
         defenseLayers: newTab.defenseLayers,
+        lastResponse: newTab.lastResponse || null,
+        isProbing: false,
         selectedFindingId: null,
         selectedCatalogTableId: null,
         selectedCatalogColumnName: null,
@@ -553,6 +568,8 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
       dbmsBeliefs: targetTab.dbmsBeliefs || DEFAULT_DBMS_BELIEFS,
       aiReasoningLogs: targetTab.aiReasoningLogs || DEFAULT_AI_REASONING,
       defenseLayers: targetTab.defenseLayers || DEFAULT_DEFENSE_LAYERS,
+      lastResponse: targetTab.lastResponse || null,
+      isProbing: false,
       selectedFindingId: targetTab.findings[0]?.id || null,
       selectedCatalogTableId: targetTab.catalog.applicationTables[0]?.id || null,
     });
@@ -827,6 +844,7 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         });
       },
       onFinding: (finding) => {
+        ThreatConsequenceEngine.enrichFinding(finding);
         syncTabUpdate(set, currentTabId, (t) => ({
           findings: [...t.findings, finding],
         }));
@@ -841,12 +859,18 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
         syncTabUpdate(set, currentTabId, (t) => {
           const mergedAppTables = cat.applicationTables.length > 0 ? cat.applicationTables : t.catalog.applicationTables;
           const mergedSysTables = cat.systemTables && cat.systemTables.length > 0 ? cat.systemTables : t.catalog.systemTables;
+          const targetTable = cat.selectedNodeId
+            ? mergedAppTables.find((x) => x.id === cat.selectedNodeId)
+            : mergedAppTables.find((x) => x.sampleRows && x.sampleRows.length > 0) ||
+              mergedAppTables.find((x) => x.isSensitive) ||
+              mergedAppTables[0];
           return {
             catalog: {
               ...cat,
               applicationTables: mergedAppTables,
               systemTables: mergedSysTables,
             },
+            selectedCatalogTableId: t.selectedCatalogTableId || (targetTable ? targetTable.id : null),
             dbmsFingerprint: cat.dbms && cat.dbms !== 'Unknown' ? {
               ...t.dbmsFingerprint,
               dbms: cat.dbms,
@@ -1120,10 +1144,24 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
 
     const dynamicTelemetry = DynamicGraphEngine.generateForRequest(rawReq, parsed.url || url);
 
+    let responseObj: SqlScanLiveResponse | null = null;
+    if (tx.response || tx.responseRaw || tx.rawResponse) {
+      responseObj = {
+        statusCode: tx.response?.statusCode || tx.statusCode || 200,
+        statusText: tx.response?.statusText || (tx.statusCode === 200 ? 'OK' : `HTTP ${tx.statusCode || 200}`),
+        durationMs: tx.durationMs || tx.response?.durationMs || 100,
+        headers: tx.response?.headers || tx.respHeaders || [],
+        rawResponse: tx.rawResponse || tx.responseRaw || tx.response?.rawText || '',
+        body: tx.response?.bodyText || tx.body || tx.response?.body || '',
+        timestamp: Date.now(),
+      };
+    }
+
     if (isPristine && currentTab) {
       syncTabUpdate(set, currentTab.id, (t) => ({
         title: tabTitle,
-        activeInnerTab: 'god_rail',
+        activeInnerTab: 'database',
+        lastResponse: responseObj || t.lastResponse || null,
         targetConfig: {
           ...t.targetConfig,
           name: `Target: ${tx.host || 'Imported'}`,
@@ -1153,10 +1191,349 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
           phaseLabel: 'Target imported. Ready to test.',
         },
       }));
+      if (!responseObj) {
+        get().probeTargetRequest(rawReq);
+      }
     } else {
       // Create new tab and make it active
       createScanTab(rawReq, tabTitle);
+      if (!responseObj) {
+        get().probeTargetRequest(rawReq);
+      }
     }
+  },
+
+  probeTargetRequest: async (overrideRaw?: string) => {
+    const { activeTabId, targetConfig } = get();
+    let rawToUse = overrideRaw || targetConfig.rawRequest;
+    if (!rawToUse || !rawToUse.trim()) return;
+
+    // Automatic Proxy Session Ingestion: If proxy has captured live browser session cookies for this host,
+    // automatically attach and merge them so authenticated sessions and clearance tokens are immediately active!
+    try {
+      const parsed = RequestParser.parse(rawToUse, targetConfig.url);
+      const host = parsed.host || (targetConfig.url ? new URL(targetConfig.url).host : '');
+      if (host && !host.includes('target.local')) {
+        const txs = useTrafficStore.getState().transactions.filter((t) => t.host === host);
+        const cookieTokens: string[] = [];
+        for (const tx of txs) {
+          if (tx.reqHeaders) {
+            for (const h of tx.reqHeaders) {
+              if (h.name.toLowerCase() === 'cookie') {
+                cookieTokens.push(...h.value.split(';'));
+              }
+            }
+          }
+          if (tx.resHeaders) {
+            for (const h of tx.resHeaders) {
+              if (h.name.toLowerCase() === 'set-cookie') {
+                cookieTokens.push(h.value.split(';')[0]);
+              }
+            }
+          }
+        }
+        if (cookieTokens.length > 0) {
+          get().mergeCookiesIntoRawRequest(cookieTokens);
+          rawToUse = get().targetConfig.rawRequest;
+        }
+      }
+    } catch {}
+
+    set({ isProbing: true });
+
+    try {
+      const parsed = RequestParser.parse(rawToUse, targetConfig.url);
+      let targetUrl = parsed.url || targetConfig.url;
+
+      let cleanPath = (parsed.path || '/').trim();
+      if (cleanPath.startsWith('/http://') || cleanPath.startsWith('/https://')) {
+        cleanPath = cleanPath.substring(1);
+      }
+      if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+        try {
+          const u = new URL(cleanPath);
+          cleanPath = `${u.pathname}${u.search}`;
+        } catch {}
+      }
+      if (!cleanPath.startsWith('/')) cleanPath = `/${cleanPath}`;
+
+      const hostHdr = parsed.headers.find((h) => h.name.toLowerCase() === 'host')?.value;
+      if (hostHdr && !hostHdr.includes('target.local') && !hostHdr.includes('127.0.0.1')) {
+        const isHttps = targetUrl.startsWith('https://') || !targetUrl.startsWith('http://');
+        const scheme = isHttps ? 'https://' : 'http://';
+        targetUrl = `${scheme}${hostHdr}${cleanPath}`;
+      }
+
+      const startTime = performance.now();
+      const execResult = await ipcClient.sendRepeaterRequest({
+        tabId: `sql_probe_${Date.now()}`,
+        targetUrl,
+        rawRequest: rawToUse,
+        interpolate: false,
+      });
+      const durationMs = execResult.durationMs ?? Math.round(performance.now() - startTime);
+
+      const liveResp: SqlScanLiveResponse = {
+        statusCode: execResult.statusCode ?? 200,
+        statusText: execResult.statusText || (execResult.statusCode === 200 ? 'OK' : execResult.statusCode === 404 ? 'Not Found' : `HTTP ${execResult.statusCode ?? 200}`),
+        durationMs,
+        headers: execResult.headers || [],
+        rawResponse: execResult.rawResponse || '',
+        body: execResult.body || '',
+        timestamp: Date.now(),
+      };
+
+      set((state) => ({
+        isProbing: false,
+        lastResponse: liveResp,
+        tabs: state.tabs.map((t) => (t.id === activeTabId ? { ...t, lastResponse: liveResp } : t)),
+      }));
+
+      // Automatically capture and maintain session cookies from response (Set-Cookie)
+      if (liveResp.headers && liveResp.headers.length > 0) {
+        const setCookies = liveResp.headers
+          .filter((h) => h.name.toLowerCase() === 'set-cookie')
+          .map((h) => h.value);
+        if (setCookies.length > 0) {
+          get().mergeCookiesIntoRawRequest(setCookies);
+        }
+      }
+    } catch (err: any) {
+      const errorResp: SqlScanLiveResponse = {
+        statusCode: 0,
+        statusText: err.message || 'Connection Error',
+        durationMs: 0,
+        headers: [],
+        rawResponse: `Error: ${err.message || 'Probe failed'}`,
+        body: `Error: ${err.message || 'Probe failed'}`,
+        timestamp: Date.now(),
+      };
+      set((state) => ({
+        isProbing: false,
+        lastResponse: errorResp,
+        tabs: state.tabs.map((t) => (t.id === activeTabId ? { ...t, lastResponse: errorResp } : t)),
+      }));
+    }
+  },
+
+  mergeCookiesIntoRawRequest: (setCookieValues: string[]) => {
+    const { targetConfig } = get();
+    if (!targetConfig.rawRequest || setCookieValues.length === 0) return;
+
+    const lines = targetConfig.rawRequest.split(/\r?\n/);
+    const cookieJar = new Map<string, string>();
+    let cookieLineIdx = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].toLowerCase().startsWith('cookie:')) {
+        cookieLineIdx = i;
+        const val = lines[i].substring(7).trim();
+        val.split(';').forEach((p) => {
+          const [k, ...v] = p.trim().split('=');
+          if (k) cookieJar.set(k.trim(), v.join('='));
+        });
+      }
+    }
+
+    for (const sc of setCookieValues) {
+      const part = sc.split(';')[0];
+      if (part) {
+        const [k, ...v] = part.trim().split('=');
+        if (k) cookieJar.set(k.trim(), v.join('='));
+      }
+    }
+
+    if (cookieJar.size === 0) return;
+
+    const mergedCookieHeader = `Cookie: ${Array.from(cookieJar.entries()).map(([k, v]) => `${k}=${v}`).join('; ')}`;
+    const newLines = [...lines];
+    if (cookieLineIdx >= 0) {
+      newLines[cookieLineIdx] = mergedCookieHeader;
+    } else {
+      let insertIdx = 1;
+      for (let i = 0; i < newLines.length; i++) {
+        if (newLines[i].toLowerCase().startsWith('host:')) {
+          insertIdx = i + 1;
+          break;
+        }
+      }
+      newLines.splice(insertIdx, 0, mergedCookieHeader);
+    }
+
+    const updatedRaw = newLines.join('\r\n');
+    set((state) => ({
+      targetConfig: { ...state.targetConfig, rawRequest: updatedRaw },
+    }));
+  },
+
+  syncSessionFromProxy: (targetHost?: string): number => {
+    const { targetConfig } = get();
+    let host = targetHost;
+    if (!host) {
+      try {
+        if (targetConfig.url) host = new URL(targetConfig.url).host;
+      } catch {}
+    }
+    if (!host) {
+      for (const line of targetConfig.rawRequest.split(/\r?\n/)) {
+        if (line.toLowerCase().startsWith('host:')) {
+          host = line.substring(5).trim();
+          break;
+        }
+      }
+    }
+    if (!host) return 0;
+
+    const txs = useTrafficStore.getState().transactions.filter((t) => t.host === host);
+    const cookieTokens: string[] = [];
+    for (const tx of txs) {
+      if (tx.reqHeaders) {
+        for (const h of tx.reqHeaders) {
+          if (h.name.toLowerCase() === 'cookie') {
+            cookieTokens.push(...h.value.split(';'));
+          }
+        }
+      }
+      if (tx.resHeaders) {
+        for (const h of tx.resHeaders) {
+          if (h.name.toLowerCase() === 'set-cookie') {
+            cookieTokens.push(h.value.split(';')[0]);
+          }
+        }
+      }
+    }
+
+    if (cookieTokens.length > 0) {
+      get().mergeCookiesIntoRawRequest(cookieTokens);
+      get().probeTargetRequest();
+      return cookieTokens.length;
+    }
+    return 0;
+  },
+
+  navigateRenderPreview: async (url: string) => {
+    const { targetConfig } = get();
+    try {
+      const parsed = RequestParser.parse(targetConfig.rawRequest, targetConfig.url);
+      const origin = targetConfig.url.startsWith('http') ? targetConfig.url : `https://${parsed.host || 'target.local'}`;
+      let targetUrlToResolve = url;
+      if (!targetUrlToResolve || targetUrlToResolve.startsWith('about:') || targetUrlToResolve === '#' || targetUrlToResolve.startsWith('javascript:')) {
+        targetUrlToResolve = targetConfig.url || '/';
+      }
+      const resolved = new URL(targetUrlToResolve, origin);
+      const fullUrl = resolved.toString();
+      const host = resolved.host;
+      const path = `${resolved.pathname}${resolved.search}`;
+
+      const cookieHdr = parsed.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value;
+      const browserUa = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+      const newRaw = `GET ${path} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: ${browserUa}\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8\r\nAccept-Language: en-US,en;q=0.5\r\n${cookieHdr ? `Cookie: ${cookieHdr}\r\n` : ''}Connection: close\r\n\r\n`;
+
+      get().setRawRequest(newRaw);
+      set((state) => ({ targetConfig: { ...state.targetConfig, url: fullUrl } }));
+      await get().probeTargetRequest(newRaw);
+    } catch {}
+  },
+
+  submitRenderPreviewForm: async (actionUrl: string, method: string, formDataString: string) => {
+    const { targetConfig } = get();
+    try {
+      const parsed = RequestParser.parse(targetConfig.rawRequest, targetConfig.url);
+      const origin = targetConfig.url.startsWith('http') ? targetConfig.url : `https://${parsed.host || 'target.local'}`;
+      let resolvedAction = actionUrl;
+      if (!resolvedAction || resolvedAction.startsWith('about:') || resolvedAction === '#' || resolvedAction.startsWith('javascript:')) {
+        resolvedAction = targetConfig.url || '/';
+      }
+      const resolved = new URL(resolvedAction, origin);
+      const fullUrl = resolved.toString();
+      const host = resolved.host;
+      const path = `${resolved.pathname}${resolved.search}`;
+      const m = method.toUpperCase();
+
+      const cookieHdr = parsed.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value;
+      const browserUa = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+      let newRaw = '';
+      if (m === 'GET') {
+        const joiner = path.includes('?') ? '&' : '?';
+        const finalPath = formDataString ? `${path}${joiner}${formDataString}` : path;
+        newRaw = `GET ${finalPath} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: ${browserUa}\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n${cookieHdr ? `Cookie: ${cookieHdr}\r\n` : ''}Connection: close\r\n\r\n`;
+      } else {
+        newRaw = `POST ${path} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: ${browserUa}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ${formDataString.length}\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n${cookieHdr ? `Cookie: ${cookieHdr}\r\n` : ''}Connection: close\r\n\r\n${formDataString}`;
+      }
+
+      get().setRawRequest(newRaw);
+      set((state) => ({ targetConfig: { ...state.targetConfig, url: fullUrl } }));
+      await get().probeTargetRequest(newRaw);
+
+      // If response redirected (e.g. 302 after successful login), automatically follow to authenticated view
+      const res = get().lastResponse;
+      if (res && res.statusCode >= 300 && res.statusCode < 400) {
+        const nextLoc = extractRedirectLocation(res, fullUrl);
+        if (nextLoc) {
+          await get().followRedirect(nextLoc);
+        }
+      }
+    } catch {}
+  },
+
+  followRedirect: async (targetRedirectUrl?: string) => {
+    const { targetConfig, lastResponse } = get();
+    const loc = targetRedirectUrl || extractRedirectLocation(lastResponse, targetConfig.url);
+    if (!loc) return;
+
+    try {
+      const parsed = RequestParser.parse(targetConfig.rawRequest, targetConfig.url);
+      const origin = targetConfig.url.startsWith('http') ? targetConfig.url : `https://${parsed.host || 'target.local'}`;
+      const resolved = new URL(loc, origin);
+      const newPath = `${resolved.pathname}${resolved.search}`;
+      const host = resolved.host || parsed.host || 'target.local';
+      const fullUrl = resolved.toString();
+
+      const cookieHdr = parsed.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value;
+
+      const newRaw = `GET ${newPath} HTTP/1.1\r\nHost: ${host}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8\r\nAccept-Language: en-US,en;q=0.5\r\n${cookieHdr ? `Cookie: ${cookieHdr}\r\n` : ''}Connection: close\r\n\r\n`;
+
+      get().setRawRequest(newRaw);
+      set((state) => ({ targetConfig: { ...state.targetConfig, url: fullUrl } }));
+
+      // Probe immediately to load the real landing page
+      await get().probeTargetRequest(newRaw);
+
+      // Extract discovered forms & inputs into candidate injection parameters without destroying rawRequest
+      const updatedResp = get().lastResponse;
+      if (updatedResp && updatedResp.body) {
+        const formMatch = updatedResp.body.match(/<form\b([^>]*)>([\s\S]*?)<\/form>/i);
+        if (formMatch) {
+          const formBody = formMatch[2] || '';
+          const inputRegex = /<input\b[^>]*name=["']([^"']+)["'][^>]*>/gi;
+          const inputs: { name: string; sampleValue: string }[] = [];
+          let inputMatch: RegExpExecArray | null;
+          while ((inputMatch = inputRegex.exec(formBody)) !== null) {
+            const name = inputMatch[1];
+            const valMatch = inputMatch[0].match(/value=["']([^"']*)["']/i);
+            const val = valMatch ? valMatch[1] : '';
+            inputs.push({ name, sampleValue: val });
+          }
+
+          if (inputs.length > 0) {
+            set((state) => ({
+              targetConfig: {
+                ...state.targetConfig,
+                params: inputs.map((inp, idx) => ({
+                  id: `landing_param_${idx}_${inp.name}`,
+                  name: inp.name,
+                  value: inp.sampleValue || '1',
+                  type: 'body',
+                  enabled: true,
+                  isVulnerable: false,
+                })),
+              },
+            }));
+          }
+        }
+      }
+    } catch {}
   },
 
   fetchColumnsForTable: async (table: DiscoveredTable) => {
@@ -1429,6 +1806,7 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
             dbms: dbmsFingerprint.dbms !== 'Unknown' ? dbmsFingerprint.dbms : 'Generic SQL',
             technique: effectiveTechnique,
             timeDelaySeconds: 2,
+            concurrencyLimit: get().concurrencyLimit || 20,
             onProgress: (colName, partialVal) => {
               const userCol = colNames.find((c) => /user|login|account/i.test(c)) || 'username';
               set((state) => ({
@@ -1483,3 +1861,30 @@ export const useSqlScannerStore = create<SqlScannerState>((set, get) => ({
     }
   },
 }));
+
+export function extractRedirectLocation(resp?: SqlScanLiveResponse | null, _currentUrl?: string): string | null {
+  if (!resp) return null;
+  // 1. Headers Location
+  const locHdr = resp.headers?.find((h) => h.name.toLowerCase() === 'location')?.value;
+  if (locHdr) return locHdr.trim();
+
+  // 2. Meta refresh: <meta http-equiv="refresh" content="0;url='https://...'" />
+  const metaMatch =
+    resp.body?.match(/<meta\b[^>]*http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=['"]?([^'">\s]+)['"]?/i) ||
+    resp.body?.match(/<meta\b[^>]*content=["'][^"']*url=['"]?([^'">\s]+)['"]?[^>]*http-equiv=["']?refresh["']?/i);
+  if (metaMatch && metaMatch[1]) return metaMatch[1].trim();
+
+  // 3. JavaScript window.location or location.href
+  const jsMatch =
+    resp.body?.match(/(?:window\.)?location(?:\.href|\.replace)?\s*=\s*['"]([^'"]+)['"]/i) ||
+    resp.body?.match(/location\.replace\(['"]([^'"]+)['"]\)/i);
+  if (jsMatch && (jsMatch[1] || jsMatch[2])) return (jsMatch[1] || jsMatch[2]).trim();
+
+  // 4. Anchor tag fallback in redirect body: <a href="https://...">
+  if ([301, 302, 303, 307, 308].includes(resp.statusCode)) {
+    const aMatch = resp.body?.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>/i);
+    if (aMatch && aMatch[1]) return aMatch[1].trim();
+  }
+
+  return null;
+}

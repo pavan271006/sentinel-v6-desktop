@@ -369,12 +369,12 @@ export function VirtualizedTable<T>({
                     height: `${rowHeight}px`,
                   }}
                   className={cn(
-                    'flex items-center border-b border-border-subtle/50 transition-colors cursor-pointer select-none',
+                    'flex items-center border-b border-border-subtle/40 transition-colors duration-100 cursor-pointer select-none',
                     isSelected
-                      ? 'bg-accent-cyan/15 text-text-primary font-medium'
+                      ? 'bg-accent-cyan/15 text-white font-medium border-l-2 border-l-accent-cyan shadow-[inset_0_0_12px_rgba(0,240,255,0.08)]'
                       : index % 2 === 0
-                      ? 'bg-bg-panel hover:bg-bg-panel-hover'
-                      : 'bg-bg-app hover:bg-bg-panel-hover',
+                      ? 'bg-bg-panel/40 hover:bg-bg-panel-hover'
+                      : 'bg-bg-app/40 hover:bg-bg-panel-hover',
                     isFocused && 'ring-1 ring-inset ring-accent-cyan/60'
                   )}
                 >

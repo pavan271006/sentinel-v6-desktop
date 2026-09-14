@@ -39,12 +39,12 @@ export class PayloadMutationEngine {
     // 3. Case variations
     if (options?.enableCaseVariants) {
       const mixed = basePayload
-        .replace(/UNION/gi, 'uNiOn')
-        .replace(/SELECT/gi, 'sElEcT')
-        .replace(/AND/gi, 'aNd')
-        .replace(/OR/gi, 'oR')
-        .replace(/FROM/gi, 'fRoM')
-        .replace(/WHERE/gi, 'wHeRe');
+        .replace(/\bUNION\b/gi, 'uNiOn')
+        .replace(/\bSELECT\b/gi, 'sElEcT')
+        .replace(/\bAND\b/gi, 'aNd')
+        .replace(/\bOR\b/gi, 'oR')
+        .replace(/\bFROM\b/gi, 'fRoM')
+        .replace(/\bWHERE\b/gi, 'wHeRe');
       if (mixed !== basePayload) {
         variants.add(mixed);
       }

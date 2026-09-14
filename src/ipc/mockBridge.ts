@@ -38,6 +38,7 @@ import {
   extractHeaderValue,
   exportRepeaterRequest,
 } from '../utils/repeaterUtils';
+import { useVpnRotatorStore } from '../stores/vpnRotatorStore';
 
 
 
@@ -397,7 +398,7 @@ const INITIAL_PROJECTS: RecentProjectInfo[] = [
     last_opened: new Date().toISOString(),
     size_bytes: 14200000,
     scope_rules_count: 6,
-    finding_count: 3,
+    finding_count: 0,
     pinned: true,
   },
   {
@@ -407,7 +408,7 @@ const INITIAL_PROJECTS: RecentProjectInfo[] = [
     last_opened: new Date(Date.now() - 86400000).toISOString(),
     size_bytes: 8400000,
     scope_rules_count: 4,
-    finding_count: 1,
+    finding_count: 0,
     pinned: false,
   },
 ];
@@ -1178,6 +1179,26 @@ export const mockBackendBridge = {
             fetchHeaders[h.name] = h.value;
           }
         }
+
+        // Apply active VPN / IP Rotator egress spoofing headers
+        try {
+          const vpn = useVpnRotatorStore.getState();
+          if (vpn && vpn.isActive && vpn.currentNode) {
+            const vpnIp = vpn.currentNode.ip;
+            if (!fetchHeaders['X-Forwarded-For'] && !fetchHeaders['x-forwarded-for']) {
+              fetchHeaders['X-Forwarded-For'] = vpnIp;
+            }
+            if (!fetchHeaders['X-Real-IP'] && !fetchHeaders['x-real-ip']) {
+              fetchHeaders['X-Real-IP'] = vpnIp;
+            }
+            if (!fetchHeaders['CF-Connecting-IP'] && !fetchHeaders['cf-connecting-ip']) {
+              fetchHeaders['CF-Connecting-IP'] = vpnIp;
+            }
+            if (!fetchHeaders['True-Client-IP'] && !fetchHeaders['true-client-ip']) {
+              fetchHeaders['True-Client-IP'] = vpnIp;
+            }
+          }
+        } catch {}
 
         const fetchInit: RequestInit = {
           method: parsedReq.method || 'GET',
@@ -1953,55 +1974,6 @@ function generateTransactionDetailsFromSummary(s: TrafficSummary): TransactionDe
 }
 
 function ensureMockTrafficData() {
-  if (mockSummaries.length > 0) return;
-
-  const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
-  const paths = [
-    '/api/v1/auth/login',
-    '/api/v1/users/profile',
-    '/api/v1/orders/checkout',
-    '/graphql?query=getCart',
-    '/oauth/v2/token',
-    '/static/assets/app.js',
-    '/api/v2/admin/roles',
-    '/api/v1/invoices/export',
-    '/healthz',
-    '/metrics',
-  ];
-  const statuses = [200, 201, 204, 302, 400, 401, 403, 404, 500];
-  const baseTime = Date.now();
-
-  for (let i = 1; i <= 250; i++) {
-    const method = methods[i % methods.length];
-    const path = paths[i % paths.length];
-    const status = statuses[i % statuses.length];
-    const durationMs = 15 + ((i * 31) % 450);
-    const sizeBytes = 256 + ((i * 128) % 32768);
-    const inScope = i % 8 !== 0;
-
-    const summary: TrafficSummary = {
-      id: `tx-${i.toString().padStart(6, '0')}`,
-      seqNumber: i,
-      timestamp: new Date(baseTime - (250 - i) * 1000).toLocaleTimeString(),
-      timestampMs: baseTime - (250 - i) * 1000,
-      method,
-      url: `https://target.local${path}`,
-      host: 'target.local',
-      path,
-      status,
-      durationMs,
-      sizeBytes,
-      inScope,
-      mimeType: path.includes('graphql') || path.includes('api') ? 'application/json' : 'text/html',
-      tags: inScope ? ['scope:target'] : ['scope:out-of-scope'],
-      tlsVersion: 'TLSv1.3',
-      cipherSuite: 'TLS_AES_256_GCM_SHA384',
-      reqBlobId: `blob-req-${i}`,
-      resBlobId: `blob-res-${i}`,
-    };
-
-    mockSummaries.push(summary);
-    mockTransactions.set(summary.id, generateTransactionDetailsFromSummary(summary));
-  }
+  // Clean empty state - do not inject fake transactions
 }
 

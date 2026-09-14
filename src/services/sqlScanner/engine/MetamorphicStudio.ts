@@ -1,4 +1,5 @@
 import { WAF_BYPASS_TRANSFORMS, WafBypassTransform } from '../payloads/BypassPayloads';
+import { WafDetector } from '../WafDetector';
 
 export interface SqlToken {
   type: 'keyword' | 'identifier' | 'literal' | 'operator' | 'comment' | 'whitespace' | 'unknown';
@@ -17,7 +18,7 @@ export interface WafSimulationResult {
 }
 
 export interface WafDetectionFromRequestResult {
-  detectedWaf: 'cloudflare' | 'aws' | 'modsecurity' | 'imperva' | 'akamai' | 'generic';
+  detectedWaf: string;
   wafDisplayName: string;
   confidence: number; // 0 to 100
   reasons: string[];
@@ -256,14 +257,35 @@ export class MetamorphicStudio {
       domains: [] as string[],
     };
 
+    // 1. Initial heuristic scoring for common edge providers
     if (best && best.score > 0) {
       detectedWaf = best.waf;
       confidence = Math.min(99, Math.max(65, best.score));
-      reasons = best.reasons;
+      reasons = [...best.reasons];
       detectedIndicators.cookies = best.cookies;
       detectedIndicators.headers = best.headers;
       detectedIndicators.domains = best.domains;
-    } else {
+    }
+
+    // 2. Correlate with Comprehensive 26+ WAF Signature Engine (Wafw00f & WhatWaf Parity)
+    const wafDetectorResult = WafDetector.detect(headers, body, 200, cookieNames);
+    if (wafDetectorResult.detected && wafDetectorResult.wafName) {
+      const wafName = wafDetectorResult.wafName;
+      const lower = wafName.toLowerCase();
+      if (detectedWaf === 'generic') {
+        if (lower.includes('cloudflare')) detectedWaf = 'cloudflare';
+        else if (lower.includes('aws')) detectedWaf = 'aws';
+        else if (lower.includes('modsecurity') || lower.includes('mod_security')) detectedWaf = 'modsecurity';
+        else if (lower.includes('imperva') || lower.includes('incapsula')) detectedWaf = 'imperva';
+        else if (lower.includes('akamai')) detectedWaf = 'akamai';
+      }
+      confidence = Math.max(confidence, (wafDetectorResult.confidence === 'Confirmed' || wafDetectorResult.confidence === 'High') ? 95 : 85);
+      for (const ev of wafDetectorResult.evidence) {
+        if (!reasons.includes(ev)) reasons.push(ev);
+      }
+    }
+
+    if (reasons.length === 0) {
       reasons.push('No perimeter WAF headers, cookies, or CDN domain patterns identified in HTTP request. Applied generic bypass strategy.');
     }
 
@@ -271,7 +293,7 @@ export class MetamorphicStudio {
 
     return {
       detectedWaf,
-      wafDisplayName: wafDisplayMap[detectedWaf] || 'Generic Perimeter Filter',
+      wafDisplayName: wafDisplayMap[detectedWaf] || (wafDetectorResult.detected && wafDetectorResult.wafName ? `${wafDetectorResult.wafName} (Verified Signature)` : 'Generic Perimeter Filter'),
       confidence,
       reasons,
       inferredContentType,
@@ -279,6 +301,40 @@ export class MetamorphicStudio {
       transformRationale: rationale,
       detectedIndicators,
     };
+  }
+
+  /**
+   * Returns all 26+ supported commercial and open-source WAF targets
+   */
+  public static getSupportedWafs(): { id: string; name: string; category: string }[] {
+    return [
+      { id: 'cloudflare', name: 'Cloudflare (Managed OWASP CRS)', category: 'Cloud / CDN' },
+      { id: 'aws', name: 'AWS WAF (SQLi Rule Set)', category: 'Cloud / CDN' },
+      { id: 'google_cloud_armor', name: 'Google Cloud Armor (reCAPTCHA / SQLi)', category: 'Cloud / CDN' },
+      { id: 'akamai', name: 'Akamai Kona Site Defender', category: 'Cloud / CDN' },
+      { id: 'fastly_sigsci', name: 'Fastly / Signal Sciences Next-Gen WAF', category: 'Cloud / CDN' },
+      { id: 'azure_waf', name: 'Azure Front Door / Application Gateway WAF', category: 'Cloud / CDN' },
+      { id: 'alibaba_waf', name: 'Alibaba Cloud WAF', category: 'Cloud / CDN' },
+      { id: 'tencent_waf', name: 'Tencent Cloud WAF', category: 'Cloud / CDN' },
+      { id: 'reblaze', name: 'Reblaze Technologies WAF', category: 'Cloud / CDN' },
+      { id: 'modsecurity', name: 'ModSecurity (OWASP CRS v3.3/4.0)', category: 'Open Source / Appliance' },
+      { id: 'imperva', name: 'Imperva SecureSphere / Incapsula', category: 'Enterprise Appliance' },
+      { id: 'f5_asm', name: 'F5 BIG-IP Advanced WAF (ASM)', category: 'Enterprise Appliance' },
+      { id: 'fortiweb', name: 'Fortinet FortiWeb', category: 'Enterprise Appliance' },
+      { id: 'netscaler', name: 'Citrix NetScaler AppFirewall', category: 'Enterprise Appliance' },
+      { id: 'barracuda', name: 'Barracuda Web Application Firewall', category: 'Enterprise Appliance' },
+      { id: 'sonicwall', name: 'SonicWall Web Application Firewall', category: 'Enterprise Appliance' },
+      { id: 'radware', name: 'Radware AppWall', category: 'Enterprise Appliance' },
+      { id: 'webknight', name: 'AQTRONIX WebKnight (IIS)', category: 'Enterprise Appliance' },
+      { id: 'datadome', name: 'DataDome Bot & Fraud Protection', category: 'Anti-Bot / AI Defense' },
+      { id: 'perimeterx', name: 'PerimeterX / HUMAN Security', category: 'Anti-Bot / AI Defense' },
+      { id: 'kasada', name: 'Kasada Dynamic Bot Mitigation', category: 'Anti-Bot / AI Defense' },
+      { id: 'wordfence', name: 'Wordfence Security (WordPress)', category: 'CMS / App Firewall' },
+      { id: 'sucuri', name: 'Sucuri CloudProxy', category: 'CMS / App Firewall' },
+      { id: 'naxsi', name: 'NAXSI (Nginx Anti-XSS & Injection)', category: 'Open Source / Appliance' },
+      { id: 'wallarm', name: 'Wallarm API Security & AI WAF', category: 'Next-Gen / AI WAF' },
+      { id: 'generic', name: 'Generic Perimeter Filter (Conservative)', category: 'Generic' },
+    ];
   }
 
   /**

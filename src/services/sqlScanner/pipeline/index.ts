@@ -6,6 +6,7 @@ export * from './stages/ParameterContextStage';
 export * from './stages/MultiOracleDiscoveryStage';
 export * from './stages/CausalVerificationStage';
 export * from './stages/GrayBoxStage';
+export * from './stages/SecondOrderStage';
 export * from './stages/AdaptiveSchemaStage';
 export * from './stages/VectorizedExtractionStage';
 export * from './stages/EvidenceSynthesisStage';

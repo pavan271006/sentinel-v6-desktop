@@ -1,0 +1,735 @@
+{
+  "timestamp": "2026-09-13T15:30:00Z",
+  "scanner_version": "Sentinel V7.0-EXHAUSTIVE",
+  "overall_coverage_pct": 100.0,
+  "previous_coverage_pct": 89.5,
+  "absolute_improvement_pct": 10.5,
+  "relative_improvement_pct": 11.73,
+  "dimension_scores": {
+    "contexts": 100.0,
+    "dialects": 100.0,
+    "mechanisms": 100.0,
+    "parameter_types": 100.0,
+    "transports": 100.0
+  },
+  "contexts": {
+    "numeric": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "single_quote_string": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "double_quote_string": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "parenthesized_string": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "like_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "order_by_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "group_by_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "having_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "where_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "insert_values": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "update_set": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "subquery": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "identifier": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "json_derived": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "xml_derived": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "merge_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "date_time": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "vector_op": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "array_derived": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": false,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "limit_offset": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "select_expr": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "join_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "case_expr": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "window_func": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "cte_clause": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "fulltext_search": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "spatial_op": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "delete_where": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    },
+    "boolean_literal": {
+      "documented": true,
+      "detected": true,
+      "has_boolean_pairs": true,
+      "has_payloads": true,
+      "tested": true,
+      "status": "DIEUR",
+      "verified": true
+    }
+  },
+  "dialects": {
+    "PostgreSQL": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "MySQL": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "MariaDB": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Microsoft SQL Server": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Oracle": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "SQLite": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "IBM Db2": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "H2": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Microsoft Access": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Snowflake": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Google BigQuery": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "ClickHouse": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "CockroachDB": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Amazon Redshift": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "DuckDB": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Trino": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Presto": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Vertica": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "SAP HANA": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Teradata": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Firebird": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Databricks SQL": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Azure Synapse": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Apache Doris": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "SingleStore": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Vitess": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "TimescaleDB": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "YugabyteDB": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "AlloyDB": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "Generic SQL": {
+      "registered": true,
+      "native_implementation": true,
+      "is_alias": false,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    }
+  },
+  "mechanisms": {
+    "M01": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M02": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M03": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M04": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M05": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M06": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M07": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M08": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M09": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M10": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M11": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M12": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M13": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M14": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M15": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M16": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M17": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    },
+    "M18": {
+      "cataloged": true,
+      "reachable": true,
+      "tested": true,
+      "status": "DIEU",
+      "verified": true
+    }
+  },
+  "parameter_types": {
+    "string": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "integer": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "decimal": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "boolean": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "date": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "timestamp": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "uuid": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "binary": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "array": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "json": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "xml": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "spatial": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "vector": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "enum": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "identifier": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "encoded": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    },
+    "null": {
+      "implemented": true,
+      "tested": true,
+      "verified": true
+    }
+  }
+}

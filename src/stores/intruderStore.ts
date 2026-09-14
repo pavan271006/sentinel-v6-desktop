@@ -39,6 +39,10 @@ export interface IntruderTabState {
   windowState: 'normal' | 'maximized' | 'minimized';
   captureFilter: IntruderCaptureFilterState;
   applyCaptureFilter: boolean;
+  stealthIpRotation: boolean;
+  ghostJitter: boolean;
+  browserMimicry: boolean;
+  adaptiveThrottle: boolean;
 }
 
 export interface IntruderState {
@@ -143,6 +147,10 @@ export function createDefaultTab(
     windowState: 'normal',
     captureFilter: { ...DEFAULT_INTRUDER_CAPTURE_FILTER },
     applyCaptureFilter: true,
+    stealthIpRotation: true,
+    ghostJitter: true,
+    browserMimicry: true,
+    adaptiveThrottle: true,
   };
 }
 
@@ -361,7 +369,9 @@ export const useIntruderStore = create<IntruderState>((set, get) => ({
     const headerLines = Array.isArray(headers)
       ? headers.map((h: any) => `${h.name}: ${h.value}`).join('\r\n')
       : '';
-    const rawReq = `${method} ${markedPath} HTTP/1.1\r\n${headerLines}\r\n\r\n${markedBody}`;
+    const rawReq = tx?.rawRequest && (!Array.isArray(headers) || headers.length === 0)
+      ? tx.rawRequest
+      : `${method} ${markedPath} HTTP/1.1\r\n${headerLines}\r\n\r\n${markedBody}`;
     const tabTitle = extractTabTitle(method, markedPath);
 
     const newTabId = get().createTab({

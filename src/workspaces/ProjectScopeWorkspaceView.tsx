@@ -1462,21 +1462,23 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
               <select
                 value={newRuleType}
                 onChange={(e) => setNewRuleType(e.target.value as any)}
+                style={{ colorScheme: 'dark' }}
                 className="bg-[#141517] text-white px-2 py-1 rounded border border-[#3e4249] text-xs font-bold"
               >
-                <option value="INCLUDE">Include</option>
-                <option value="EXCLUDE">Exclude</option>
+                <option value="INCLUDE" className="bg-[#2b2d30] text-[#dfdfdf]">Include</option>
+                <option value="EXCLUDE" className="bg-[#2b2d30] text-[#dfdfdf]">Exclude</option>
               </select>
               <select
                 value={newPatternType}
                 onChange={(e) => setNewPatternType(e.target.value as any)}
+                style={{ colorScheme: 'dark' }}
                 className="bg-[#141517] text-white px-2 py-1 rounded border border-[#3e4249] text-xs"
               >
-                <option value="HOST">Host Match</option>
-                <option value="URL_PREFIX">URL Prefix</option>
-                <option value="IP_CIDR">IP Subnet (CIDR)</option>
-                <option value="REGEX">Regex</option>
-                <option value="WILDCARD">Wildcard</option>
+                <option value="HOST" className="bg-[#2b2d30] text-[#dfdfdf]">Host Match</option>
+                <option value="URL_PREFIX" className="bg-[#2b2d30] text-[#dfdfdf]">URL Prefix</option>
+                <option value="IP_CIDR" className="bg-[#2b2d30] text-[#dfdfdf]">IP Subnet (CIDR)</option>
+                <option value="REGEX" className="bg-[#2b2d30] text-[#dfdfdf]">Regex</option>
+                <option value="WILDCARD" className="bg-[#2b2d30] text-[#dfdfdf]">Wildcard</option>
               </select>
               <input
                 type="text"

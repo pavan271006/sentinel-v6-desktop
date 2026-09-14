@@ -138,7 +138,7 @@ export default defineConfig({
     hookTimeout: 20000,
     poolOptions: {
       threads: {
-        isolate: false,
+        isolate: true,
       },
     },
     coverage: {

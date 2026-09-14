@@ -14,11 +14,12 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 }
 
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ options, dense = true, mono = false, disabled, className, ...props }, ref) => {
+  ({ options, dense = true, mono = false, disabled, className, style, ...props }, ref) => {
     return (
       <select
         ref={ref}
         disabled={disabled}
+        style={{ colorScheme: 'dark', ...style }}
         className={cn(
           'bg-bg-input text-text-primary border border-border-subtle rounded transition-colors focus-ring cursor-pointer',
           'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -29,7 +30,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {...props}
       >
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+          <option key={opt.value} value={opt.value} disabled={opt.disabled} className="bg-[#2b2d30] text-[#dfdfdf]">
             {opt.label}
           </option>
         ))}

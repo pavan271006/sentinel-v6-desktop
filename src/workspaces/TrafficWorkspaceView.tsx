@@ -30,105 +30,8 @@ import {
 
 import { TrafficSummary } from '../types/traffic';
 
-export function generateBenchmarkTraffic(count = 200): TrafficSummary[] {
-  const googleItems: Array<{
-    seq: number;
-    host: string;
-    method: string;
-    path: string;
-    status: number;
-    sizeBytes: number;
-    mimeType: string;
-  }> = [
-    { seq: 1, host: 'https://www.google.com', method: 'GET', path: '/search?q=hi&oq=hi&gs_lcrp=EgZ...', status: 200, sizeBytes: 94130, mimeType: 'HTML' },
-    { seq: 2, host: 'https://www.google.com', method: 'GET', path: '/search?q=hi&oq=hi&gs_lcrp=EgZ...', status: 302, sizeBytes: 2232, mimeType: 'HTML' },
-    { seq: 3, host: 'https://www.google.com', method: 'GET', path: '/sorry/index?continue=https://ww...', status: 429, sizeBytes: 4024, mimeType: 'HTML' },
-    { seq: 6, host: 'https://www.google.com', method: 'GET', path: '/recaptcha/enterprise/anchor?ar=1...', status: 200, sizeBytes: 56453, mimeType: 'HTML' },
-    { seq: 12, host: 'https://www.google.com', method: 'GET', path: '/recaptcha/enterprise/bframe?hl=e...', status: 200, sizeBytes: 18109, mimeType: 'HTML' },
-    { seq: 14, host: 'http://clients2.google.com', method: 'GET', path: '/time/1/current?cup2key=10:qTfgG...', status: 200, sizeBytes: 1090, mimeType: 'JSON' },
-    { seq: 15, host: 'https://www.gstatic.com', method: 'GET', path: '/oghttp_gateway/hpke_public_keys/s...', status: 200, sizeBytes: 799, mimeType: 'app' },
-    { seq: 16, host: 'https://www.google.com', method: 'GET', path: '/async/folae?async=_fmt:pb&udm=50&client_locale=en-US&client_country=us', status: 200, sizeBytes: 1379, mimeType: 'app' },
-    { seq: 17, host: 'https://clients2.google.com', method: 'GET', path: '/service/update2/crx?os=win&arch...', status: 200, sizeBytes: 2526, mimeType: 'XML' },
-    { seq: 18, host: 'https://clientservices.googleapis.com', method: 'GET', path: '/chrome-variations/seed?osname=...', status: 200, sizeBytes: 51537, mimeType: 'app' },
-    { seq: 19, host: 'https://accounts.google.com', method: 'POST', path: '/ListAccounts?origin=1&source=Ch...', status: 200, sizeBytes: 1026, mimeType: 'app' },
-  ];
-
-  const results: TrafficSummary[] = [];
-  const baseTime = Date.now();
-
-  googleItems.forEach((g) => {
-    results.push({
-      id: `tx-${g.seq.toString().padStart(6, '0')}`,
-      seqNumber: g.seq,
-      timestamp: new Date(baseTime - (count - g.seq) * 1000).toLocaleTimeString(),
-      timestampMs: baseTime - (count - g.seq) * 1000,
-      method: g.method,
-      url: `${g.host}${g.path}`,
-      host: g.host,
-      path: g.path,
-      status: g.status,
-      durationMs: 42,
-      sizeBytes: g.sizeBytes,
-      inScope: true,
-      mimeType: g.mimeType,
-      tags: ['scope:target'],
-      tlsVersion: 'TLSv1.3',
-      cipherSuite: 'TLS_AES_256_GCM_SHA384',
-      reqBlobId: `blob-req-${g.seq}`,
-      resBlobId: `blob-res-${g.seq}`,
-    });
-  });
-
-  const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
-  const paths = [
-    '/api/v1/auth/login',
-    '/api/v1/users/profile',
-    '/api/v1/orders/checkout',
-    '/graphql?query=getCart',
-    '/oauth/v2/token',
-    '/static/assets/app.js',
-    '/api/v2/admin/roles',
-    '/api/v1/invoices/export',
-    '/healthz',
-    '/metrics',
-    '/ws/notifications',
-    '/ws/chat',
-    '/ws/telemetry',
-  ];
-  const statuses = [200, 201, 204, 302, 400, 401, 403, 404, 500];
-
-  for (let i = 20; i <= count; i++) {
-    const method = methods[i % methods.length];
-    const path = paths[i % paths.length];
-    const status = statuses[i % statuses.length];
-    const durationMs = 15 + ((i * 31) % 450);
-    const sizeBytes = 256 + ((i * 128) % 32768);
-    const inScope = i % 8 !== 0;
-    const isWs = path.startsWith('/ws');
-
-    results.push({
-      id: `tx-${i.toString().padStart(6, '0')}`,
-      seqNumber: i,
-      timestamp: new Date(baseTime - (count - i) * 1000).toLocaleTimeString(),
-      timestampMs: baseTime - (count - i) * 1000,
-      method: isWs ? 'GET' : method,
-      url: `${isWs ? 'wss' : 'https'}://target.local${path}`,
-      host: 'https://target.local',
-      path,
-      status: isWs ? 101 : status,
-      durationMs,
-      sizeBytes,
-      inScope,
-      mimeType: isWs ? 'websocket' : path.includes('graphql') || path.includes('api') ? 'application/json' : 'text/html',
-      tags: inScope ? ['scope:target'] : ['scope:out-of-scope'],
-      tlsVersion: 'TLSv1.3',
-      cipherSuite: 'TLS_AES_256_GCM_SHA384',
-      reqBlobId: `blob-req-${i}`,
-      resBlobId: `blob-res-${i}`,
-    });
-  }
-
-  return results;
+export function generateBenchmarkTraffic(_count = 200): TrafficSummary[] {
+  return [];
 }
 
 export const TrafficWorkspaceView: React.FC = () => {
@@ -280,13 +183,13 @@ export const TrafficWorkspaceView: React.FC = () => {
   return (
     <div className="flex flex-col w-full h-full bg-[#1e1f22] overflow-hidden">
       {/* 1. Burp Suite Proxy Sub-Tab Bar */}
-      <div className="h-7 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center px-2 gap-1 select-none flex-shrink-0 text-xs font-sans">
+      <div className="h-9 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center px-2.5 gap-1.5 select-none flex-shrink-0 text-xs font-sans">
         <button
           onClick={() => setProxySubTab('intercept')}
-          className={`px-3 py-1 font-medium rounded-t transition-colors flex items-center gap-1.5 ${
+          className={`px-3 py-1 font-medium rounded-md transition-all duration-150 flex items-center gap-1.5 ${
             proxySubTab === 'intercept'
-              ? 'bg-[#1e1f22] text-[#f37021] border-b-2 border-[#f37021] font-semibold'
-              : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+              ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+              : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
           }`}
         >
           <span>Intercept</span>
@@ -296,37 +199,37 @@ export const TrafficWorkspaceView: React.FC = () => {
         </button>
         <button
           onClick={() => setProxySubTab('history')}
-          className={`px-3 py-1 font-medium rounded-t transition-colors ${
+          className={`px-3 py-1 font-medium rounded-md transition-all duration-150 ${
             proxySubTab === 'history'
-              ? 'bg-[#1e1f22] text-[#f37021] border-b-2 border-[#f37021] font-semibold'
-              : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+              ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+              : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
           }`}
         >
           HTTP history
         </button>
         <button
           onClick={() => setProxySubTab('websockets')}
-          className={`px-3 py-1 font-medium rounded-t transition-colors ${
+          className={`px-3 py-1 font-medium rounded-md transition-all duration-150 ${
             proxySubTab === 'websockets'
-              ? 'bg-[#1e1f22] text-[#f37021] border-b-2 border-[#f37021] font-semibold'
-              : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+              ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+              : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
           }`}
         >
           WebSockets history
         </button>
         <button
           onClick={() => setProxySubTab('options')}
-          className={`px-3 py-1 font-medium rounded-t transition-colors ${
+          className={`px-3 py-1 font-medium rounded-md transition-all duration-150 ${
             proxySubTab === 'options'
-              ? 'bg-[#1e1f22] text-[#f37021] border-b-2 border-[#f37021] font-semibold'
-              : 'text-[#9da5b4] hover:text-white hover:bg-[#35383f]'
+              ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+              : 'text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent'
           }`}
         >
           Match and replace
         </button>
         <button
           onClick={() => setIsProxySettingsOpen(true)}
-          className="px-3 py-1 font-medium rounded-t transition-colors ml-auto text-[#9da5b4] hover:text-white flex items-center gap-1"
+          className="px-3 py-1 font-medium rounded-md transition-all duration-150 ml-auto text-[#9da5b4] hover:text-white hover:bg-[#1e1f22]/60 border border-transparent flex items-center gap-1.5"
         >
           <Settings className="w-3.5 h-3.5" />
           <span>Proxy settings</span>

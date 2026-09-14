@@ -169,6 +169,8 @@ fn main() {
             let obs_store_arc = app_state.active_observation_store.clone();
             let proj_store_arc = app_state.active_project_storage.clone();
             let bus = app_state.event_bus.clone();
+            let proxy_engine_arc = app_state.proxy_engine.clone();
+            let status_arc = app_state.status.clone();
 
             tauri::async_runtime::spawn(async move {
                 let default_dir = std::env::temp_dir().join("sentinel_workspace");
@@ -206,6 +208,11 @@ fn main() {
                 }
 
                 let proxy_engine = std::sync::Arc::new(engine);
+                {
+                    let mut p_lock = proxy_engine_arc.lock().await;
+                    *p_lock = Some(proxy_engine.clone());
+                }
+
                 let cert_temp = std::env::temp_dir().join("sentinel_ca.crt").to_string_lossy().to_string();
                 let proxy_cfg = sentinel_common::config::ProxyConfig {
                     bind_address: "127.0.0.1".to_string(),
@@ -222,6 +229,9 @@ fn main() {
                     match proxy_engine.start(proxy_cfg.clone()).await {
                         Ok(_) => {
                             log_debug("SentinelProxyEngine started successfully on 127.0.0.1:8085");
+                            let mut st = status_arc.lock().await;
+                            st.proxy_running = true;
+                            st.proxy_port = 8085;
                             break;
                         }
                         Err(e) => {
@@ -277,6 +287,8 @@ fn main() {
             cmd_ucmax_plan_next_step,
             cmd_launch_wireshark,
             cmd_check_packet_capture_status,
+            cmd_rotate_system_vpn,
+            cmd_toggle_system_vpn,
         ]);
 
     log_debug("Step 3.1: Calling builder.build()...");

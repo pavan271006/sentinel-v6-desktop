@@ -200,9 +200,20 @@ impl RepeaterExecutor {
             let mut attempts = 0;
             loop {
                 attempts += 1;
-                let (mut transport, is_reused) = pool.acquire(&pool_key).await?;
+                let acquire_res = pool.acquire(&pool_key).await;
+                let (mut transport, _is_reused) = match acquire_res {
+                    Ok(pair) => pair,
+                    Err(err) => {
+                        if attempts < 3 {
+                            tokio::time::sleep(std::time::Duration::from_millis(50 * attempts as u64)).await;
+                            continue;
+                        }
+                        return Err(err);
+                    }
+                };
+
                 if let Err(e) = transport.write_all(&request_bytes).await {
-                    if is_reused && attempts == 1 {
+                    if attempts < 3 {
                         continue;
                     }
                     return Err(SentinelError::NetworkError(format!(
@@ -224,7 +235,7 @@ impl RepeaterExecutor {
                         break resp_bytes;
                     }
                     Err(e) => {
-                        if is_reused && attempts == 1 {
+                        if attempts < 3 {
                             continue;
                         }
                         return Err(e);
@@ -370,7 +381,7 @@ impl RepeaterExecutor {
         let mut is_chunked = false;
         let mut header_end_offset = 0;
 
-        let total_timeout = std::time::Duration::from_secs(12);
+        let total_timeout = std::time::Duration::from_secs(20);
         let start_read = std::time::Instant::now();
 
         loop {

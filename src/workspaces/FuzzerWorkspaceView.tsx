@@ -21,8 +21,11 @@ import {
   FileSpreadsheet,
   FileCode,
   FileText,
+  Shield,
+  RefreshCw,
 } from 'lucide-react';
 import { generateRenderablePreviewHtml } from '../utils/repeaterUtils';
+import { TlsFingerprintEngine } from '../services/sqlScanner/engine/TlsFingerprintEngine';
 
 
 export interface AttackResultItem {
@@ -40,6 +43,7 @@ export interface AttackResultItem {
 }
 
 import { useIntruderStore } from '../stores/intruderStore';
+import { useVpnRotatorStore } from '../stores/vpnRotatorStore';
 import { ipcClient } from '../ipc/client';
 import { ContextMenu, ContextMenuItem } from '../design-system/ContextMenu';
 import { useAppShellStore } from '../stores/appShellStore';
@@ -99,6 +103,10 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const delayMs = activeTab?.delayMs || 0;
   const updateHostHeader = activeTab?.updateHostHeader !== false;
   const updateContentLength = activeTab?.updateContentLength !== false;
+  const stealthIpRotation = activeTab?.stealthIpRotation !== false;
+  const ghostJitter = activeTab?.ghostJitter !== false;
+  const browserMimicry = activeTab?.browserMimicry !== false;
+  const adaptiveThrottle = activeTab?.adaptiveThrottle !== false;
 
   const setIsAttackRunning = (val: boolean) => updateTab(activeTabId, { isAttackRunning: val });
   const setShowAttackModal = (val: boolean) => updateTab(activeTabId, { showAttackModal: val });
@@ -112,6 +120,10 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const setDelayMs = (val: number) => updateTab(activeTabId, { delayMs: val });
   const setUpdateHostHeader = (val: boolean) => updateTab(activeTabId, { updateHostHeader: val });
   const setUpdateContentLength = (val: boolean) => updateTab(activeTabId, { updateContentLength: val });
+  const setStealthIpRotation = (val: boolean) => updateTab(activeTabId, { stealthIpRotation: val });
+  const setGhostJitter = (val: boolean) => updateTab(activeTabId, { ghostJitter: val });
+  const setBrowserMimicry = (val: boolean) => updateTab(activeTabId, { browserMimicry: val });
+  const setAdaptiveThrottle = (val: boolean) => updateTab(activeTabId, { adaptiveThrottle: val });
 
   const editorRef = useRef<SyntaxHighlightedEditorRef>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -142,7 +154,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const [accPayloadEncoding, setAccPayloadEncoding] = useState(true);
 
   // Settings Panel Config
-  const [setConnectionHeader, setSetConnectionHeader] = useState(true);
+  const [setConnectionHeader, setSetConnectionHeader] = useState(false);
 
   // Attack Execution Modal UI
   const [showAttackMenu, setShowAttackMenu] = useState(false);
@@ -153,6 +165,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
   // Capture Filter State
   const [showCaptureFilterModal, setShowCaptureFilterModal] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(500);
 
   // Filter attack results based on capture filter settings
   const filteredAttackResults = useMemo(() => {
@@ -201,6 +214,11 @@ export const FuzzerWorkspaceView: React.FC = () => {
       return true;
     });
   }, [attackResults, applyCaptureFilter, captureFilter]);
+
+  // Windowed virtual slice to guarantee 60 FPS DOM rendering during 1,000+ RPS bursts
+  const visibleAttackResults = useMemo(() => {
+    return filteredAttackResults.slice(0, displayLimit);
+  }, [filteredAttackResults, displayLimit]);
 
   // Global Escape key listener to close modals
   useEffect(() => {
@@ -814,6 +832,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
   const handleStartAttack = async () => {
     const currentTabId = activeTabId;
+    setDisplayLimit(500);
     updateTab(currentTabId, {
       showAttackModal: true,
       isAttackRunning: true,
@@ -898,7 +917,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
       description: `Dispatching ${permutations.length} HTTP requests against ${targetUrl}...`,
     });
 
-    const buildReplacedRequest = (rowPayloads: string[]) => {
+    const buildReplacedRequest = (rowPayloads: string[], rotatedIp?: string | null) => {
       let replaced = requestText;
       let counter = 0;
       replaced = replaced.replace(/§([^§]*)§/g, () => {
@@ -914,6 +933,28 @@ export const FuzzerWorkspaceView: React.FC = () => {
         } catch {}
       }
 
+      // Stealth Mode: Per-request IP Rotation & Cooldown Egress Spoofing
+      if (rotatedIp) {
+        // Strip previous spoofed headers to avoid duplicates
+        replaced = replaced.replace(/^(?:X-Forwarded-For|X-Real-IP|X-Client-IP|CF-Connecting-IP|True-Client-IP|X-Cluster-Client-IP|X-Forwarded-Host|Forwarded):[^\r\n]*\r?\n?/gim, '');
+        
+        const ipHeaders = `X-Forwarded-For: ${rotatedIp}\r\nX-Real-IP: ${rotatedIp}\r\nCF-Connecting-IP: ${rotatedIp}\r\nTrue-Client-IP: ${rotatedIp}`;
+        
+        if (/Host:[^\r\n]*/i.test(replaced)) {
+          replaced = replaced.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1${ipHeaders}\r\n`);
+        } else {
+          const crlfEnd = replaced.indexOf('\r\n\r\n');
+          const lfEnd = replaced.indexOf('\n\n');
+          if (crlfEnd !== -1) {
+            replaced = replaced.slice(0, crlfEnd) + '\r\n' + ipHeaders + replaced.slice(crlfEnd);
+          } else if (lfEnd !== -1) {
+            replaced = replaced.slice(0, lfEnd) + '\n' + ipHeaders + replaced.slice(lfEnd);
+          } else {
+            replaced = replaced.trimEnd() + '\r\n' + ipHeaders + '\r\n\r\n';
+          }
+        }
+      }
+
       if (updateContentLength) {
         const p = replaced.split(/\r?\n\r?\n/);
         if (p.length > 1) {
@@ -922,11 +963,37 @@ export const FuzzerWorkspaceView: React.FC = () => {
         }
       }
 
-      // Ensure Connection: keep-alive is active for maximum socket reuse and pipeline throughput
-      if (!replaced.toLowerCase().includes('connection:')) {
-        const headerEnd = replaced.indexOf('\r\n\r\n');
-        if (headerEnd !== -1) {
-          replaced = replaced.slice(0, headerEnd) + '\r\nConnection: keep-alive' + replaced.slice(headerEnd);
+      // Intelligent Connection header handling for socket pooling and maximum throughput
+      if (setConnectionHeader) {
+        if (replaced.toLowerCase().includes('connection:')) {
+          replaced = replaced.replace(/connection:\s*[^\r\n]+/i, 'Connection: close');
+        } else {
+          const headerEnd = replaced.indexOf('\r\n\r\n');
+          if (headerEnd !== -1) {
+            replaced = replaced.slice(0, headerEnd) + '\r\nConnection: close' + replaced.slice(headerEnd);
+          }
+        }
+      } else {
+        if (replaced.toLowerCase().includes('connection:')) {
+          replaced = replaced.replace(/connection:\s*[^\r\n]+/i, 'Connection: keep-alive');
+        } else {
+          const headerEnd = replaced.indexOf('\r\n\r\n');
+          if (headerEnd !== -1) {
+            replaced = replaced.slice(0, headerEnd) + '\r\nConnection: keep-alive' + replaced.slice(headerEnd);
+          }
+        }
+      }
+
+      // Modern Browser Fingerprint & Header Mimicry (Chrome 130 Profile Alignment)
+      if (browserMimicry) {
+        if (!/User-Agent:[^\r\n]*/i.test(replaced)) {
+          replaced = replaced.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36\r\n`);
+        }
+        if (!/sec-ch-ua:[^\r\n]*/i.test(replaced)) {
+          replaced = replaced.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1sec-ch-ua: "Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"\r\nsec-ch-ua-mobile: ?0\r\nsec-ch-ua-platform: "Windows"\r\n`);
+        }
+        if (!/Sec-Fetch-Dest:[^\r\n]*/i.test(replaced)) {
+          replaced = replaced.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1Sec-Fetch-Site: same-origin\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Dest: empty\r\n`);
         }
       }
 
@@ -935,7 +1002,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
     const totalPermutations = permutations.length;
     const resultsBuffer: AttackResultItem[] = new Array(totalPermutations);
-    const poolSize = Math.max(1, Math.min(concurrency || 100, 1000));
+    const poolSize = Math.max(1, Math.min(concurrency || 30, 1000));
     const attackStartTime = Date.now();
     let completedCount = 0;
     let nextIndex = 0;
@@ -944,13 +1011,14 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
     const flushResults = (force = false) => {
       const now = Date.now();
-      if (!force && now - lastFlushTime < 33) return; // 30 FPS throttle to protect React rendering loop
+      if (!force && now - lastFlushTime < 50) return; // 20 FPS throttle to protect React rendering loop
       lastFlushTime = now;
       dirty = false;
 
-      // Extract results in natural ID-sorted order in O(N) without O(N log N) sorting
+      // Extract results in natural ID-sorted order up to current index
       const activeList: AttackResultItem[] = [];
-      for (let i = 0; i < totalPermutations; i++) {
+      const limit = Math.min(totalPermutations, nextIndex + 10);
+      for (let i = 0; i < limit; i++) {
         if (resultsBuffer[i] !== undefined) {
           activeList.push(resultsBuffer[i]);
         }
@@ -966,15 +1034,23 @@ export const FuzzerWorkspaceView: React.FC = () => {
       if (dirty && !abortAttackRef.current) {
         flushResults();
       }
-    }, 40);
+    }, 50);
 
     const worker = async () => {
       while (nextIndex < totalPermutations && !abortAttackRef.current) {
         const reqIndex = nextIndex++;
         const perm = permutations[reqIndex];
-        const wireReq = buildReplacedRequest(perm.payloads);
+        const rotatedIp = stealthIpRotation ? useVpnRotatorStore.getState().getStealthIp(25000) : null;
+        const wireReq = buildReplacedRequest(perm.payloads, rotatedIp);
         const startMs = Date.now();
         let execResult;
+
+        if (delayMs > 0 && reqIndex > 0) {
+          const effectiveDelay = ghostJitter
+            ? TlsFingerprintEngine.generateGhostJitterMs(delayMs / 1000)
+            : delayMs;
+          await new Promise((resolve) => setTimeout(resolve, effectiveDelay));
+        }
 
         try {
           execResult = await ipcClient.sendRepeaterRequest({
@@ -1000,18 +1076,25 @@ export const FuzzerWorkspaceView: React.FC = () => {
           (rawRes.match(/HTTP\/[0-9.]+\s+(\d+)/)?.[1] ? parseInt(RegExp.$1, 10) : 0);
         const length = execResult.sizeBytes || rawRes.length || 0;
 
-        // Heap Virtualization: Bound stored request/response bodies to 2KB to prevent V8 heap exhaustion on 100k attack runs
-        const MAX_STORED_BODY_PREVIEW = 2048;
+        // Adaptive Backoff: If target triggers 429 Too Many Requests or 503, pause smoothly without failing
+        if (adaptiveThrottle && (status === 429 || status === 503)) {
+          const retryHeader = rawRes.match(/Retry-After:\s*(\d+)/i)?.[1];
+          const backoffMs = retryHeader ? parseInt(retryHeader, 10) * 1000 : 2500;
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        }
+
+        // Response Body Storage: Store up to 512KB per request/response so full HTML/JSON is visible without memory blowouts
+        const MAX_STORED_BODY_PREVIEW = 512 * 1024;
         const pagedRawResponse =
           rawRes.length > MAX_STORED_BODY_PREVIEW
             ? rawRes.slice(0, MAX_STORED_BODY_PREVIEW) +
-              `\r\n\r\n[... response body truncated (${length} bytes total) to conserve memory in large attack run ...]`
+              `\r\n\r\n[... response body truncated (${length} bytes total, exceeding 512KB) ...]`
             : rawRes;
 
         const pagedRawRequest =
           wireReq.length > MAX_STORED_BODY_PREVIEW
             ? wireReq.slice(0, MAX_STORED_BODY_PREVIEW) +
-              `\r\n\r\n[... request body truncated (${wireReq.length} bytes total) ...]`
+              `\r\n\r\n[... request body truncated (${wireReq.length} bytes total, exceeding 512KB) ...]`
             : wireReq;
 
         const item: AttackResultItem = {
@@ -1099,9 +1182,9 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
   return (
     <div className="flex flex-col w-full h-full bg-[#1e1f22] text-[#dfdfdf] font-sans select-none overflow-hidden text-xs">
-      {/* 1. Intruder Subtabs Strip: [ 1 × ] [ 2 × ] [ + ] */}
-      <div className="h-7 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 flex-shrink-0">
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+      {/* 1. Intruder Subtabs Strip */}
+      <div className="h-9 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
           {tabs.map((t, idx) => {
             const isActive = t.id === activeTabId;
             return (
@@ -1114,10 +1197,10 @@ export const FuzzerWorkspaceView: React.FC = () => {
                     renameTab(t.id, newName.trim());
                   }
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1 text-xs cursor-pointer border-r border-[#1e1f22] transition-colors max-w-[200px] truncate ${
+                className={`group flex items-center gap-2 px-3 py-1 text-xs rounded-md cursor-pointer transition-all duration-150 max-w-[220px] font-mono select-none ${
                   isActive
-                    ? 'bg-[#1e1f22] border-b-2 border-[#f37021] text-[#f37021] font-semibold'
-                    : 'bg-[#2b2d30] hover:bg-[#35383f] text-[#9da5b4] hover:text-white'
+                    ? 'bg-[#1e1f22] text-[#f37021] border border-[#3e4249] shadow-sm font-semibold'
+                    : 'bg-[#1e1f22]/40 text-[#9da5b4] hover:text-[#dfdfdf] hover:bg-[#1e1f22]/80 border border-transparent hover:border-[#313438]'
                 }`}
               >
                 <span className="truncate">{t.title || `${idx + 1}`}</span>
@@ -1127,7 +1210,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       e.stopPropagation();
                       closeTab(t.id);
                     }}
-                    className="p-0.5 rounded hover:bg-[#43474e] text-[#8c9099] hover:text-white"
+                    className="p-0.5 rounded-full hover:bg-[#3e4249] text-[#6f737a] hover:text-white transition-colors"
                     title="Close tab"
                   >
                     <X className="w-3 h-3" />
@@ -1138,7 +1221,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
           })}
           <button
             onClick={() => createTab()}
-            className="p-1 text-[#9da5b4] hover:text-white hover:bg-[#35383f] rounded transition-colors ml-1"
+            className="p-1 text-[#9da5b4] hover:text-white hover:bg-[#1e1f22] border border-transparent hover:border-[#313438] rounded-md transition-all ml-0.5"
             title="New Intruder Tab"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -1158,12 +1241,13 @@ export const FuzzerWorkspaceView: React.FC = () => {
             <select
               value={attackType}
               onChange={(e) => setAttackType(e.target.value as any)}
+              style={{ colorScheme: 'dark' }}
               className="w-full bg-[#2b2d30] text-white px-2.5 py-1 rounded border border-[#3e4249] focus:border-[#f37021] focus:outline-none text-xs"
             >
-              <option value="Sniper attack">Sniper attack</option>
-              <option value="Battering ram attack">Battering ram attack</option>
-              <option value="Pitchfork attack">Pitchfork attack</option>
-              <option value="Cluster bomb attack">Cluster bomb attack</option>
+              <option value="Sniper attack" className="bg-[#2b2d30] text-[#dfdfdf]">Sniper attack</option>
+              <option value="Battering ram attack" className="bg-[#2b2d30] text-[#dfdfdf]">Battering ram attack</option>
+              <option value="Pitchfork attack" className="bg-[#2b2d30] text-[#dfdfdf]">Pitchfork attack</option>
+              <option value="Cluster bomb attack" className="bg-[#2b2d30] text-[#dfdfdf]">Cluster bomb attack</option>
             </select>
           </div>
         </div>
@@ -1171,7 +1255,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
         {/* Orange Start Attack Button */}
         <button
           onClick={handleStartAttack}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-[#f37021] hover:bg-[#e05d06] text-white font-bold text-xs shadow-md transition-colors"
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-[#f37021] hover:bg-[#e05d06] text-white font-bold text-xs shadow-md transition-all duration-150 active:scale-95"
         >
           <Play className="w-3.5 h-3.5 fill-current" />
           <span>Start attack</span>
@@ -1321,16 +1405,17 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       <select
                         value={selectedPosition}
                         onChange={(e) => setSelectedPosition(parseInt(e.target.value, 10))}
+                        style={{ colorScheme: 'dark' }}
                         className="bg-[#141517] text-white px-2 py-0.5 rounded border border-[#3e4249] text-xs focus:outline-none w-56 font-mono"
                       >
                         {detectedPositions.length > 0 ? (
                           detectedPositions.map((p) => (
-                            <option key={p.index} value={p.index}>
+                            <option key={p.index} value={p.index} className="bg-[#2b2d30] text-[#dfdfdf]">
                               {p.index} ({p.name})
                             </option>
                           ))
                         ) : (
-                          <option value="1">1 (position 1)</option>
+                          <option value="1" className="bg-[#2b2d30] text-[#dfdfdf]">1 (position 1)</option>
                         )}
                       </select>
                     </div>
@@ -1345,24 +1430,25 @@ export const FuzzerWorkspaceView: React.FC = () => {
                           const generated = generatePayloads(newType, payloadConfig);
                           setPayloadSetForPosition(selectedPosition, generated);
                         }}
+                        style={{ colorScheme: 'dark' }}
                         className="bg-[#141517] text-white px-2 py-0.5 rounded border border-[#3e4249] text-xs focus:outline-none w-56 font-sans"
                       >
-                        <option value="Simple list">Simple list</option>
-                        <option value="Runtime file">Runtime file</option>
-                        <option value="Custom iterator">Custom iterator</option>
-                        <option value="Character substitution">Character substitution</option>
-                        <option value="Case modification">Case modification</option>
-                        <option value="Recursive grep">Recursive grep</option>
-                        <option value="Illegal Unicode">Illegal Unicode</option>
-                        <option value="Character blocks">Character blocks</option>
-                        <option value="Numbers">Numbers</option>
-                        <option value="Dates">Dates</option>
-                        <option value="Brute forcer">Brute forcer</option>
-                        <option value="Null payloads">Null payloads</option>
-                        <option value="Character frobber">Character frobber</option>
-                        <option value="Bit flipper">Bit flipper</option>
-                        <option value="Username generator">Username generator</option>
-                        <option value="ECB block shuffler">ECB block shuffler</option>
+                        <option value="Simple list" className="bg-[#2b2d30] text-[#dfdfdf]">Simple list</option>
+                        <option value="Runtime file" className="bg-[#2b2d30] text-[#dfdfdf]">Runtime file</option>
+                        <option value="Custom iterator" className="bg-[#2b2d30] text-[#dfdfdf]">Custom iterator</option>
+                        <option value="Character substitution" className="bg-[#2b2d30] text-[#dfdfdf]">Character substitution</option>
+                        <option value="Case modification" className="bg-[#2b2d30] text-[#dfdfdf]">Case modification</option>
+                        <option value="Recursive grep" className="bg-[#2b2d30] text-[#dfdfdf]">Recursive grep</option>
+                        <option value="Illegal Unicode" className="bg-[#2b2d30] text-[#dfdfdf]">Illegal Unicode</option>
+                        <option value="Character blocks" className="bg-[#2b2d30] text-[#dfdfdf]">Character blocks</option>
+                        <option value="Numbers" className="bg-[#2b2d30] text-[#dfdfdf]">Numbers</option>
+                        <option value="Dates" className="bg-[#2b2d30] text-[#dfdfdf]">Dates</option>
+                        <option value="Brute forcer" className="bg-[#2b2d30] text-[#dfdfdf]">Brute forcer</option>
+                        <option value="Null payloads" className="bg-[#2b2d30] text-[#dfdfdf]">Null payloads</option>
+                        <option value="Character frobber" className="bg-[#2b2d30] text-[#dfdfdf]">Character frobber</option>
+                        <option value="Bit flipper" className="bg-[#2b2d30] text-[#dfdfdf]">Bit flipper</option>
+                        <option value="Username generator" className="bg-[#2b2d30] text-[#dfdfdf]">Username generator</option>
+                        <option value="ECB block shuffler" className="bg-[#2b2d30] text-[#dfdfdf]">ECB block shuffler</option>
                       </select>
                     </div>
 
@@ -1456,45 +1542,51 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
                         <button
                           type="button"
-                          onClick={() => { setConcurrency(1000); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 1000 Workers (Turbo Engine / 30k RPS)' }); }}
+                          onClick={() => { setConcurrency(25); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 25 Workers (Cloud Lab / PortSwigger Recommended)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#38bdf8]/20 hover:border-[#38bdf8] border border-[#3e4249] rounded text-sky-400 font-bold text-left transition-colors"
+                        >
+                          🌐 25 Workers (Cloud Lab)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(100); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 100 Workers (Fast Turbo)' }); }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#34d399]/20 hover:border-[#34d399] border border-[#3e4249] rounded text-emerald-400 font-bold text-left transition-colors"
+                        >
+                          🚀 100 Workers (Fast)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConcurrency(500); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 500 Workers (Max Engine)' }); }}
                           className="px-2 py-1 bg-[#141517] hover:bg-[#ef4444]/20 hover:border-[#ef4444] border border-[#3e4249] rounded text-red-400 font-bold text-left transition-colors"
                         >
-                          🔥 1000 Workers (Turbo)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setConcurrency(500); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 500 Workers (High Turbo)' }); }}
-                          className="px-2 py-1 bg-[#141517] hover:bg-[#f37021]/20 hover:border-[#f37021] border border-[#3e4249] rounded text-orange-400 font-bold text-left transition-colors"
-                        >
-                          ⚡ 500 Workers (0ms)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setConcurrency(100); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 100 Workers (Fast)' }); }}
-                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-emerald-400 font-bold text-left transition-colors"
-                        >
-                          🚀 100 Workers (0ms)
+                          🔥 500 Workers (Max)
                         </button>
                         <button
                           type="button"
                           onClick={() => { setConcurrency(50); setDelayMs(0); addToast({ type: 'info', title: 'Intruder: 50 Workers (Standard)' }); }}
-                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-amber-400 font-bold text-left transition-colors"
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#f59e0b]/20 hover:border-[#f59e0b] border border-[#3e4249] rounded text-amber-400 font-bold text-left transition-colors"
                         >
-                          ⚡ 50 Workers (0ms)
+                          ⚡ 50 Workers (Standard)
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setConcurrency(15); setDelayMs(50); addToast({ type: 'info', title: 'Intruder: 15 Workers (Balanced)' }); }}
+                          onClick={() => { setConcurrency(15); setDelayMs(20); addToast({ type: 'info', title: 'Intruder: 15 Workers (Balanced)' }); }}
                           className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-[#9da5b4] text-left transition-colors"
                         >
-                          ⚖️ 15 Workers (50ms)
+                          ⚖️ 15 Workers (20ms)
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setConcurrency(1); setDelayMs(2000); addToast({ type: 'info', title: 'Intruder: 1 Worker (Stealth / Anti-Ban)' }); }}
-                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-[#3e4249] rounded text-purple-400 text-left transition-colors"
+                          onClick={() => {
+                            setConcurrency(1);
+                            setDelayMs(1000);
+                            setStealthIpRotation(true);
+                            addToast({ type: 'info', title: 'Intruder: 1 Worker (Stealth / Anti-Ban IP Rotation Active)' });
+                          }}
+                          className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-purple-500/40 rounded text-purple-400 text-left transition-colors flex items-center justify-between"
                         >
-                          🥷 1 Worker (Stealth)
+                          <span>🥷 1 Worker (Stealth)</span>
+                          <span className="text-[9px] bg-purple-950/80 text-purple-300 px-1 rounded border border-purple-800">IP ROT</span>
                         </button>
                       </div>
                     </div>
@@ -1504,26 +1596,160 @@ export const FuzzerWorkspaceView: React.FC = () => {
 
               {/* Settings Drawer */}
               {activeRightDrawer === 'settings' && (
-                <div className="p-3 bg-[#1e1f22] rounded border border-[#3e4249] space-y-3">
-                  <span className="font-semibold text-white text-xs">Request Header Handling</span>
-                  <label className="flex items-center gap-2 text-xs text-[#c4c7c5] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={updateContentLength}
-                      onChange={(e) => setUpdateContentLength(e.target.checked)}
-                      className="rounded bg-[#2b2d30] border-[#3e4249] text-[#f37021]"
-                    />
-                    <span>Update Content-Length header automatically</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-xs text-[#c4c7c5] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={setConnectionHeader}
-                      onChange={(e) => setSetConnectionHeader(e.target.checked)}
-                      className="rounded bg-[#2b2d30] border-[#3e4249] text-[#f37021]"
-                    />
-                    <span>Set Connection: close</span>
-                  </label>
+                <div className="p-3 bg-[#1e1f22] rounded border border-[#3e4249] space-y-4">
+                  {/* Stealth Mode Section */}
+                  <div className="p-2.5 bg-[#141517] rounded border border-purple-500/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-purple-400 font-semibold text-xs">
+                        <Shield className="w-3.5 h-3.5" />
+                        <span>Stealth Mode (Anti-Ban IP Rotation)</span>
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold font-mono ${stealthIpRotation ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-[#2b2d30] text-[#8c9099]'}`}>
+                        {stealthIpRotation ? 'ACTIVE' : 'OFF'}
+                      </span>
+                    </div>
+                    <label className="flex items-start gap-2 text-xs text-[#c4c7c5] cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={stealthIpRotation}
+                        onChange={(e) => {
+                          setStealthIpRotation(e.target.checked);
+                          addToast({
+                            type: e.target.checked ? 'success' : 'info',
+                            title: e.target.checked ? 'Intruder Stealth IP Rotation Enabled' : 'Intruder Stealth IP Rotation Disabled',
+                            description: e.target.checked
+                              ? 'Each attack request will automatically rotate client IP headers (X-Forwarded-For, X-Real-IP, CF-Connecting-IP, True-Client-IP) with cooldown reuse policy.'
+                              : 'Requests will be dispatched without client IP header rotation.',
+                          });
+                        }}
+                        className="mt-0.5 rounded bg-[#2b2d30] border-[#3e4249] text-purple-500 focus:ring-0"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium text-white">Rotate IP per attack request</span>
+                        <span className="text-[11px] text-[#8c9099] leading-tight mt-0.5">
+                          Injects randomized residential/datacenter IPs into <code className="text-purple-300">X-Forwarded-For</code>, <code className="text-purple-300">X-Real-IP</code>, and <code className="text-purple-300">CF-Connecting-IP</code> with automatic cooldown to prevent bot bans.
+                        </span>
+                      </div>
+                    </label>
+
+                    {stealthIpRotation && (
+                      <div className="mt-2 pt-2 border-t border-purple-500/20 flex items-center justify-between text-[11px] font-mono text-purple-300">
+                        <span>Sample Egress: {useVpnRotatorStore.getState().currentNode.flag} {useVpnRotatorStore.getState().currentNode.ip}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const next = await useVpnRotatorStore.getState().rotateVpn();
+                            addToast({ type: 'info', title: `Tested Stealth Node: ${next.flag} ${next.ip}` });
+                          }}
+                          className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-950/60 hover:bg-purple-900 border border-purple-700/60 text-purple-200 transition-colors"
+                          title="Rotate active node now"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5" />
+                          <span>Test Rotation</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Advanced Evasion & Defense Research Settings */}
+                  <div className="p-2.5 bg-[#141517] rounded border border-blue-500/30 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-blue-400">🛡️ Defense-Aware Protocol Engine</span>
+                      <span className="text-[9px] bg-blue-950/80 text-blue-300 px-1 rounded border border-blue-800">RESEARCH</span>
+                    </div>
+
+                    {/* Ghost Jitter */}
+                    <label className="flex items-start gap-2 text-xs text-[#c4c7c5] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ghostJitter}
+                        onChange={(e) => {
+                          setGhostJitter(e.target.checked);
+                          addToast({
+                            type: 'info',
+                            title: e.target.checked ? 'Ghost Jitter Active (Poisson Distributed Timing)' : 'Ghost Jitter Disabled',
+                            description: 'Varies inter-arrival timing via Poisson distribution to prevent statistical burst detection.',
+                          });
+                        }}
+                        className="mt-0.5 rounded bg-[#2b2d30] border-[#3e4249] text-blue-500 focus:ring-0"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium text-white">Poisson Ghost Jitter</span>
+                        <span className="text-[11px] text-[#8c9099] leading-tight mt-0.5">
+                          Applies mathematical exponential distribution to delay intervals (eliminating fixed-interval bot signatures).
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Browser Mimicry */}
+                    <label className="flex items-start gap-2 text-xs text-[#c4c7c5] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={browserMimicry}
+                        onChange={(e) => {
+                          setBrowserMimicry(e.target.checked);
+                          addToast({
+                            type: 'info',
+                            title: e.target.checked ? 'Browser Mimicry Enabled' : 'Browser Mimicry Disabled',
+                            description: 'Injects modern Sec-CH-UA, Sec-Fetch, and User-Agent headers matching Chrome 130 profile.',
+                          });
+                        }}
+                        className="mt-0.5 rounded bg-[#2b2d30] border-[#3e4249] text-blue-500 focus:ring-0"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium text-white">Browser Header Alignment (Chrome 130)</span>
+                        <span className="text-[11px] text-[#8c9099] leading-tight mt-0.5">
+                          Injects standard Client Hints (`Sec-CH-UA`) and Fetch metadata headers matching modern desktop browsers.
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Adaptive Throttle */}
+                    <label className="flex items-start gap-2 text-xs text-[#c4c7c5] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={adaptiveThrottle}
+                        onChange={(e) => {
+                          setAdaptiveThrottle(e.target.checked);
+                          addToast({
+                            type: 'info',
+                            title: e.target.checked ? 'Adaptive Throttling Active' : 'Adaptive Throttling Disabled',
+                            description: 'Automatically pauses and backs off on HTTP 429 Too Many Requests / 503 responses.',
+                          });
+                        }}
+                        className="mt-0.5 rounded bg-[#2b2d30] border-[#3e4249] text-blue-500 focus:ring-0"
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium text-white">Adaptive 429/503 Auto-Backoff</span>
+                        <span className="text-[11px] text-[#8c9099] leading-tight mt-0.5">
+                          Smoothly pauses execution upon receiving HTTP 429 rate-limit responses and resumes without dropping payloads.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Standard Header Settings */}
+                  <div className="space-y-2 pt-1">
+                    <span className="font-semibold text-white text-xs block">Request Header Handling</span>
+                    <label className="flex items-center gap-2 text-xs text-[#c4c7c5] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={updateContentLength}
+                        onChange={(e) => setUpdateContentLength(e.target.checked)}
+                        className="rounded bg-[#2b2d30] border-[#3e4249] text-[#f37021]"
+                      />
+                      <span>Update Content-Length header automatically</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-[#c4c7c5] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={setConnectionHeader}
+                        onChange={(e) => setSetConnectionHeader(e.target.checked)}
+                        className="rounded bg-[#2b2d30] border-[#3e4249] text-[#f37021]"
+                      />
+                      <span>Set Connection: close (Disables socket reuse, slower)</span>
+                    </label>
+                  </div>
                 </div>
               )}
             </div>
@@ -1833,7 +2059,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#2b2d30]">
-                    {filteredAttackResults.map((r) => {
+                    {visibleAttackResults.map((r) => {
                       const isSelected = r.id === selectedResultId;
                       return (
                         <tr
@@ -1874,6 +2100,28 @@ export const FuzzerWorkspaceView: React.FC = () => {
                     })}
                   </tbody>
                 </table>
+                {filteredAttackResults.length > visibleAttackResults.length && (
+                  <div className="bg-[#1e1f22] border-t border-[#3e4249] px-3 py-1.5 flex items-center justify-between text-[11px] text-[#9da5b4] sticky bottom-0">
+                    <span>
+                      Displaying first <strong className="text-white">{visibleAttackResults.length.toLocaleString()}</strong> of{' '}
+                      <strong className="text-white">{filteredAttackResults.length.toLocaleString()}</strong> rows (Windowed for 60 FPS performance).
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setDisplayLimit((prev) => prev + 500)}
+                        className="px-2 py-0.5 bg-[#2b2d30] hover:bg-[#3e4249] text-white rounded text-[10px] font-mono transition-colors"
+                      >
+                        Load +500 More
+                      </button>
+                      <button
+                        onClick={() => setDisplayLimit(filteredAttackResults.length)}
+                        className="px-2 py-0.5 bg-[#f37021]/20 hover:bg-[#f37021]/30 text-[#f37021] border border-[#f37021]/40 rounded text-[10px] font-mono transition-colors"
+                      >
+                        Display All ({filteredAttackResults.length.toLocaleString()})
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Bottom: Request & Response Inspector Split */}

@@ -174,8 +174,16 @@ impl ProxyEngine for SentinelProxyEngine {
             cancel_token,
         );
 
-        // 6. Spawn Server Accept Loop Task
-        let handle = tokio::spawn(async move { server.run().await });
+        // 6. Bind listener synchronously so errors bubble up immediately
+        let listener = server.bind().await.map_err(|e| SentinelError::NetworkError(e.to_string()))?;
+
+        // 7. Spawn Server Accept Loop Task
+        let handle = tokio::spawn(async move {
+            crate::server::log_proxy("tokio::spawn proxy task ENTERED");
+            let res = server.run_with_listener(listener).await;
+            crate::server::log_proxy(&format!("tokio::spawn proxy task EXITED with result: {:?}", res));
+            res
+        });
 
         *self.server_task.write() = Some(handle);
         self.is_running.store(true, Ordering::SeqCst);

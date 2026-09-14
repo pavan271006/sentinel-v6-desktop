@@ -67,13 +67,14 @@ During the comprehensive security assessment against \`target.local\`, Sentinel 
           <select
             value={reportFormat}
             onChange={(e) => setReportFormat(e.target.value as any)}
-            className="bg-bg-app border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none"
+            style={{ colorScheme: 'dark' }}
+            className="bg-[#141517] border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none"
           >
-            <option value="MARKDOWN">Markdown (.md)</option>
-            <option value="HTML">Interactive HTML (.html)</option>
-            <option value="PDF">Executive PDF (.pdf)</option>
-            <option value="SARIF">SARIF 2.1 (.sarif)</option>
-            <option value="JSON">Raw JSON Dossier (.json)</option>
+            <option value="MARKDOWN" className="bg-[#2b2d30] text-[#dfdfdf]">Markdown (.md)</option>
+            <option value="HTML" className="bg-[#2b2d30] text-[#dfdfdf]">Interactive HTML (.html)</option>
+            <option value="PDF" className="bg-[#2b2d30] text-[#dfdfdf]">Executive PDF (.pdf)</option>
+            <option value="SARIF" className="bg-[#2b2d30] text-[#dfdfdf]">SARIF 2.1 (.sarif)</option>
+            <option value="JSON" className="bg-[#2b2d30] text-[#dfdfdf]">Raw JSON Dossier (.json)</option>
           </select>
 
           <Button

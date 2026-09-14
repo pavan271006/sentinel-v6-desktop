@@ -6,16 +6,20 @@ import {
   Globe,
   Edit3,
   Sliders,
-  Sparkles,
   ChevronDown,
 } from 'lucide-react';
-import { useInterceptStore } from '../../stores/interceptStore';
+import { useInterceptStore, InterceptedRequestItem } from '../../stores/interceptStore';
 import { useToastStore } from '../../stores/toastStore';
+import { useAppShellStore } from '../../stores/appShellStore';
+import { useRepeaterStore } from '../../stores/repeaterStore';
+import { useIntruderStore } from '../../stores/intruderStore';
 import { ipcClient } from '../../ipc/client';
 import { HttpSyntaxHighlighter } from '../common/HttpSyntaxHighlighter';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
 import { BurpInspectorPanel } from './BurpInspectorPanel';
 import { BurpEditorToolbar } from '../common/BurpEditorToolbar';
+import { ContextMenu } from '../../design-system/ContextMenu';
+import { buildTrafficContextMenu } from '../../utils/contextMenuUtils';
 
 export const ProxyInterceptView: React.FC = () => {
   const { addToast } = useToastStore();
@@ -35,7 +39,6 @@ export const ProxyInterceptView: React.FC = () => {
     forwardAll,
     dropRequest,
     dropAll,
-    enqueueRequest,
   } = useInterceptStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,6 +50,17 @@ export const ProxyInterceptView: React.FC = () => {
     text: '',
     start: 0,
     end: 0,
+  });
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    x: number;
+    y: number;
+    targetTx: any;
+  }>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    targetTx: null,
   });
 
   const handleApplySelectionReplacement = (replacement: string) => {
@@ -66,6 +80,90 @@ export const ProxyInterceptView: React.FC = () => {
     return interceptedQueue.find((q) => q.id === selectedQueueId) || interceptedQueue[0] || null;
   }, [interceptedQueue, selectedQueueId]);
 
+  const currentRequestTx = useMemo(() => {
+    if (!selectedItem && !editedRawRequest) return null;
+    const raw = editedRawRequest || selectedItem?.rawRequest || '';
+    const parts = raw.split(/\r?\n\r?\n/);
+    const headerSection = parts[0] || '';
+    const body = parts.slice(1).join('\r\n\r\n');
+    const lines = headerSection.split(/\r?\n/);
+    const requestLine = lines[0] || 'GET / HTTP/1.1';
+    const [method = 'GET', rawPath = '/'] = requestLine.split(/\s+/);
+    let host = selectedItem?.host || '';
+    const headers: Array<{ name: string; value: string }> = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      const colonIdx = line.indexOf(':');
+      if (colonIdx !== -1) {
+        const name = line.substring(0, colonIdx).trim();
+        const value = line.substring(colonIdx + 1).trim();
+        headers.push({ name, value });
+        if (name.toLowerCase() === 'host') {
+          host = value;
+        }
+      }
+    }
+    const url = selectedItem?.url || (host ? `https://${host}${rawPath.startsWith('/') ? '' : '/'}${rawPath}` : rawPath);
+    return {
+      id: selectedItem?.id || 'intercept-current',
+      url,
+      method,
+      host: host || 'unknown',
+      path: rawPath,
+      rawRequest: raw,
+      reqHeaders: headers,
+      reqBody: body,
+      request: {
+        method,
+        url,
+        headers,
+        bodyText: body,
+      },
+      response: null,
+    };
+  }, [selectedItem, editedRawRequest]);
+
+  const handleRowContextMenu = (e: React.MouseEvent, item: InterceptedRequestItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    selectRequest(item.id);
+    const txLike = {
+      id: item.id,
+      url: item.url,
+      method: item.method,
+      host: item.host,
+      path: item.path,
+      rawRequest: item.rawRequest,
+      reqHeaders: item.headers,
+      reqBody: item.body,
+      request: {
+        method: item.method,
+        url: item.url,
+        headers: item.headers,
+        bodyText: item.body,
+      },
+      response: null,
+    };
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      targetTx: txLike,
+    });
+  };
+
+  const handleEditorContextMenu = (e: React.MouseEvent) => {
+    if (!currentRequestTx) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      targetTx: currentRequestTx,
+    });
+  };
+
   const totalMatches = useMemo(() => {
     return countSearchMatches(editedRawRequest || '', searchQuery);
   }, [editedRawRequest, searchQuery]);
@@ -78,18 +176,6 @@ export const ProxyInterceptView: React.FC = () => {
   const handleNextMatch = () => {
     if (totalMatches === 0) return;
     setActiveMatchIndex((prev) => (prev < totalMatches - 1 ? prev + 1 : 0));
-  };
-
-  const handleSimulateGoogleSearch = () => {
-    enqueueRequest(
-      `GET /search?q=hi&oq=hi&gs_lcrp=EgZjYHJvbWUgBggAEEUYOTIGCAEQRRg7MgYIARBFGD0yBggCEEUYPTIGCAMQRRg90gEHNzU3ajBqN6gCALACAA&sourceid=chrome&ie=UTF-8 HTTP/1.1\r\nHost: www.google.com\r\nCookie: SEARCH_SAMESITE=CgQIy6EB; AEC=AdJVEasCg6bUrXtt2ZWOZjXIEUvbv-olJWxykbfMeI-nl466auvA_UM40HU; NID=534=DcRd9dLDyCFrR1C-Po-Je6De5J-TbZliRogWo5I9FgI_GUsAvneijBAiLGo-VSsEFFpkpf-QiKNb4oSRs18WkbuzpZtSlcV5rYxQtdneO7CE3eg0yVTOYk8VGku1B5sDpVOoEs8-psxIylYFMPIL8TZo2no4wwBV9OdWwQnrpC9eqZTVPlNGBQ4BZdOVjkzBotXenZjxZezTMT8pEi8U4ZwiuxQpXqY4WfglFgJ1FK3ufh3ndB0ogVnJnoHUKBwwkNg_XBK3Mqw\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n\r\n`,
-      'https://www.google.com/search?q=hi'
-    );
-    addToast({
-      type: 'info',
-      title: 'Captured Google Search Request',
-      description: 'GET /search?q=hi (Held in Intercept queue)',
-    });
   };
 
   return (
@@ -178,17 +264,8 @@ export const ProxyInterceptView: React.FC = () => {
           )}
         </div>
 
-        {/* Right Tools: Open browser & Simulate Google search */}
+        {/* Right Tools: Open browser & Toggle Inspector */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleSimulateGoogleSearch}
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#1e1f22] hover:bg-[#35383f] text-[#38bdf8] border border-[#3e4249] text-xs font-medium transition-colors"
-            title="Simulate capturing a Google search for 'hi'"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Simulate "hi" Search</span>
-          </button>
-
           <button
             onClick={async () => {
               try {
@@ -251,6 +328,7 @@ export const ProxyInterceptView: React.FC = () => {
                   <tr
                     key={item.id}
                     onClick={() => selectRequest(item.id)}
+                    onContextMenu={(e) => handleRowContextMenu(e, item)}
                     className={`cursor-pointer transition-colors ${
                       isSelected
                         ? 'bg-[#282b30] text-white font-medium'
@@ -320,6 +398,7 @@ export const ProxyInterceptView: React.FC = () => {
               <textarea
                 value={editedRawRequest}
                 onChange={(e) => updateEditedRawRequest(e.target.value)}
+                onContextMenu={handleEditorContextMenu}
                 onSelect={(e) => {
                   const el = e.currentTarget;
                   setInterceptSelection({
@@ -352,7 +431,10 @@ export const ProxyInterceptView: React.FC = () => {
                 spellCheck={false}
               />
             ) : (
-              <div className="w-full h-full overflow-auto bg-[#141517] p-2">
+              <div
+                className="w-full h-full overflow-auto bg-[#141517] p-2"
+                onContextMenu={handleEditorContextMenu}
+              >
                 <HttpSyntaxHighlighter
                   content={editedRawRequest}
                   isResponse={false}
@@ -396,6 +478,26 @@ export const ProxyInterceptView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Burp Suite Context Menu */}
+      {contextMenu.isOpen && contextMenu.targetTx && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          isOpen={contextMenu.isOpen}
+          onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
+          items={buildTrafficContextMenu(contextMenu.targetTx, {
+            onSendToRepeater: (tx) => {
+              useRepeaterStore.getState().createTabFromTransaction(tx);
+              useAppShellStore.getState().setActiveWorkspace('repeater');
+            },
+            onSendToIntruder: (tx) => {
+              useIntruderStore.getState().sendToIntruder(tx);
+              useAppShellStore.getState().setActiveWorkspace('fuzzer');
+            },
+          })}
+        />
+      )}
     </div>
   );
 };

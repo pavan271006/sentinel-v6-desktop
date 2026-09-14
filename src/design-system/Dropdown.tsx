@@ -48,7 +48,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
       {isOpen && (
         <div
           className={cn(
-            'absolute z-50 mt-1 min-w-[160px] bg-bg-panel border border-border-strong rounded shadow-dropdown py-1 select-none',
+            'absolute z-50 mt-1.5 min-w-[180px] glass-dropdown rounded-lg py-1.5 select-none animate-pop-in border border-border-strong',
             align === 'right' ? 'right-0' : 'left-0',
             className
           )}
@@ -64,19 +64,19 @@ export const Dropdown: React.FC<DropdownProps> = ({
                 }
               }}
               className={cn(
-                'w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors',
+                'w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors duration-100 rounded-md mx-auto my-0.5',
                 item.danger
-                  ? 'text-severity-critical hover:bg-severity-critical/10'
-                  : 'text-text-primary hover:bg-bg-panel-hover',
+                  ? 'text-severity-critical hover:bg-severity-critical/15'
+                  : 'text-text-primary hover:bg-bg-panel-hover hover:text-white',
                 item.disabled && 'opacity-40 cursor-not-allowed hover:bg-transparent'
               )}
             >
               <div className="flex items-center gap-2">
                 {item.icon && <span className="text-text-muted">{item.icon}</span>}
-                <span>{item.label}</span>
+                <span className="font-medium">{item.label}</span>
               </div>
               {item.shortcut && (
-                <span className="text-[10px] font-mono text-text-muted">{item.shortcut}</span>
+                <span className="text-[10px] font-mono text-text-muted bg-bg-app px-1.5 py-0.5 rounded border border-border-subtle">{item.shortcut}</span>
               )}
             </button>
           ))}

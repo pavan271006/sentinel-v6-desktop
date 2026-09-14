@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useToastStore } from '../stores/toastStore';
 import { useTrafficStore } from '../stores/trafficStore';
+import { useVpnRotatorStore } from '../stores/vpnRotatorStore';
 import { ipcClient } from '../ipc/client';
 import {
   ArrowLeft,
@@ -33,6 +34,7 @@ interface BrowserTab {
 export const BrowserWorkspaceView: React.FC = () => {
   const { addToast } = useToastStore();
   const { addTransaction } = useTrafficStore();
+  const { isActive: isVpnActive, currentNode: vpnNode, rotateVpn, toggleVpn } = useVpnRotatorStore();
 
   const [tabs, setTabs] = useState<BrowserTab[]>([
     { id: 'tab-1', title: 'PortSwigger', url: 'sentinel://newtab', isNewTab: true },
@@ -64,8 +66,12 @@ export const BrowserWorkspaceView: React.FC = () => {
       await ipcClient.launchSystemBrowser(target, 8085);
       addToast({
         type: 'success',
-        title: 'Google Chrome Launched with Sentinel Proxy',
-        description: 'Command executed on 127.0.0.1:8085. Traffic is recorded in Proxy / HTTP History.',
+        title: isVpnActive
+          ? `Browser Launched • Egress: ${vpnNode.flag} ${vpnNode.ip}`
+          : 'Google Chrome Launched with Sentinel Proxy',
+        description: isVpnActive
+          ? `Outbound traffic from this browser is routed via ${vpnNode.flag} ${vpnNode.ip} (${vpnNode.city}, ${vpnNode.country})`
+          : 'Command executed on 127.0.0.1:8085. Traffic is recorded in Proxy / HTTP History.',
       });
     } catch {
       addToast({
@@ -135,8 +141,10 @@ export const BrowserWorkspaceView: React.FC = () => {
 
     addToast({
       type: 'info',
-      title: `Chromium Navigating: ${cleanUrl}`,
-      description: 'Routing through Sentinel MITM Proxy (127.0.0.1:8080)',
+      title: isVpnActive ? `Chromium Navigating • ${vpnNode.flag} ${vpnNode.ip}` : `Chromium Navigating: ${cleanUrl}`,
+      description: isVpnActive
+        ? `Routing through Sentinel MITM Proxy (127.0.0.1:8085) with egress via ${vpnNode.flag} ${vpnNode.city}, ${vpnNode.country}`
+        : 'Routing through Sentinel MITM Proxy (127.0.0.1:8085)',
     });
 
     setTimeout(() => {
@@ -168,7 +176,7 @@ export const BrowserWorkspaceView: React.FC = () => {
         sizeBytes: 1540,
         inScope: true,
         mimeType: 'text/html',
-        tags: ['scope:target', 'browser-proxy'],
+        tags: isVpnActive ? ['scope:target', 'browser-proxy', `vpn:${vpnNode.ip}`] : ['scope:target', 'browser-proxy'],
         tlsVersion: 'TLSv1.3',
         cipherSuite: 'TLS_AES_256_GCM_SHA384',
       });
@@ -281,8 +289,8 @@ export const BrowserWorkspaceView: React.FC = () => {
         </div>
 
         {/* Omnibox / Search & URL Bar */}
-        <form onSubmit={handleOmniboxSubmit} className="flex-1 max-w-4xl mx-auto flex items-center">
-          <div className="w-full flex items-center bg-[#13141a] hover:bg-[#101116] focus-within:bg-[#0c0d12] border border-[#343746] focus-within:border-[#f37021] rounded-full px-3.5 py-1.5 transition-colors shadow-inner">
+        <form onSubmit={handleOmniboxSubmit} className="flex-1 max-w-4xl mx-auto flex items-center gap-2">
+          <div className="flex-1 flex items-center bg-[#13141a] hover:bg-[#101116] focus-within:bg-[#0c0d12] border border-[#343746] focus-within:border-[#f37021] rounded-full px-3.5 py-1.5 transition-colors shadow-inner">
             <Search className="w-3.5 h-3.5 text-[#6f737a] mr-2 flex-shrink-0" />
             <input
               type="text"
@@ -298,6 +306,33 @@ export const BrowserWorkspaceView: React.FC = () => {
               </span>
             )}
           </div>
+
+          {/* Built-in Browser VPN / Egress Indicator */}
+          <div className="flex items-center rounded-full bg-[#13141a] border border-[#343746] overflow-hidden shadow-inner flex-shrink-0 text-[11px] font-medium">
+            <button
+              type="button"
+              onClick={() => toggleVpn()}
+              title={isVpnActive ? `VPN Egress Active: Traffic routed via ${vpnNode.city}, ${vpnNode.country} (${vpnNode.ip}). Click to toggle.` : 'VPN Shield Disabled. Click to enable.'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 transition-colors ${
+                isVpnActive
+                  ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                  : 'bg-transparent text-[#6f737a] hover:text-white'
+              }`}
+            >
+              <span>{vpnNode.flag}</span>
+              <span>{vpnNode.ip}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${isVpnActive ? 'bg-emerald-400 animate-pulse' : 'bg-[#6f737a]'}`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => rotateVpn()}
+              title="Rotate VPN IP / Egress Node"
+              className="px-2 py-1 bg-[#1a1b22] hover:bg-[#23252e] text-[#a1a1aa] hover:text-white border-l border-[#343746] transition-colors flex items-center gap-1 text-[10px]"
+            >
+              <RotateCw className="w-2.5 h-2.5 hover:rotate-180 transition-transform" />
+              <span>Rotate</span>
+            </button>
+          </div>
         </form>
 
         {/* Action Extensions & Controls */}
@@ -306,7 +341,7 @@ export const BrowserWorkspaceView: React.FC = () => {
           <button
             onClick={handleLaunchSystemChrome}
             className="flex items-center gap-1.5 px-3 py-1 bg-[#f37021] hover:bg-[#e05d06] text-white rounded-full font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95"
-            title="Open real Google Chrome connected to Sentinel Proxy (127.0.0.1:8080)"
+            title={`Open real Google Chrome connected to Sentinel Proxy with egress ${vpnNode.flag} ${vpnNode.ip}`}
           >
             <Rocket className="w-3.5 h-3.5" />
             <span>Launch System Chrome</span>

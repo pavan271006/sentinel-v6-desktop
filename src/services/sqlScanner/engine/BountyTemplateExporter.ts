@@ -39,16 +39,44 @@ export class BountyTemplateExporter {
     lines.push(`- **CWE:** [CWE-89: SQL Injection](https://cwe.mitre.org/data/definitions/89.html)`);
     lines.push(`- **OWASP:** ${compliance.owasp.code} - ${compliance.owasp.name}`);
     lines.push(`- **CVSS v3.1:** **${compliance.cvssV31.baseScore} (${compliance.cvssV31.severity})** (\`${compliance.cvssV31.vectorString}\`)`);
+    if (finding.consequence) {
+      lines.push(`- **Threat Category:** ${finding.consequence.threatBadge}`);
+      lines.push(`- **Primary Exploit Consequence:** ${finding.consequence.consequenceTitle}`);
+    }
     lines.push(``);
 
-    lines.push(`## Business & Security Impact`);
-    lines.push(`Successful exploitation allows an unauthenticated/authenticated attacker to manipulate backend SQL query structure, resulting in:`);
-    lines.push(`1. **Unauthorized Data Access (Confidentiality):** Extraction of sensitive database records including customer PII, internal records, and database metadata.`);
-    lines.push(`2. **Row-Level Security & Tenant Boundary Bypass:** Potential circumvention of logical multi-tenant isolation boundaries.`);
-    lines.push(`3. **Database Structural Control:** Verification of relational query modification without relying on disruptive modifications.`);
+    lines.push(`## Business & Security Impact Analysis`);
+    if (finding.consequence) {
+      lines.push(`### Exploitability Outcome: ${finding.consequence.consequenceTitle}`);
+      lines.push(`${finding.consequence.consequenceSummary}`);
+      lines.push(``);
+      lines.push(`### Technical Impact`);
+      finding.consequence.technicalImpact.forEach((imp, i) => lines.push(`${i + 1}. **${imp}**`));
+      lines.push(``);
+      lines.push(`### Business & Regulatory Risk`);
+      finding.consequence.businessRisk.forEach((risk, i) => lines.push(`${i + 1}. ${risk}`));
+    } else {
+      lines.push(`Successful exploitation allows an unauthenticated/authenticated attacker to manipulate backend SQL query structure, resulting in:`);
+      lines.push(`1. **Unauthorized Data Access (Confidentiality):** Extraction of sensitive database records including customer PII, internal records, and database metadata.`);
+      lines.push(`2. **Row-Level Security & Tenant Boundary Bypass:** Potential circumvention of logical multi-tenant isolation boundaries.`);
+      lines.push(`3. **Database Structural Control:** Verification of relational query modification without relying on disruptive modifications.`);
+    }
     lines.push(``);
+
+    if (finding.proofDetails?.extractedProofSnippet) {
+      lines.push(`## Live Exfiltrated Proof of Exploitability`);
+      lines.push(`> [!NOTE]`);
+      lines.push(`> **Verified Data Proof:** \`${finding.proofDetails.extractedProofSnippet}\``);
+      lines.push(``);
+    }
 
     lines.push(`## Steps to Reproduce (Clean-Room Verification)`);
+    if (finding.proofDetails?.mathematicalInvariant) {
+      lines.push(`- **Mathematical Invariant:** \`${finding.proofDetails.mathematicalInvariant}\``);
+      lines.push(`- **Truth State Observation (s₁):** ${finding.proofDetails.positiveProbeObservation}`);
+      lines.push(`- **Contradiction Divergence (s₂):** ${finding.proofDetails.negativeProbeDivergence}`);
+      lines.push(``);
+    }
     lines.push(`1. Send the following baseline/verification HTTP request to observe differential or mathematical divergence:`);
     lines.push(``);
 
@@ -112,6 +140,10 @@ export class BountyTemplateExporter {
 
     lines.push(`### Vulnerability Type`);
     lines.push(`Server-Side Injection > SQL Injection (SQLi)`);
+    if (finding.consequence) {
+      lines.push(`**Threat Classification:** ${finding.consequence.threatBadge}`);
+      lines.push(`**Specific Exploit Consequence:** ${finding.consequence.consequenceTitle}`);
+    }
     lines.push(``);
 
     lines.push(`### Severity`);
@@ -120,16 +152,31 @@ export class BountyTemplateExporter {
 
     lines.push(`### Description`);
     lines.push(`During assessment of \`${finding.url}\`, an SQL injection vulnerability was identified on parameter \`${finding.parameterName}\`. The backend database engine was confirmed as **${finding.dbms}**.`);
+    if (finding.consequence) {
+      lines.push(``);
+      lines.push(finding.consequence.consequenceSummary);
+    }
     lines.push(``);
 
     lines.push(`### Proof of Concept`);
+    if (finding.proofDetails?.extractedProofSnippet) {
+      lines.push(`**Live Exfiltrated Data Proof:**`);
+      lines.push(`> \`${finding.proofDetails.extractedProofSnippet}\``);
+      lines.push(``);
+    }
     lines.push(`\`\`\`bash`);
     lines.push(BountyTemplateExporter.generateCurlCommand(finding));
     lines.push(`\`\`\``);
     lines.push(``);
 
-    lines.push(`### Impact`);
-    lines.push(`An attacker can execute arbitrary database commands within the context of the connected database user, allowing potential data exfiltration and integrity compromise.`);
+    lines.push(`### Impact & Consequences`);
+    if (finding.consequence) {
+      lines.push(`**Primary Outcome:** ${finding.consequence.consequenceTitle}`);
+      finding.consequence.technicalImpact.forEach((imp) => lines.push(`- ${imp}`));
+      finding.consequence.businessRisk.forEach((r) => lines.push(`- [Risk] ${r}`));
+    } else {
+      lines.push(`An attacker can execute arbitrary database commands within the context of the connected database user, allowing potential data exfiltration and integrity compromise.`);
+    }
     lines.push(``);
 
     lines.push(`### Suggested Remediation`);

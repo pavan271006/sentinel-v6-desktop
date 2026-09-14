@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # 🛡️ Sentinel V6 Desktop
 ### High-Performance Open-Source Burp Suite & OWASP ZAP Alternative
@@ -92,6 +92,14 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 - Multi-tier transform pipelines: URL, HTML Entity, Base64, Hex, Binary, and Gzip compression.
 - Hashing and signature utilities: MD5, SHA-1, SHA-256, SHA-512, HMAC, Keccak, and CRC32.
 - Smart heuristic decoding to auto-detect multi-stage nested obfuscation.
+
+### 🕷️ Dual-Mode Hybrid Modern-Web Crawler
+- **Mode 1 (Machine Blitz)**: High-speed autonomous HTTP crawler capable of dissecting Next.js 14/15 App Router RSC Flight chunks (`_buildManifest.js`), Nuxt 3 `__NUXT_DATA__`, Remix route manifests, and compiled Flutter Web Dart string pools (`main.dart.js`).
+- **Mode 2 (Stealth Hybrid)**: Connects with authentic desktop Google Chrome / Edge / Brave routed through Sentinel's proxy (`127.0.0.1:8085`) to pass Cloudflare Turnstile, DataDome, and WASM challenges natively, auto-injecting clearance cookies (`cf_clearance`, `datadome`) and dynamic HMAC signatures (`X-Signature`).
+- **Ephemeral Nonce Replenishing**: Automatically pre-flights fresh single-use anti-CSRF nonces and dynamically mutates request bodies and headers on the fly.
+- **Bot Honeypot Trap Filter**: Evaluates inline CSS styles (`display:none`, `visibility:hidden`, `opacity:0`, `left:-9999px`) and trap classes to prevent crawler entrapment.
+- **Dynamic Request Signer**: Mines client-side HMAC keys and calculates real-time cryptographic signatures with synchronized timestamps per request.
+- **Multi-Persona Container Isolation**: Manages isolated session containers for automated RBAC, IDOR, and BOLA matrix validation.
 
 ### 🧩 Modular Plugin SDK (WASM & Rhai)
 - Montoya-inspired extensible architecture.

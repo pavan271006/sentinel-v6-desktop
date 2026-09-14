@@ -4,6 +4,8 @@
   "version": "6.0.0",
   "identifier": "dev.sentinel.desktop",
   "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
