@@ -89,7 +89,14 @@ impl ProjectStorage {
             ));
         }
 
-        // Check for parent directory navigation components
+        // Check for parent directory navigation components or traversal tokens (cross-platform)
+        let rel_str = rel.to_string_lossy();
+        if rel_str.contains("..") {
+            return Err(SentinelError::InvariantViolation(
+                "Cross-project path traversal attempt detected (SEC-08)".to_string(),
+            ));
+        }
+
         for component in rel.components() {
             if component == Component::ParentDir {
                 return Err(SentinelError::InvariantViolation(
