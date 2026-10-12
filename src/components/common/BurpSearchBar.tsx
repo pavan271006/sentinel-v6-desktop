@@ -11,6 +11,7 @@ export interface BurpSearchBarProps {
   selectionInfo?: string;
   placeholder?: string;
   className?: string;
+  onClose?: () => void;
 }
 
 export function countSearchMatches(text: string, query: string): number {
@@ -36,6 +37,7 @@ export const BurpSearchBar: React.FC<BurpSearchBarProps> = ({
   selectionInfo,
   placeholder = 'Search',
   className = '',
+  onClose,
 }) => {
   return (
     <div
@@ -89,6 +91,10 @@ export const BurpSearchBar: React.FC<BurpSearchBarProps> = ({
                 e.preventDefault();
                 if (e.shiftKey) onPrevMatch();
                 else onNextMatch();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                if (onClose) onClose();
+                else onSearchChange('');
               }
             }}
             placeholder={placeholder}
@@ -109,7 +115,7 @@ export const BurpSearchBar: React.FC<BurpSearchBarProps> = ({
         </div>
       </div>
 
-      {/* Matches Counter & Optional Selection Info */}
+      {/* Matches Counter, Optional Selection Info & Close Button */}
       <div className="flex items-center gap-3 text-[10px] text-[#9da5b4] font-mono ml-2">
         <span className="text-[#dfdfdf]">
           {!searchQuery || totalMatches === 0
@@ -117,6 +123,15 @@ export const BurpSearchBar: React.FC<BurpSearchBarProps> = ({
             : `${activeMatchIndex + 1}/${totalMatches} matches`}
         </span>
         {selectionInfo && <span className="text-[#6f737a]">{selectionInfo}</span>}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-[#8c9099] hover:text-white hover:bg-[#3e4249] transition-colors"
+            title="Close search bar (Esc)"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

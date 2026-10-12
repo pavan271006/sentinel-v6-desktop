@@ -75,16 +75,17 @@ impl ProxyServer {
                     log_proxy(&format!("run_with_listener() accept received: is_ok={}", accept_res.is_ok()));
                     match accept_res {
                         Ok((stream, client_addr)) => {
-                            let permit = match semaphore.clone().try_acquire_owned() {
-                                Ok(p) => p,
-                                Err(_) => {
-                                    warn!("Max concurrent connections ({}) reached, dropping connection from {}", self.max_connections, client_addr);
-                                    continue;
-                                }
-                            };
-
+                            let sem = semaphore.clone();
+                            let max_conn = self.max_connections;
                             let handler_state = self.state.clone();
                             tokio::spawn(async move {
+                                let permit = match tokio::time::timeout(std::time::Duration::from_secs(5), sem.acquire_owned()).await {
+                                    Ok(Ok(p)) => p,
+                                    _ => {
+                                        warn!("Max concurrent connections ({}) reached, timed out waiting for permit for {}", max_conn, client_addr);
+                                        return;
+                                    }
+                                };
                                 let _permit = permit;
                                 if let Err(e) = handle_connection(stream, client_addr, handler_state).await {
                                     debug!("Connection from {} closed with result: {}", client_addr, e);

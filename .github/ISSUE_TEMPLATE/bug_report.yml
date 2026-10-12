@@ -1,0 +1,85 @@
+name: 🐛 Bug Report
+description: File a reproducible bug or unexpected behavior in Sentinel V6 Desktop
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Before submitting, please verify that the bug is reproducible on the latest release of Sentinel V6 Desktop.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Subsystem
+      description: Which part of Sentinel encountered the issue?
+      options:
+        - Intercepting Proxy / TLS Termination
+        - Intruder / Parameter Fuzzing Engine
+        - Autonomous SQLi Scanner
+        - Dynamic Crawler / Stealth CDP Browser
+        - Repeater / Request Diff Inspector
+        - SQLite WAL / Content-Addressable Storage (CAS)
+        - Tauri Native Shell / IPC Protocol Bridge
+        - React Desktop UI & Virtualized DOM
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can maintainers reproduce this issue locally?
+      placeholder: |
+        1. Start proxy on 127.0.0.1:8085
+        2. Send request to ...
+        3. Trigger fuzzer with payload list ...
+        4. See unexpected error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows 11 / 10
+        - Ubuntu / Debian Linux
+        - Arch / Fedora Linux
+        - macOS Sonoma / Sequoia (Apple Silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Environment Versions
+      description: e.g. Sentinel v6.0.0, Node.js 20.12.0, Rust 1.78.0
+      placeholder: Sentinel v6.0.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal / Debug Logs
+      description: Paste relevant output from terminal or devtools console.
+      render: shell

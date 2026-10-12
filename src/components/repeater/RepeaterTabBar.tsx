@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useRepeaterStore } from '../../stores/repeaterStore';
 import { Button } from '../../design-system/Button';
 import { Badge } from '../../design-system/Badge';
-import { HttpMethod } from '../../types/repeater';
+import { HttpMethod, RepeaterTabState } from '../../types/repeater';
 import {
   Plus,
   X,
@@ -37,6 +37,8 @@ export const RepeaterTabBar: React.FC = () => {
     globalVariables,
     isHistoryDrawerOpen,
     splitOrientation,
+    dualPaneMode,
+    toggleDualPaneMode,
     setActiveTabId,
     createTab,
     closeTab,
@@ -90,11 +92,14 @@ export const RepeaterTabBar: React.FC = () => {
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   };
 
+  const displayedTabs = tabs;
+
   return (
     <div className="flex items-center justify-between bg-bg-panel-elevated border-b border-border-subtle px-2 h-10 select-none overflow-x-auto">
+
       {/* Tab Strip */}
       <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto scrollbar-none py-1">
-        {tabs.map((tab) => {
+        {displayedTabs.map((tab: RepeaterTabState) => {
           const isActive = tab.id === activeTabId;
           const methodStyle = METHOD_COLORS[tab.method] || METHOD_COLORS.GET;
           const isEditing = editingTabId === tab.id;
@@ -104,7 +109,7 @@ export const RepeaterTabBar: React.FC = () => {
               key={tab.id}
               onClick={() => setActiveTabId(tab.id)}
               onContextMenu={(e) => handleContextMenu(e, tab.id)}
-              className={`group relative flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-all cursor-pointer flex-shrink-0 max-w-[220px] ${
+              className={`group relative flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-all cursor-pointer flex-shrink-0 max-w-[260px] ${
                 isActive
                   ? 'bg-bg-panel border-accent-cyan/50 text-text-primary shadow-sm'
                   : 'bg-bg-canvas/50 border-border-subtle hover:bg-bg-panel text-text-muted hover:text-text-primary'
@@ -117,6 +122,30 @@ export const RepeaterTabBar: React.FC = () => {
               >
                 {tab.method}
               </span>
+
+              {/* Worker & Payload Category Badges */}
+              {tab.workerId && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-cyan-950/70 text-cyan-400 border border-cyan-800/60 flex-shrink-0">
+                  {tab.workerId}
+                </span>
+              )}
+              {tab.payloadCategory && (
+                <span
+                  className={`text-[9px] font-mono px-1 py-0.2 rounded border flex-shrink-0 font-semibold ${
+                    tab.payloadCategory === 'Data Extraction' || tab.title?.toLowerCase().includes('data extract')
+                      ? 'bg-red-950/90 text-red-300 border-red-700/80 shadow-sm font-bold'
+                      : tab.payloadCategory === 'Boolean Differential' || tab.title?.toLowerCase().includes('boolean diff')
+                      ? 'bg-amber-950/90 text-amber-300 border-amber-700/80 font-bold'
+                      : 'bg-amber-950/70 text-amber-400 border-amber-800/60'
+                  }`}
+                >
+                  {tab.payloadCategory === 'Data Extraction' || tab.title?.toLowerCase().includes('data extract')
+                    ? '🔥 EXPLOITED'
+                    : tab.payloadCategory === 'Boolean Differential' || tab.title?.toLowerCase().includes('boolean diff')
+                    ? '⚖️ DIFF'
+                    : tab.payloadCategory}
+                </span>
+              )}
 
               {/* Dirty indicator */}
               {tab.isDirty && (
@@ -194,6 +223,17 @@ export const RepeaterTabBar: React.FC = () => {
 
       {/* Right-side Action Toolbar */}
       <div className="flex items-center gap-1 flex-shrink-0 pl-2">
+        {/* Side-by-Side Dual Pane Toggle */}
+        <Button
+          variant={dualPaneMode ? 'primary' : 'secondary'}
+          size="xs"
+          leftIcon={<Columns className={`w-3.5 h-3.5 ${dualPaneMode ? 'text-black' : 'text-accent-cyan'}`} />}
+          onClick={toggleDualPaneMode}
+          title="Side-by-Side Dual Pane: View and audit two tabs concurrently"
+        >
+          <span>Dual Pane</span>
+        </Button>
+
         {/* Variables Workbench */}
         <Button
           variant="secondary"

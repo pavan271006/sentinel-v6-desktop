@@ -21,11 +21,15 @@ import {
   FileSpreadsheet,
   FileCode,
   FileText,
-  Shield,
-  RefreshCw,
+  Globe,
+  Cloud,
+  Zap,
+  RotateCw,
 } from 'lucide-react';
 import { generateRenderablePreviewHtml } from '../utils/repeaterUtils';
 import { TlsFingerprintEngine } from '../services/sqlScanner/engine/TlsFingerprintEngine';
+import { revitalizeHttpRequest } from '../utils/universalRequestRevitalizer';
+import { SplitPane } from '../design-system/SplitPane';
 
 
 export interface AttackResultItem {
@@ -42,8 +46,7 @@ export interface AttackResultItem {
   rawResponse: string;
 }
 
-import { useIntruderStore } from '../stores/intruderStore';
-import { useVpnRotatorStore } from '../stores/vpnRotatorStore';
+import { useIntruderStore, EgressStrategy } from '../stores/intruderStore';
 import { ipcClient } from '../ipc/client';
 import { ContextMenu, ContextMenuItem } from '../design-system/ContextMenu';
 import { useAppShellStore } from '../stores/appShellStore';
@@ -103,10 +106,12 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const delayMs = activeTab?.delayMs || 0;
   const updateHostHeader = activeTab?.updateHostHeader !== false;
   const updateContentLength = activeTab?.updateContentLength !== false;
-  const stealthIpRotation = activeTab?.stealthIpRotation !== false;
   const ghostJitter = activeTab?.ghostJitter !== false;
   const browserMimicry = activeTab?.browserMimicry !== false;
   const adaptiveThrottle = activeTab?.adaptiveThrottle !== false;
+  const egressStrategy: EgressStrategy = activeTab?.egressStrategy || 'aws_fireprox';
+  const awsGatewayUrl = activeTab?.awsGatewayUrl || '';
+  const refreshTokensPerRequest = activeTab?.refreshTokensPerRequest || false;
 
   const setIsAttackRunning = (val: boolean) => updateTab(activeTabId, { isAttackRunning: val });
   const setShowAttackModal = (val: boolean) => updateTab(activeTabId, { showAttackModal: val });
@@ -120,10 +125,12 @@ export const FuzzerWorkspaceView: React.FC = () => {
   const setDelayMs = (val: number) => updateTab(activeTabId, { delayMs: val });
   const setUpdateHostHeader = (val: boolean) => updateTab(activeTabId, { updateHostHeader: val });
   const setUpdateContentLength = (val: boolean) => updateTab(activeTabId, { updateContentLength: val });
-  const setStealthIpRotation = (val: boolean) => updateTab(activeTabId, { stealthIpRotation: val });
   const setGhostJitter = (val: boolean) => updateTab(activeTabId, { ghostJitter: val });
   const setBrowserMimicry = (val: boolean) => updateTab(activeTabId, { browserMimicry: val });
   const setAdaptiveThrottle = (val: boolean) => updateTab(activeTabId, { adaptiveThrottle: val });
+  const setEgressStrategy = (val: EgressStrategy) => updateTab(activeTabId, { egressStrategy: val });
+  const setAwsGatewayUrl = (val: string) => updateTab(activeTabId, { awsGatewayUrl: val });
+  const setRefreshTokensPerRequest = (val: boolean) => updateTab(activeTabId, { refreshTokensPerRequest: val });
 
   const editorRef = useRef<SyntaxHighlightedEditorRef>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -917,7 +924,7 @@ export const FuzzerWorkspaceView: React.FC = () => {
       description: `Dispatching ${permutations.length} HTTP requests against ${targetUrl}...`,
     });
 
-    const buildReplacedRequest = (rowPayloads: string[], rotatedIp?: string | null) => {
+    const buildReplacedRequest = (rowPayloads: string[]) => {
       let replaced = requestText;
       let counter = 0;
       replaced = replaced.replace(/§([^§]*)§/g, () => {
@@ -926,31 +933,22 @@ export const FuzzerWorkspaceView: React.FC = () => {
         return val;
       });
 
-      if (updateHostHeader && targetUrl) {
+      let targetHost = '';
+      if (targetUrl) {
         try {
           const u = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`);
-          replaced = replaced.replace(/Host:\s*[^\r\n]+/i, `Host: ${u.host}`);
+          targetHost = u.host;
+          if (updateHostHeader) {
+            replaced = replaced.replace(/Host:\s*[^\r\n]+/i, `Host: ${u.host}`);
+          }
         } catch {}
       }
 
-      // Stealth Mode: Per-request IP Rotation & Cooldown Egress Spoofing
-      if (rotatedIp) {
-        // Strip previous spoofed headers to avoid duplicates
-        replaced = replaced.replace(/^(?:X-Forwarded-For|X-Real-IP|X-Client-IP|CF-Connecting-IP|True-Client-IP|X-Cluster-Client-IP|X-Forwarded-Host|Forwarded):[^\r\n]*\r?\n?/gim, '');
-        
-        const ipHeaders = `X-Forwarded-For: ${rotatedIp}\r\nX-Real-IP: ${rotatedIp}\r\nCF-Connecting-IP: ${rotatedIp}\r\nTrue-Client-IP: ${rotatedIp}`;
-        
-        if (/Host:[^\r\n]*/i.test(replaced)) {
-          replaced = replaced.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1${ipHeaders}\r\n`);
-        } else {
-          const crlfEnd = replaced.indexOf('\r\n\r\n');
-          const lfEnd = replaced.indexOf('\n\n');
-          if (crlfEnd !== -1) {
-            replaced = replaced.slice(0, crlfEnd) + '\r\n' + ipHeaders + replaced.slice(crlfEnd);
-          } else if (lfEnd !== -1) {
-            replaced = replaced.slice(0, lfEnd) + '\n' + ipHeaders + replaced.slice(lfEnd);
-          } else {
-            replaced = replaced.trimEnd() + '\r\n' + ipHeaders + '\r\n\r\n';
+      // Egress Strategy: AWS API Gateway Relay (FireProx)
+      if (egressStrategy === 'aws_fireprox' && targetHost) {
+        if (!/X-My-X-Forwarded-For:[^\r\n]*/i.test(replaced)) {
+          if (/Host:[^\r\n]*/i.test(replaced)) {
+            replaced = replaced.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1X-My-X-Forwarded-For: ${targetHost}\r\n`);
           }
         }
       }
@@ -1040,10 +1038,21 @@ export const FuzzerWorkspaceView: React.FC = () => {
       while (nextIndex < totalPermutations && !abortAttackRef.current) {
         const reqIndex = nextIndex++;
         const perm = permutations[reqIndex];
-        const rotatedIp = stealthIpRotation ? useVpnRotatorStore.getState().getStealthIp(25000) : null;
-        const wireReq = buildReplacedRequest(perm.payloads, rotatedIp);
+        let wireReq = buildReplacedRequest(perm.payloads);
         const startMs = Date.now();
         let execResult;
+
+        // Compute effective destination URL (rewritten for AWS FireProx relay if configured)
+        let effectiveTargetUrl = targetUrl;
+        if (egressStrategy === 'aws_fireprox' && awsGatewayUrl.trim()) {
+          try {
+            const u = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`);
+            const baseGw = awsGatewayUrl.trim().replace(/\/+$/, '');
+            effectiveTargetUrl = `${baseGw}${u.pathname}${u.search}`;
+          } catch {
+            effectiveTargetUrl = awsGatewayUrl.trim();
+          }
+        }
 
         if (delayMs > 0 && reqIndex > 0) {
           const effectiveDelay = ghostJitter
@@ -1052,10 +1061,68 @@ export const FuzzerWorkspaceView: React.FC = () => {
           await new Promise((resolve) => setTimeout(resolve, effectiveDelay));
         }
 
+        // Per-Request Token Revitalization & Egress Proxy / VPN Sync
+        if (refreshTokensPerRequest) {
+          let probeHtml = '';
+          let probeRawRes = '';
+          try {
+            let targetPath = '/login';
+            try {
+              const firstLine = wireReq.split(/\r?\n/)[0] || '';
+              const m = firstLine.split(/\s+/)[1];
+              if (m) targetPath = m;
+            } catch {}
+
+            let targetHost = '';
+            try {
+              const u = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`);
+              targetHost = u.host;
+            } catch {}
+
+            let probeReq = '';
+            if (egressStrategy === 'aws_fireprox' && awsGatewayUrl.trim()) {
+              // Real Layer-7 AWS IP Rotation via FireProx API Gateway
+              probeReq = `GET ${targetPath} HTTP/1.1\r\nHost: ${targetHost}\r\nX-My-X-Forwarded-For: ${targetHost}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nConnection: close\r\n\r\n`;
+            } else {
+              // Direct or VPN Tunnel (real network-level egress IP)
+              probeReq = `GET ${targetPath} HTTP/1.1\r\nHost: ${targetHost}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nConnection: close\r\n\r\n`;
+            }
+
+            const probeRes = await ipcClient.sendRepeaterRequest({
+              tabId: `probe-fuzzer-${currentTabId}-${reqIndex}`,
+              targetUrl: effectiveTargetUrl,
+              rawRequest: probeReq,
+            });
+            probeRawRes = probeRes.rawResponse || '';
+            probeHtml = probeRawRes.split(/\r?\n\r?\n/)[1] || '';
+          } catch {}
+
+          const revitalized = revitalizeHttpRequest({
+            rawRequest: wireReq,
+            tabUrl: effectiveTargetUrl,
+            probedHtml: probeHtml,
+            probedRawResponse: probeRawRes,
+          });
+          wireReq = revitalized.updatedRawRequest;
+
+          // If using AWS FireProx, ensure X-My-X-Forwarded-For routing header is preserved
+          if (egressStrategy === 'aws_fireprox' && awsGatewayUrl.trim()) {
+            let origHost = '';
+            try {
+              origHost = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`).host;
+            } catch {}
+            if (origHost && !/X-My-X-Forwarded-For:[^\r\n]*/i.test(wireReq)) {
+              if (/Host:[^\r\n]*/i.test(wireReq)) {
+                wireReq = wireReq.replace(/(Host:[^\r\n]*\r?\n?)/i, `$1X-My-X-Forwarded-For: ${origHost}\r\n`);
+              }
+            }
+          }
+        }
+
         try {
           execResult = await ipcClient.sendRepeaterRequest({
             tabId: `intruder-${currentTabId}-${reqIndex}`,
-            targetUrl,
+            targetUrl: effectiveTargetUrl,
             rawRequest: wireReq,
           });
         } catch (err: any) {
@@ -1536,6 +1603,59 @@ export const FuzzerWorkspaceView: React.FC = () => {
                       />
                     </label>
 
+                    {/* Per-Request Revitalization & IP Anomaly Sync Button */}
+                    <div className="pt-2 border-t border-[#3e4249]/50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-[#8c9099]">Per-Request Revitalization:</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                          refreshTokensPerRequest ? 'bg-emerald-950 text-emerald-400 border border-emerald-700/60' : 'bg-[#141517] text-[#6f737a]'
+                        }`}>
+                          {refreshTokensPerRequest ? 'ACTIVE' : 'OFF'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !refreshTokensPerRequest;
+                          setRefreshTokensPerRequest(next);
+                          addToast({
+                            type: next ? 'success' : 'info',
+                            title: next ? 'Refresh Tokens Active For Each Request' : 'Per-Request Token Refresh Disabled',
+                            description: next
+                              ? 'Each dispatched request will dynamically refresh CSRF tokens & session cookies while rotating IP headers to maintain anomaly stealth.'
+                              : 'Attack will dispatch requests with fixed template tokens.',
+                          });
+                        }}
+                        className={`w-full px-3 py-2 rounded border text-left transition-all duration-200 flex items-center justify-between group ${
+                          refreshTokensPerRequest
+                            ? 'bg-gradient-to-r from-emerald-950/50 to-[#141517] border-emerald-500/80 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                            : 'bg-[#141517] hover:bg-[#1a1c20] border-[#3e4249] hover:border-emerald-500/40 text-[#c4c7c5] hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-1.5 rounded ${refreshTokensPerRequest ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#1e2024] text-[#8c9099]'}`}>
+                            <RotateCw className={`w-4 h-4 ${refreshTokensPerRequest ? 'animate-spin' : 'group-hover:rotate-180 transition-transform'}`} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-semibold flex items-center gap-1.5 text-white">
+                              <span>Refresh Tokens for Each Req</span>
+                              <span className="text-[9px] px-1 rounded bg-purple-950/80 text-purple-300 border border-purple-800 font-mono">
+                                IP ROT
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[#9da5b4] leading-tight mt-0.5">
+                              Renews CSRF & session cookies per request and rotates aligned IPs to prevent anomaly bans
+                            </p>
+                          </div>
+                        </div>
+                        <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold transition-colors ${
+                          refreshTokensPerRequest ? 'bg-emerald-500 text-black shadow-sm' : 'border border-[#4b5058] bg-[#1a1c20] text-transparent'
+                        }`}>
+                          ✓
+                        </div>
+                      </button>
+                    </div>
+
                     {/* Quick Throughput Presets */}
                     <div className="pt-2 border-t border-[#3e4249]/50 space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-[#8c9099] block">Execution Presets:</span>
@@ -1580,8 +1700,9 @@ export const FuzzerWorkspaceView: React.FC = () => {
                           onClick={() => {
                             setConcurrency(1);
                             setDelayMs(1000);
-                            setStealthIpRotation(true);
-                            addToast({ type: 'info', title: 'Intruder: 1 Worker (Stealth / Anti-Ban IP Rotation Active)' });
+                            setEgressStrategy('aws_fireprox');
+                            setRefreshTokensPerRequest(true);
+                            addToast({ type: 'info', title: 'Intruder: 1 Worker (Stealth / IP ROT & Token Renewal Active)' });
                           }}
                           className="px-2 py-1 bg-[#141517] hover:bg-[#3e4249] border border-purple-500/40 rounded text-purple-400 text-left transition-colors flex items-center justify-between"
                         >
@@ -1597,56 +1718,88 @@ export const FuzzerWorkspaceView: React.FC = () => {
               {/* Settings Drawer */}
               {activeRightDrawer === 'settings' && (
                 <div className="p-3 bg-[#1e1f22] rounded border border-[#3e4249] space-y-4">
-                  {/* Stealth Mode Section */}
-                  <div className="p-2.5 bg-[#141517] rounded border border-purple-500/30 space-y-2">
+                  {/* Egress Strategy & IP Rotation Switcher */}
+                  <div className="p-3 bg-[#141517] rounded border border-purple-500/40 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-purple-400 font-semibold text-xs">
-                        <Shield className="w-3.5 h-3.5" />
-                        <span>Stealth Mode (Anti-Ban IP Rotation)</span>
+                        <Globe className="w-4 h-4" />
+                        <span>Egress Strategy & Anti-Ban Mode</span>
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold font-mono ${stealthIpRotation ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-[#2b2d30] text-[#8c9099]'}`}>
-                        {stealthIpRotation ? 'ACTIVE' : 'OFF'}
+                      <span className="text-[10px] px-2 py-0.5 rounded font-bold font-mono bg-purple-900/60 text-purple-200 border border-purple-700">
+                        {egressStrategy === 'direct' && 'DIRECT / WARP'}
+                        {egressStrategy === 'aws_fireprox' && 'AWS FIREPROX'}
                       </span>
                     </div>
-                    <label className="flex items-start gap-2 text-xs text-[#c4c7c5] cursor-pointer pt-1">
-                      <input
-                        type="checkbox"
-                        checked={stealthIpRotation}
-                        onChange={(e) => {
-                          setStealthIpRotation(e.target.checked);
-                          addToast({
-                            type: e.target.checked ? 'success' : 'info',
-                            title: e.target.checked ? 'Intruder Stealth IP Rotation Enabled' : 'Intruder Stealth IP Rotation Disabled',
-                            description: e.target.checked
-                              ? 'Each attack request will automatically rotate client IP headers (X-Forwarded-For, X-Real-IP, CF-Connecting-IP, True-Client-IP) with cooldown reuse policy.'
-                              : 'Requests will be dispatched without client IP header rotation.',
-                          });
-                        }}
-                        className="mt-0.5 rounded bg-[#2b2d30] border-[#3e4249] text-purple-500 focus:ring-0"
-                      />
-                      <div className="flex flex-col">
-                        <span className="font-medium text-white">Rotate IP per attack request</span>
-                        <span className="text-[11px] text-[#8c9099] leading-tight mt-0.5">
-                          Injects randomized residential/datacenter IPs into <code className="text-purple-300">X-Forwarded-For</code>, <code className="text-purple-300">X-Real-IP</code>, and <code className="text-purple-300">CF-Connecting-IP</code> with automatic cooldown to prevent bot bans.
-                        </span>
-                      </div>
-                    </label>
 
-                    {stealthIpRotation && (
-                      <div className="mt-2 pt-2 border-t border-purple-500/20 flex items-center justify-between text-[11px] font-mono text-purple-300">
-                        <span>Sample Egress: {useVpnRotatorStore.getState().currentNode.flag} {useVpnRotatorStore.getState().currentNode.ip}</span>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const next = await useVpnRotatorStore.getState().rotateVpn();
-                            addToast({ type: 'info', title: `Tested Stealth Node: ${next.flag} ${next.ip}` });
-                          }}
-                          className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-950/60 hover:bg-purple-900 border border-purple-700/60 text-purple-200 transition-colors"
-                          title="Rotate active node now"
-                        >
-                          <RefreshCw className="w-2.5 h-2.5" />
-                          <span>Test Rotation</span>
-                        </button>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {/* Mode 1: Direct / Cloudflare WARP */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEgressStrategy('direct');
+                          addToast({ type: 'info', title: 'Egress Strategy: Direct / Cloudflare WARP' });
+                        }}
+                        className={`p-2.5 rounded border text-left flex flex-col justify-between transition-all ${
+                          egressStrategy === 'direct'
+                            ? 'bg-purple-950/50 border-purple-500 shadow-sm shadow-purple-500/20'
+                            : 'bg-[#1e1f22] border-[#3e4249] hover:border-[#8c9099]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-semibold text-white">
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Direct / WARP</span>
+                        </div>
+                        <span className="text-[10px] text-[#8c9099] mt-1 leading-tight">
+                          Local network / Cloudflare WARP VPN tunnel.
+                        </span>
+                      </button>
+
+                      {/* Mode 2: AWS API Gateway Relay (FireProx) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEgressStrategy('aws_fireprox');
+                          addToast({ type: 'success', title: 'Egress Strategy: AWS FireProx Relay' });
+                        }}
+                        className={`p-2.5 rounded border text-left flex flex-col justify-between transition-all ${
+                          egressStrategy === 'aws_fireprox'
+                            ? 'bg-purple-950/50 border-purple-500 shadow-sm shadow-purple-500/20'
+                            : 'bg-[#1e1f22] border-[#3e4249] hover:border-[#8c9099]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-semibold text-white">
+                          <Cloud className="w-3.5 h-3.5 text-sky-400" />
+                          <span>AWS FireProx</span>
+                        </div>
+                        <span className="text-[10px] text-[#8c9099] mt-1 leading-tight">
+                          Unique Amazon IP per request via API Gateway.
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Mode-Specific Configuration & Context Box */}
+                    {egressStrategy === 'aws_fireprox' && (
+                      <div className="p-2.5 bg-[#1e1f22] rounded border border-sky-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-sky-400">AWS API Gateway Endpoint</span>
+                          <span className="text-[9px] bg-sky-950/80 text-sky-300 px-1 rounded border border-sky-800 font-mono">FIREPROX</span>
+                        </div>
+                        <p className="text-[11px] text-[#8c9099] leading-tight">
+                          Enter your AWS API Gateway URL created with FireProx. Every attack request passes through AWS and rotates across Amazon's worldwide IP subnets.
+                        </p>
+                        <input
+                          type="text"
+                          placeholder="https://abc123xyz.execute-api.us-east-1.amazonaws.com/fireprox"
+                          value={awsGatewayUrl}
+                          onChange={(e) => setAwsGatewayUrl(e.target.value)}
+                          className="w-full bg-[#141517] text-sky-300 font-mono px-2.5 py-1 rounded border border-[#3e4249] text-xs focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                    )}
+
+                    {egressStrategy === 'direct' && (
+                      <div className="p-2 bg-[#1e1f22] rounded border border-[#3e4249] text-[11px] text-[#8c9099]">
+                        <span className="text-amber-300 font-medium">⚡ Direct Socket Mode:</span> Dispatches requests directly from your network interface or active system VPN (Cloudflare WARP daemon).
                       </div>
                     )}
                   </div>
@@ -2125,103 +2278,117 @@ export const FuzzerWorkspaceView: React.FC = () => {
               </div>
 
               {/* Bottom: Request & Response Inspector Split */}
-              <div className="h-1/2 flex min-h-0 bg-[#1e1f22] divide-x divide-[#2b2d30]">
-                {/* Left: Request Pane */}
-                <div className="w-1/2 flex flex-col min-h-0">
-                  <div className="h-7 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2">
-                    <span className="font-bold text-white text-xs">Request #{selectedResult?.id || 1}</span>
-                    <div className="flex items-center gap-1 text-[11px]">
-                      {(['Pretty', 'Raw', 'Hex'] as const).map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => setRequestTabMode(m)}
-                          className={`px-2 py-0.5 rounded ${requestTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'}`}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div
-                    onContextMenu={(e) => handleInspectorContextMenu(e, selectedResult?.rawRequest || requestText, 'Request')}
-                    className="flex-1 bg-[#141517] p-2.5 overflow-auto select-text"
-                  >
-                    <HttpSyntaxHighlighter
-                      content={selectedResult?.rawRequest || requestText}
-                      isResponse={false}
-                      searchQuery={modalRequestSearch}
-                      activeMatchIndex={modalRequestActiveMatch}
-                    />
-                  </div>
-                  <BurpSearchBar
-                    searchQuery={modalRequestSearch}
-                    onSearchChange={(val) => {
-                      setModalRequestSearch(val);
-                      setModalRequestActiveMatch(0);
-                    }}
-                    activeMatchIndex={modalRequestActiveMatch}
-                    totalMatches={modalRequestTotalMatches}
-                    onPrevMatch={handleModalRequestPrevMatch}
-                    onNextMatch={handleModalRequestNextMatch}
-                    selectionInfo={`Length: ${(selectedResult?.rawRequest || requestText || '').length} bytes`}
-                  />
-                </div>
-
-                {/* Right: Response Pane */}
-                <div className="w-1/2 flex flex-col min-h-0">
-                  <div className="h-7 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2">
-                    <span className="font-bold text-white text-xs">
-                      Response #{selectedResult?.id || 1} ({selectedResult?.statusCode || 200})
-                    </span>
-                    <div className="flex items-center gap-1 text-[11px]">
-                      {(['Pretty', 'Raw', 'Hex', 'Render'] as const).map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => setResponseTabMode(m)}
-                          className={`px-2 py-0.5 rounded ${responseTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'}`}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {responseTabMode === 'Render' ? (
-                    <iframe
-                      srcDoc={generateRenderablePreviewHtml(
-                        selectedResult?.rawResponse?.replace(/^[\s\S]*?\r?\n\r?\n/, '') || '',
-                        undefined,
-                        targetUrl
-                      )}
-                      title="Rendered Response"
-                      className="flex-1 w-full bg-white border-0"
-                      sandbox="allow-same-origin"
-                    />
-                  ) : (
-                    <div
-                      onContextMenu={(e) => handleInspectorContextMenu(e, selectedResult?.rawResponse || '', 'Response')}
-                      className="flex-1 bg-[#141517] p-2.5 overflow-auto select-text"
-                    >
-                      <HttpSyntaxHighlighter
-                        content={selectedResult?.rawResponse || 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nNo response captured'}
-                        isResponse={true}
-                        searchQuery={modalResponseSearch}
-                        activeMatchIndex={modalResponseActiveMatch}
+              <div className="h-1/2 flex min-h-0 bg-[#1e1f22] overflow-hidden">
+                <SplitPane
+                  direction="horizontal"
+                  initialSize={550}
+                  minSize={150}
+                  maxSize={1400}
+                  storageKey="sentinel_fuzzer_modal_split"
+                  primary={
+                    /* Left: Request Pane */
+                    <div className="w-full h-full flex flex-col min-w-0 min-h-0 bg-[#141517] overflow-hidden">
+                      <div className="h-7 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2 flex-shrink-0">
+                        <span className="font-bold text-white text-xs">Request #{selectedResult?.id || 1}</span>
+                        <div className="flex items-center gap-1 text-[11px]">
+                          {(['Pretty', 'Raw', 'Hex'] as const).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setRequestTabMode(m)}
+                              className={`px-2 py-0.5 rounded ${requestTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'}`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div
+                        onContextMenu={(e) => handleInspectorContextMenu(e, selectedResult?.rawRequest || requestText, 'Request')}
+                        className="flex-1 bg-[#141517] p-2.5 overflow-auto select-text"
+                      >
+                        <HttpSyntaxHighlighter
+                          content={selectedResult?.rawRequest || requestText}
+                          isResponse={false}
+                          showLineNumbers={true}
+                          searchQuery={modalRequestSearch}
+                          activeMatchIndex={modalRequestActiveMatch}
+                        />
+                      </div>
+                      <BurpSearchBar
+                        searchQuery={modalRequestSearch}
+                        onSearchChange={(val) => {
+                          setModalRequestSearch(val);
+                          setModalRequestActiveMatch(0);
+                        }}
+                        activeMatchIndex={modalRequestActiveMatch}
+                        totalMatches={modalRequestTotalMatches}
+                        onPrevMatch={handleModalRequestPrevMatch}
+                        onNextMatch={handleModalRequestNextMatch}
+                        selectionInfo={`Length: ${(selectedResult?.rawRequest || requestText || '').length} bytes`}
                       />
                     </div>
-                  )}
-                  <BurpSearchBar
-                    searchQuery={modalResponseSearch}
-                    onSearchChange={(val) => {
-                      setModalResponseSearch(val);
-                      setModalResponseActiveMatch(0);
-                    }}
-                    activeMatchIndex={modalResponseActiveMatch}
-                    totalMatches={modalResponseTotalMatches}
-                    onPrevMatch={handleModalResponsePrevMatch}
-                    onNextMatch={handleModalResponseNextMatch}
-                    selectionInfo={`Length: ${(selectedResult?.rawResponse || '').length} bytes`}
-                  />
-                </div>
+                  }
+                  secondary={
+                    /* Right: Response Pane */
+                    <div className="w-full h-full flex flex-col min-w-0 min-h-0 bg-[#141517] overflow-hidden">
+                      <div className="h-7 bg-[#232529] border-b border-[#2b2d30] flex items-center justify-between px-2 flex-shrink-0">
+                        <span className="font-bold text-white text-xs">
+                          Response #{selectedResult?.id || 1} ({selectedResult?.statusCode || 200})
+                        </span>
+                        <div className="flex items-center gap-1 text-[11px]">
+                          {(['Pretty', 'Raw', 'Hex', 'Render'] as const).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setResponseTabMode(m)}
+                              className={`px-2 py-0.5 rounded ${responseTabMode === m ? 'bg-[#f37021] text-white font-bold' : 'text-[#9da5b4] hover:text-white'}`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {responseTabMode === 'Render' ? (
+                        <div className="flex-1 flex flex-col min-h-0 bg-[#141517] overflow-hidden">
+                          <iframe
+                            srcDoc={generateRenderablePreviewHtml(
+                              selectedResult?.rawResponse || '',
+                              undefined,
+                              targetUrl
+                            )}
+                            title="Rendered Response"
+                            className="flex-1 w-full bg-[#141517] border-0"
+                            sandbox="allow-same-origin allow-forms allow-popups"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          onContextMenu={(e) => handleInspectorContextMenu(e, selectedResult?.rawResponse || '', 'Response')}
+                          className="flex-1 bg-[#141517] p-2.5 overflow-auto select-text"
+                        >
+                          <HttpSyntaxHighlighter
+                            content={selectedResult?.rawResponse || 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nNo response captured'}
+                            isResponse={true}
+                            showLineNumbers={true}
+                            searchQuery={modalResponseSearch}
+                            activeMatchIndex={modalResponseActiveMatch}
+                          />
+                        </div>
+                      )}
+                      <BurpSearchBar
+                        searchQuery={modalResponseSearch}
+                        onSearchChange={(val) => {
+                          setModalResponseSearch(val);
+                          setModalResponseActiveMatch(0);
+                        }}
+                        activeMatchIndex={modalResponseActiveMatch}
+                        totalMatches={modalResponseTotalMatches}
+                        onPrevMatch={handleModalResponsePrevMatch}
+                        onNextMatch={handleModalResponseNextMatch}
+                        selectionInfo={`Length: ${(selectedResult?.rawResponse || '').length} bytes`}
+                      />
+                    </div>
+                  }
+                />
               </div>
             </div>
           </div>

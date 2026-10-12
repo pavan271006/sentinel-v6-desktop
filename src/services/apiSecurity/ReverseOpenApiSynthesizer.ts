@@ -1,0 +1,307 @@
+/**
+ * Sentinel Sovereign Ω - Reverse OpenAPI 3.1 Specification Synthesizer
+ *
+ * Automatically compiles live captured HTTP proxy transactions and crawler-discovered
+ * attack surfaces into a fully formed, valid OpenAPI 3.1 Specification.
+ *
+ * Features:
+ * - Dynamic Path Parameter Detection (converts /api/v1/users/42 -> /api/v1/users/{id})
+ * - Query String Parameter Schema Inference (types: integer, boolean, number, string)
+ * - Recursive Request/Response JSON Schema Derivation
+ * - MIME-type aware RequestBody and Responses mapping
+ * - Exportable as standard OpenAPI 3.1 JSON/YAML
+ */
+
+import { SiteMapRequest } from '../../workspaces/ProjectScopeWorkspaceView';
+
+export interface OpenApi3Info {
+  title: string;
+  version: string;
+  description?: string;
+}
+
+export interface OpenApi3Server {
+  url: string;
+  description?: string;
+}
+
+export interface OpenApi3Parameter {
+  name: string;
+  in: 'path' | 'query' | 'header' | 'cookie';
+  required: boolean;
+  description?: string;
+  schema: Record<string, any>;
+}
+
+export interface OpenApi3Operation {
+  summary: string;
+  description?: string;
+  operationId: string;
+  parameters: OpenApi3Parameter[];
+  requestBody?: {
+    required?: boolean;
+    content: Record<string, { schema: Record<string, any> }>;
+  };
+  responses: Record<string, { description: string; content?: Record<string, { schema: Record<string, any> }> }>;
+  tags?: string[];
+}
+
+export interface OpenApi3Spec {
+  openapi: string;
+  info: OpenApi3Info;
+  servers: OpenApi3Server[];
+  paths: Record<string, Record<string, OpenApi3Operation>>;
+  components?: {
+    schemas?: Record<string, any>;
+    securitySchemes?: Record<string, any>;
+  };
+}
+
+export class ReverseOpenApiSynthesizer {
+  /**
+   * Infers primitive or nested JSON Schema from arbitrary parsed JSON data
+   */
+  public static inferJsonSchema(data: any): Record<string, any> {
+    if (data === null || data === undefined) {
+      return { type: 'null' };
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) {
+        return { type: 'array', items: {} };
+      }
+      return {
+        type: 'array',
+        items: this.inferJsonSchema(data[0]),
+      };
+    }
+
+    const type = typeof data;
+    if (type === 'number') {
+      return Number.isInteger(data) ? { type: 'integer' } : { type: 'number' };
+    }
+    if (type === 'boolean') {
+      return { type: 'boolean' };
+    }
+    if (type === 'string') {
+      // Check for UUID, ISO Date, or Email patterns
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data)) {
+        return { type: 'string', format: 'uuid' };
+      }
+      if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?/i.test(data)) {
+        return { type: 'string', format: 'date-time' };
+      }
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data)) {
+        return { type: 'string', format: 'email' };
+      }
+      return { type: 'string' };
+    }
+
+    if (type === 'object') {
+      const properties: Record<string, any> = {};
+      const required: string[] = [];
+
+      for (const [key, val] of Object.entries(data)) {
+        properties[key] = this.inferJsonSchema(val);
+        required.push(key);
+      }
+
+      return {
+        type: 'object',
+        properties,
+        required: required.length > 0 ? required : undefined,
+      };
+    }
+
+    return { type: 'string' };
+  }
+
+  /**
+   * Normalizes URLs into parameterized paths (e.g. /users/123 -> /users/{id})
+   */
+  public static parameterizePath(rawPath: string): { templatePath: string; pathParams: string[] } {
+    const [pathname] = rawPath.split('?');
+    const segments = pathname.split('/').filter(Boolean);
+    const pathParams: string[] = [];
+
+    const newSegments = segments.map((seg, idx) => {
+      // Numerical ID (e.g. /users/42)
+      if (/^\d+$/.test(seg)) {
+        const prevSeg = segments[idx - 1] || 'item';
+        const paramName = `${prevSeg.replace(/s$/, '')}Id`;
+        pathParams.push(paramName);
+        return `{${paramName}}`;
+      }
+
+      // UUID (e.g. /files/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11)
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) {
+        const prevSeg = segments[idx - 1] || 'resource';
+        const paramName = `${prevSeg.replace(/s$/, '')}Uuid`;
+        pathParams.push(paramName);
+        return `{${paramName}}`;
+      }
+
+      return seg;
+    });
+
+    return {
+      templatePath: '/' + newSegments.join('/'),
+      pathParams,
+    };
+  }
+
+  /**
+   * Synthesizes an entire OpenAPI 3.1 specification from discovered SiteMap endpoints
+   */
+  public static synthesizeSpec(items: SiteMapRequest[], targetHost: string): OpenApi3Spec {
+    const spec: OpenApi3Spec = {
+      openapi: '3.1.0',
+      info: {
+        title: `Reverse Synthesized API Specification - ${targetHost}`,
+        version: '1.0.0',
+        description: `Automatically generated by Sentinel Sovereign Ω from ${items.length} discovered attack surfaces and MITM proxy transactions.`,
+      },
+      servers: [
+        {
+          url: `https://${targetHost}`,
+          description: `Primary Target Host`,
+        },
+      ],
+      paths: {},
+      components: {
+        schemas: {},
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+          },
+          cookieAuth: {
+            type: 'apiKey',
+            in: 'cookie',
+            name: 'session',
+          },
+        },
+      },
+    };
+
+    for (const item of items) {
+      if (!item.path || item.path === '#') continue;
+
+      const { templatePath, pathParams } = this.parameterizePath(item.path);
+      const method = (item.method || 'GET').toLowerCase();
+
+      if (!spec.paths[templatePath]) {
+        spec.paths[templatePath] = {};
+      }
+
+      const parameters: OpenApi3Parameter[] = [];
+
+      // 1. Add inferred path parameters
+      for (const pName of pathParams) {
+        parameters.push({
+          name: pName,
+          in: 'path',
+          required: true,
+          description: `Dynamic path identifier for ${pName}`,
+          schema: { type: pName.includes('Uuid') ? 'string' : 'integer' },
+        });
+      }
+
+      // 2. Parse query parameters
+      if (item.path.includes('?')) {
+        const queryStr = item.path.split('?')[1];
+        const searchParams = new URLSearchParams(queryStr);
+        for (const [key, val] of searchParams.entries()) {
+          const isNum = /^\d+$/.test(val);
+          const isBool = val === 'true' || val === 'false';
+          parameters.push({
+            name: key,
+            in: 'query',
+            required: false,
+            description: `Query parameter "${key}"`,
+            schema: {
+              type: isNum ? 'integer' : isBool ? 'boolean' : 'string',
+              default: val,
+            },
+          });
+        }
+      }
+
+      // 3. Extract request body schema (if present in rawRequest)
+      let requestBody: any = undefined;
+      if (item.requestRaw && (method === 'post' || method === 'put' || method === 'patch')) {
+        const bodyParts = item.requestRaw.split(/\r?\n\r?\n/);
+        if (bodyParts.length > 1 && bodyParts[1].trim()) {
+          const rawPayload = bodyParts[1].trim();
+          try {
+            const parsedJson = JSON.parse(rawPayload);
+            requestBody = {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: this.inferJsonSchema(parsedJson),
+                },
+              },
+            };
+          } catch {
+            // Form-urlencoded fallback
+            if (rawPayload.includes('=')) {
+              requestBody = {
+                required: true,
+                content: {
+                  'application/x-www-form-urlencoded': {
+                    schema: { type: 'object' },
+                  },
+                },
+              };
+            }
+          }
+        }
+      }
+
+      // 4. Extract response schema (if present in rawResponse)
+      const responses: Record<string, any> = {};
+      const statusKey = String(item.status || 200);
+
+      let responseContent: any = undefined;
+      if (item.responseRaw) {
+        const resParts = item.responseRaw.split(/\r?\n\r?\n/);
+        if (resParts.length > 1 && resParts[1].trim()) {
+          try {
+            const parsedResJson = JSON.parse(resParts[1].trim());
+            responseContent = {
+              'application/json': {
+                schema: this.inferJsonSchema(parsedResJson),
+              },
+            };
+          } catch {
+            responseContent = {
+              'text/html': {
+                schema: { type: 'string' },
+              },
+            };
+          }
+        }
+      }
+
+      responses[statusKey] = {
+        description: `Observed HTTP ${statusKey} response`,
+        content: responseContent,
+      };
+
+      const tag = templatePath.split('/')[1] || 'root';
+
+      spec.paths[templatePath][method] = {
+        summary: item.title || `${item.method} ${templatePath}`,
+        description: item.notes || `Discovered via ${item.notes}`,
+        operationId: `${method}_${templatePath.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        parameters,
+        requestBody,
+        responses,
+        tags: [tag.toUpperCase()],
+      };
+    }
+
+    return spec;
+  }
+}

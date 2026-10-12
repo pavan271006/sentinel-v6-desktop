@@ -59,9 +59,9 @@
   --diff-remove-text: #fca5a5;
 
   /* Scrollbars */
-  --scrollbar-thumb: #393b40;
-  --scrollbar-thumb-hover: #4e5157;
-  --scrollbar-track: #1e1f22;
+  --scrollbar-thumb: #646a78;
+  --scrollbar-thumb-hover: #939bae;
+  --scrollbar-track: #141517;
 }
 
 [data-theme="light"] {

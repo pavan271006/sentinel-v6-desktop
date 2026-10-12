@@ -9,7 +9,14 @@ import { useAppShellStore } from '../../stores/appShellStore';
 import { streamDispatcher } from '../../ipc/events';
 
 export const AppShell: React.FC = () => {
-  const { toggleSidebar, toggleTheme } = useAppShellStore();
+  const { toggleSidebar, toggleTheme, zoomIn, zoomOut, resetZoom, uiZoom } = useAppShellStore();
+
+  // Apply saved zoom level on mount
+  useEffect(() => {
+    if (uiZoom && uiZoom !== 100) {
+      document.documentElement.style.zoom = `${(uiZoom / 100).toFixed(2)}`;
+    }
+  }, [uiZoom]);
 
   // Initialize event stream listener & global shortcuts
   useEffect(() => {
@@ -26,6 +33,32 @@ export const AppShell: React.FC = () => {
         e.preventDefault();
         toggleTheme();
       }
+      // Ctrl + Plus / Equal: Zoom In
+      else if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === 'Add')) {
+        e.preventDefault();
+        zoomIn();
+      }
+      // Ctrl + Minus: Zoom Out
+      else if (e.ctrlKey && (e.key === '-' || e.key === '_' || e.key === 'Subtract')) {
+        e.preventDefault();
+        zoomOut();
+      }
+      // Ctrl + 0: Reset Zoom
+      else if (e.ctrlKey && (e.key === '0' || e.key === 'Digit0')) {
+        e.preventDefault();
+        resetZoom();
+      }
+    };
+
+    const handleWheelZoom = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          zoomIn();
+        } else if (e.deltaY > 0) {
+          zoomOut();
+        }
+      }
     };
 
     const handleContextMenu = (e: MouseEvent) => {
@@ -34,13 +67,15 @@ export const AppShell: React.FC = () => {
     };
 
     window.addEventListener('keydown', handleGlobalShortcuts);
+    window.addEventListener('wheel', handleWheelZoom, { passive: false });
     window.addEventListener('contextmenu', handleContextMenu);
     return () => {
       window.removeEventListener('keydown', handleGlobalShortcuts);
+      window.removeEventListener('wheel', handleWheelZoom);
       window.removeEventListener('contextmenu', handleContextMenu);
       streamDispatcher.stopListening();
     };
-  }, [toggleSidebar, toggleTheme]);
+  }, [toggleSidebar, toggleTheme, zoomIn, zoomOut, resetZoom]);
 
   return (
     <div className="flex flex-col w-screen h-screen overflow-hidden bg-bg-app text-text-primary select-none">

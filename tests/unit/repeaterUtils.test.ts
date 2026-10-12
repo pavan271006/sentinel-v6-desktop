@@ -12,6 +12,7 @@ import {
   extractHeaderValue,
   exportRepeaterRequest,
   getUtf8ByteLength,
+  generateRenderablePreviewHtml,
 } from '../../src/utils/repeaterUtils';
 
 describe('repeaterUtils Unit Tests', () => {
@@ -213,6 +214,56 @@ describe('repeaterUtils Unit Tests', () => {
       const ps = exportRepeaterRequest('powershell', 'POST', url, headers, body);
       expect(ps).toContain('$uri = "https://target.local/api/v1/test"');
       expect(ps).toContain('Invoke-RestMethod -Uri $uri -Method POST');
+    });
+  });
+
+  describe('Universal Response Render Engine (generateRenderablePreviewHtml)', () => {
+    it('strips CSP meta tags and SRI attributes so external assets load authentically', () => {
+      const hostileHtml = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'self'"><link rel="stylesheet" href="/style.css" integrity="sha384-xyz"></head><body><div class="sidebar">Nav</div></body></html>`;
+      const rendered = generateRenderablePreviewHtml(hostileHtml, undefined, 'https://ecommerce.com/products');
+
+      expect(rendered).not.toContain('Content-Security-Policy');
+      expect(rendered).not.toContain('integrity=');
+      expect(rendered).toContain('<base href="https://ecommerce.com/products/">');
+      expect(rendered).not.toContain('display: none !important');
+    });
+
+    it('renders interactive 3D redirect card for 301/302 redirects with destination button', () => {
+      const redirectRaw = `HTTP/1.1 302 Found\r\nLocation: https://target.com/dashboard\r\n\r\n`;
+      const rendered = generateRenderablePreviewHtml(redirectRaw, undefined, 'https://target.com/login');
+
+      expect(rendered).toContain('HTTP 302 Found');
+      expect(rendered).toContain('https://target.com/dashboard');
+      expect(rendered).toContain('Follow Redirect ➔');
+      expect(rendered).toContain('SENTINEL_IFRAME_NAVIGATE');
+    });
+
+    it('renders structured dark JSON visualizer with copy button for JSON REST API', () => {
+      const jsonRaw = `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"status":"success","items":[1,2,3]}`;
+      const rendered = generateRenderablePreviewHtml(jsonRaw, undefined, 'https://api.target.com/v1/users');
+
+      expect(rendered).toContain('{ } JSON API Response (200 OK)');
+      expect(rendered).toContain('📋 Copy JSON');
+      expect(rendered).toContain('"status"');
+    });
+
+    it('renders interactive request card for discovered unrequested endpoints', () => {
+      const rendered = generateRenderablePreviewHtml('Unrequested Endpoint Discovered via Katana', undefined, 'https://target.com/admin/settings');
+
+      expect(rendered).toContain('⚡ Discovered Endpoint');
+      expect(rendered).toContain('https://target.com/admin/settings');
+      expect(rendered).toContain('⚡ Request Item &amp; Render Page');
+      expect(rendered).toContain('SENTINEL_IFRAME_FETCH');
+    });
+
+    it('preserves native website sidebars without injecting artificial display:none overrides', () => {
+      const portalHtml = `<!DOCTYPE html><html><body><aside class="sidebar">Admin Menu</aside><main id="content">Dashboard Content</main></body></html>`;
+      const rendered = generateRenderablePreviewHtml(portalHtml, undefined, 'https://portal.local/admin');
+
+      expect(rendered).not.toContain('aside.sidebar');
+      expect(rendered).not.toContain('.main-sidebar');
+      expect(rendered).toContain('Admin Menu');
+      expect(rendered).toContain('Dashboard Content');
     });
   });
 });

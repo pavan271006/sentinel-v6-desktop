@@ -30,7 +30,11 @@ import { HttpSyntaxHighlighter } from '../common/HttpSyntaxHighlighter';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
 import { BurpEditorToolbar } from '../common/BurpEditorToolbar';
 
-export const ResponseViewerPanel: React.FC = () => {
+export interface ResponseViewerPanelProps {
+  tabId?: string;
+}
+
+export const ResponseViewerPanel: React.FC<ResponseViewerPanelProps> = ({ tabId }) => {
   const {
     tabs,
     activeTabId,
@@ -47,7 +51,7 @@ export const ResponseViewerPanel: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [hideBoringHeaders, setHideBoringHeaders] = useState(false);
-  const [wordWrap, setWordWrap] = useState(false);
+  const [wordWrap, setWordWrap] = useState(true);
   const [showNonPrintable, setShowNonPrintable] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -59,7 +63,8 @@ export const ResponseViewerPanel: React.FC = () => {
     isOpen: false,
   });
 
-  const tab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  const currentTabId = tabId || activeTabId;
+  const tab = tabs.find((t) => t.id === currentTabId) || tabs[0];
   const activeRev = tab ? (tab.history[tab.activeRevisionIndex] || tab.lastExecutionOutput) : null;
   const isBaseline = tab && tab.baselineRevisionIndex === tab.activeRevisionIndex && tab.baselineRevisionIndex !== null;
 
@@ -352,33 +357,13 @@ export const ResponseViewerPanel: React.FC = () => {
 
         {/* 5. AUTHENTIC REAL HTML WEBSITE / JSON PREVIEW */}
         {tab.responseViewMode === 'preview' && (
-          <div className="flex flex-col h-full space-y-2">
-            <div className="flex items-center justify-between px-2 py-1.5 bg-bg-panel-elevated border border-border-subtle rounded text-[11px] font-mono select-none">
-              <span className="flex items-center gap-1.5 text-text-secondary">
-                <ShieldCheck className="w-3.5 h-3.5 text-accent-cyan" />
-                <span>SEC-11 Sandboxed Preview: Real render with relative assets mapped to <span className="text-accent-cyan font-bold">{activeRev.url || tab.url}</span></span>
-              </span>
-
-              <button
-                onClick={() => {
-                  const blob = new Blob([generateRenderablePreviewHtml(responseBody || rawResponse, undefined, activeRev.url || tab.url)], { type: 'text/html' });
-                  const blobUrl = URL.createObjectURL(blob);
-                  window.open(blobUrl, '_blank');
-                }}
-                className="px-2 py-0.5 rounded bg-bg-canvas border border-border-subtle hover:border-accent-cyan text-text-muted hover:text-accent-cyan transition-colors"
-                title="Open real rendered website preview in new browser window"
-              >
-                Open in Full Window ↗
-              </button>
-            </div>
-            <div className="flex-1 border border-border-subtle rounded bg-white overflow-hidden relative">
-              <iframe
-                title="Response HTML Preview"
-                srcDoc={generateRenderablePreviewHtml(responseBody || rawResponse, undefined, activeRev.url || tab.url)}
-                sandbox="allow-same-origin"
-                className="w-full h-full border-0 bg-white"
-              />
-            </div>
+          <div className="w-full h-full bg-[#141517] overflow-hidden">
+            <iframe
+              title="Response HTML Preview"
+              srcDoc={generateRenderablePreviewHtml(responseBody || rawResponse, undefined, activeRev.url || tab.url)}
+              sandbox="allow-scripts allow-same-origin allow-forms"
+              className="w-full h-full border-0 bg-[#141517]"
+            />
           </div>
         )}
 

@@ -22,6 +22,7 @@ import {
 import { ContextMenu } from '../../design-system/ContextMenu';
 import { buildTrafficContextMenu } from '../../utils/contextMenuUtils';
 import { generateRenderablePreviewHtml } from '../../utils/repeaterUtils';
+import { SplitPane } from '../../design-system/SplitPane';
 import { HttpSyntaxHighlighter } from '../common/HttpSyntaxHighlighter';
 import { BurpSearchBar, countSearchMatches } from '../common/BurpSearchBar';
 import { BurpEditorToolbar } from '../common/BurpEditorToolbar';
@@ -80,13 +81,13 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
   const [reqSearch, setReqSearch] = useState('');
   const [reqMatchIdx, setReqMatchIdx] = useState(0);
   const [reqHideBoring, setReqHideBoring] = useState(false);
-  const [reqWordWrap, setReqWordWrap] = useState(false);
+  const [reqWordWrap, setReqWordWrap] = useState(true);
   const [reqShowNonPrintable, setReqShowNonPrintable] = useState(false);
 
   const [resSearch, setResSearch] = useState('');
   const [resMatchIdx, setResMatchIdx] = useState(0);
   const [resHideBoring, setResHideBoring] = useState(false);
-  const [resWordWrap, setResWordWrap] = useState(false);
+  const [resWordWrap, setResWordWrap] = useState(true);
   const [resShowNonPrintable, setResShowNonPrintable] = useState(false);
 
   const [layoutMode, setLayoutMode] = useState<'sideBySide' | 'stacked'>('sideBySide');
@@ -303,250 +304,227 @@ export const TransactionInspectorPanel: React.FC<TransactionInspectorPanelProps>
 
   return (
     <div className={`flex w-full h-full bg-[#1e1f22] text-[#dfdfdf] border-t border-[#2b2d30] overflow-hidden select-none font-sans text-xs ${className}`}>
-      {/* Main Dual Pane Container (Request Left, Response Right) */}
-      <div className={`flex-1 flex min-w-0 min-h-0 ${layoutMode === 'sideBySide' ? 'flex-row' : 'flex-col'} overflow-hidden`}>
-        
-        {/* ========================================================= */}
-        {/* LEFT PANE: REQUEST */}
-        {/* ========================================================= */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 border-r border-[#2b2d30] bg-[#141517]">
-          {/* 1. Request Header Bar */}
-          <div className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-white text-xs tracking-tight">Request</span>
-              <div className="flex items-center gap-1">
-                {(['pretty', 'raw', 'hex'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setRequestSubView(mode === 'pretty' ? 'parsed' : mode)}
-                    className={`px-2 py-0.5 rounded text-[11px] capitalize transition-colors ${
-                      (requestSubView === 'parsed' && mode === 'pretty') || requestSubView === mode
-                        ? 'text-[#f37021] font-semibold border-b-2 border-[#f37021]'
-                        : 'text-[#9da5b4] hover:text-white'
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Request Tools & Actions: BurpEditorToolbar */}
-            <BurpEditorToolbar
-              hideBoringHeaders={reqHideBoring}
-              onToggleHideBoringHeaders={() => setReqHideBoring((prev) => !prev)}
-              wordWrap={reqWordWrap}
-              onToggleWordWrap={() => setReqWordWrap((prev) => !prev)}
-              showNonPrintable={reqShowNonPrintable}
-              onToggleShowNonPrintable={() => setReqShowNonPrintable((prev) => !prev)}
-              inspectorOpen={activeRightDrawer === 'inspector'}
-              onToggleInspector={() => setActiveRightDrawer(activeRightDrawer === 'inspector' ? 'none' : 'inspector')}
-              extraActions={
-                <>
-                  <button
-                    onClick={() => onSendToRepeater && onSendToRepeater(transaction)}
-                    title="Send to Repeater (Ctrl+R)"
-                    className="p-1 hover:text-[#f37021] transition-colors"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onOpenDiff && onOpenDiff(transaction)}
-                    title="Diff Revisions"
-                    className="p-1 hover:text-[#38bdf8] transition-colors"
-                  >
-                    <GitCompare className="w-3.5 h-3.5" />
-                  </button>
-                  <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
-                </>
-              }
-            />
-          </div>
-
-          {/* 2. Request Content Body */}
-          <div
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, isOpen: true });
-            }}
-            className="flex-1 overflow-auto font-mono text-[11px] leading-5 p-2 bg-[#1e1f22] select-text"
-          >
-            {requestSubView === 'hex' ? (
-              <RawByteInspector data={formatRawHttpRequest(reqDetails)} />
-            ) : requestSubView === 'tree' ? (
-              <StructuredInspector
-                data={{
-                  request: {
-                    method: reqDetails.method,
-                    url: reqDetails.url,
-                    headers: reqDetails.headers,
-                    body: reqDetails.bodyText,
-                  },
-                }}
-                title={`Request Tree — ${transaction.id}`}
-              />
-            ) : (
-              <HttpSyntaxHighlighter
-                content={formatRawHttpRequest(reqDetails)}
-                isResponse={false}
-                searchQuery={reqSearch}
-                activeMatchIndex={reqMatchIdx}
-                wordWrap={reqWordWrap}
-                hideUninterestingHeaders={reqHideBoring}
-                showNonPrintable={reqShowNonPrintable}
-                onSelectionChange={(text) => setSelectionText(text)}
-              />
-            )}
-          </div>
-
-          {/* 3. Request Bottom Search Bar */}
-          <BurpSearchBar
-            searchQuery={reqSearch}
-            onSearchChange={(val) => {
-              setReqSearch(val);
-              setReqMatchIdx(0);
-            }}
-            activeMatchIndex={reqMatchIdx}
-            totalMatches={reqTotalMatches}
-            onPrevMatch={handleReqPrev}
-            onNextMatch={handleReqNext}
-          />
-        </div>
-
-        {/* ========================================================= */}
-        {/* RIGHT PANE: RESPONSE */}
-        {/* ========================================================= */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#141517]">
-          {/* 1. Response Header Bar */}
-          <div className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-white text-xs tracking-tight">Response</span>
-              <div className="flex items-center gap-1">
-                {(['pretty', 'raw', 'hex', 'render'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setResponseSubView(mode === 'pretty' ? 'parsed' : mode === 'render' ? 'preview' : mode)}
-                    className={`px-2 py-0.5 rounded text-[11px] capitalize transition-colors ${
-                      (responseSubView === 'parsed' && mode === 'pretty') ||
-                      (responseSubView === 'preview' && mode === 'render') ||
-                      responseSubView === mode
-                        ? 'text-[#f37021] font-semibold border-b-2 border-[#f37021]'
-                        : 'text-[#9da5b4] hover:text-white'
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Response Tools & Actions: BurpEditorToolbar */}
-            <BurpEditorToolbar
-              hideBoringHeaders={resHideBoring}
-              onToggleHideBoringHeaders={() => setResHideBoring((prev) => !prev)}
-              wordWrap={resWordWrap}
-              onToggleWordWrap={() => setResWordWrap((prev) => !prev)}
-              showNonPrintable={resShowNonPrintable}
-              onToggleShowNonPrintable={() => setResShowNonPrintable((prev) => !prev)}
-              inspectorOpen={activeRightDrawer === 'inspector'}
-              onToggleInspector={() => setActiveRightDrawer(activeRightDrawer === 'inspector' ? 'none' : 'inspector')}
-              extraActions={
-                <>
-                  <button
-                    onClick={() => setLayoutMode(layoutMode === 'sideBySide' ? 'stacked' : 'sideBySide')}
-                    className="p-1 hover:text-white transition-colors"
-                    title={layoutMode === 'sideBySide' ? 'Switch to Stacked View (=)' : 'Switch to Side-by-Side (||)'}
-                  >
-                    {layoutMode === 'sideBySide' ? (
-                      <Columns className="w-3.5 h-3.5 text-[#38bdf8]" />
-                    ) : (
-                      <Rows className="w-3.5 h-3.5 text-[#38bdf8]" />
-                    )}
-                  </button>
-                  <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
-                </>
-              }
-            />
-          </div>
-
-          {/* 2. Response Content Body */}
-          <div
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, isOpen: true });
-            }}
-            className="flex-1 overflow-auto font-mono text-[11px] leading-5 p-2 bg-[#1e1f22] select-text"
-          >
-            {responseSubView === 'hex' ? (
-              <RawByteInspector data={formatRawHttpResponse(resDetails)} />
-            ) : responseSubView === 'tree' ? (
-              <StructuredInspector
-                data={{
-                  response: {
-                    statusCode: resDetails.statusCode,
-                    statusText: resDetails.statusText,
-                    headers: resDetails.headers,
-                    body: resDetails.bodyText,
-                  },
-                }}
-                title={`Response Tree — ${transaction.id}`}
-              />
-            ) : responseSubView === 'preview' ? (
-              <div className="h-full flex flex-col bg-[#141517] p-2 min-h-0">
-                <div className="flex items-center justify-between px-3 py-1.5 bg-[#2b2d30] border border-[#3e4249] rounded-t text-xs text-[#9da5b4]">
-                  <span className="flex items-center gap-1.5 text-[11px] font-medium">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#34d399]" />
-                    <span className="text-[#dfdfdf]">SEC-11 Sandboxed HTML Preview</span>
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] text-[#38bdf8] truncate max-w-xs">{transaction.url}</span>
-                    <button
-                      onClick={() => {
-                        const blob = new Blob([generateRenderablePreviewHtml(resDetails.bodyText || '', resSearch, transaction.url)], { type: 'text/html' });
-                        const blobUrl = URL.createObjectURL(blob);
-                        window.open(blobUrl, '_blank');
-                      }}
-                      className="px-2 py-0.5 rounded bg-[#1e1f22] border border-[#3e4249] hover:border-[#38bdf8] text-[#dfdfdf] hover:text-[#38bdf8] transition-colors text-[10px] font-mono"
-                      title="Open real rendered website preview in new browser window"
-                    >
-                      Open in Full Window ↗
-                    </button>
+      {/* Main Dual Pane Container (Request Left, Response Right) with SplitPane */}
+      <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+        <SplitPane
+          direction={layoutMode === 'sideBySide' ? 'horizontal' : 'vertical'}
+          initialSize={layoutMode === 'sideBySide' ? 620 : 300}
+          minSize={120}
+          maxSize={1800}
+          storageKey="sentinel_inspector_dual_pane"
+          primary={
+            /* LEFT PANE: REQUEST */
+            <div className="w-full h-full flex flex-col min-w-0 min-h-0 bg-[#141517] overflow-hidden">
+              {/* 1. Request Header Bar */}
+              <div className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-white text-xs tracking-tight">Request</span>
+                  <div className="flex items-center gap-1">
+                    {(['pretty', 'raw', 'hex'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setRequestSubView(mode === 'pretty' ? 'parsed' : mode)}
+                        className={`px-2 py-0.5 rounded text-[11px] capitalize transition-colors ${
+                          (requestSubView === 'parsed' && mode === 'pretty') || requestSubView === mode
+                            ? 'text-[#f37021] font-semibold border-b-2 border-[#f37021]'
+                            : 'text-[#9da5b4] hover:text-white'
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <iframe
-                  title="Response HTML Preview"
-                  sandbox="allow-same-origin"
-                  srcDoc={generateRenderablePreviewHtml(resDetails.bodyText || '', resSearch, transaction.url)}
-                  className="w-full flex-1 border border-[#3e4249] border-t-0 rounded-b bg-[#ffffff]"
+
+                {/* Request Tools & Actions: BurpEditorToolbar */}
+                <BurpEditorToolbar
+                  splitOrientation={layoutMode === 'sideBySide' ? 'horizontal' : 'vertical'}
+                  onToggleSplitOrientation={() => setLayoutMode((prev) => (prev === 'sideBySide' ? 'stacked' : 'sideBySide'))}
+                  hideBoringHeaders={reqHideBoring}
+                  onToggleHideBoringHeaders={() => setReqHideBoring((prev) => !prev)}
+                  wordWrap={reqWordWrap}
+                  onToggleWordWrap={() => setReqWordWrap((prev) => !prev)}
+                  showNonPrintable={reqShowNonPrintable}
+                  onToggleShowNonPrintable={() => setReqShowNonPrintable((prev) => !prev)}
+                  inspectorOpen={activeRightDrawer === 'inspector'}
+                  onToggleInspector={() => setActiveRightDrawer(activeRightDrawer === 'inspector' ? 'none' : 'inspector')}
+                  extraActions={
+                    <>
+                      <button
+                        onClick={() => onSendToRepeater && onSendToRepeater(transaction)}
+                        title="Send to Repeater (Ctrl+R)"
+                        className="p-1 hover:text-[#f37021] transition-colors"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onOpenDiff && onOpenDiff(transaction)}
+                        title="Diff Revisions"
+                        className="p-1 hover:text-[#38bdf8] transition-colors"
+                      >
+                        <GitCompare className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="h-3 w-px bg-[#3e4249] mx-0.5" />
+                    </>
+                  }
                 />
               </div>
-            ) : (
-              <HttpSyntaxHighlighter
-                content={formatRawHttpResponse(resDetails)}
-                isResponse={true}
-                searchQuery={resSearch}
-                activeMatchIndex={resMatchIdx}
-                wordWrap={resWordWrap}
-                hideUninterestingHeaders={resHideBoring}
-                showNonPrintable={resShowNonPrintable}
-                onSelectionChange={(text) => setSelectionText(text)}
-              />
-            )}
-          </div>
 
-          {/* 3. Response Bottom Search Bar */}
-          <BurpSearchBar
-            searchQuery={resSearch}
-            onSearchChange={(val) => {
-              setResSearch(val);
-              setResMatchIdx(0);
-            }}
-            activeMatchIndex={resMatchIdx}
-            totalMatches={resTotalMatches}
-            onPrevMatch={handleResPrev}
-            onNextMatch={handleResNext}
-          />
-        </div>
+              {/* 2. Request Content Body */}
+              <div
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, isOpen: true });
+                }}
+                className="flex-1 overflow-auto font-mono text-[11px] leading-5 p-2 bg-[#1e1f22] select-text"
+              >
+                {requestSubView === 'hex' ? (
+                  <RawByteInspector data={formatRawHttpRequest(reqDetails)} />
+                ) : requestSubView === 'tree' ? (
+                  <StructuredInspector
+                    data={{
+                      request: {
+                        method: reqDetails.method,
+                        url: reqDetails.url,
+                        headers: reqDetails.headers,
+                        body: reqDetails.bodyText,
+                      },
+                    }}
+                    title={`Request Tree — ${transaction.id}`}
+                  />
+                ) : (
+                  <HttpSyntaxHighlighter
+                    content={formatRawHttpRequest(reqDetails)}
+                    isResponse={false}
+                    showLineNumbers={true}
+                    searchQuery={reqSearch}
+                    activeMatchIndex={reqMatchIdx}
+                    wordWrap={reqWordWrap}
+                    hideUninterestingHeaders={reqHideBoring}
+                    showNonPrintable={reqShowNonPrintable}
+                    onSelectionChange={(text) => setSelectionText(text)}
+                  />
+                )}
+              </div>
+
+              {/* 3. Request Bottom Search Bar */}
+              <BurpSearchBar
+                searchQuery={reqSearch}
+                onSearchChange={(val) => {
+                  setReqSearch(val);
+                  setReqMatchIdx(0);
+                }}
+                activeMatchIndex={reqMatchIdx}
+                totalMatches={reqTotalMatches}
+                onPrevMatch={handleReqPrev}
+                onNextMatch={handleReqNext}
+                selectionInfo={`Length: ${new TextEncoder().encode(rawReqFullText).length} bytes`}
+              />
+            </div>
+          }
+          secondary={
+            /* RIGHT PANE: RESPONSE */
+            <div className="w-full h-full flex flex-col min-w-0 min-h-0 bg-[#141517] overflow-hidden">
+              {/* 1. Response Header Bar */}
+              <div className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-2 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-white text-xs tracking-tight">Response</span>
+                  <div className="flex items-center gap-1">
+                    {(['pretty', 'raw', 'hex', 'render'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setResponseSubView(mode === 'pretty' ? 'parsed' : mode === 'render' ? 'preview' : mode)}
+                        className={`px-2 py-0.5 rounded text-[11px] capitalize transition-colors ${
+                          (responseSubView === 'parsed' && mode === 'pretty') ||
+                          (responseSubView === 'preview' && mode === 'render') ||
+                          responseSubView === mode
+                            ? 'text-[#f37021] font-semibold border-b-2 border-[#f37021]'
+                            : 'text-[#9da5b4] hover:text-white'
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Response Tools & Actions: BurpEditorToolbar */}
+                <BurpEditorToolbar
+                  splitOrientation={layoutMode === 'sideBySide' ? 'horizontal' : 'vertical'}
+                  onToggleSplitOrientation={() => setLayoutMode((prev) => (prev === 'sideBySide' ? 'stacked' : 'sideBySide'))}
+                  hideBoringHeaders={resHideBoring}
+                  onToggleHideBoringHeaders={() => setResHideBoring((prev) => !prev)}
+                  wordWrap={resWordWrap}
+                  onToggleWordWrap={() => setResWordWrap((prev) => !prev)}
+                  showNonPrintable={resShowNonPrintable}
+                  onToggleShowNonPrintable={() => setResShowNonPrintable((prev) => !prev)}
+                  inspectorOpen={activeRightDrawer === 'inspector'}
+                  onToggleInspector={() => setActiveRightDrawer(activeRightDrawer === 'inspector' ? 'none' : 'inspector')}
+                />
+              </div>
+
+              {/* 2. Response Content Body */}
+              <div
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, isOpen: true });
+                }}
+                className="flex-1 overflow-auto font-mono text-[11px] leading-5 p-2 bg-[#1e1f22] select-text"
+              >
+                {responseSubView === 'hex' ? (
+                  <RawByteInspector data={formatRawHttpResponse(resDetails)} />
+                ) : responseSubView === 'tree' ? (
+                  <StructuredInspector
+                    data={{
+                      response: {
+                        statusCode: resDetails.statusCode,
+                        statusText: resDetails.statusText,
+                        headers: resDetails.headers,
+                        body: resDetails.bodyText,
+                      },
+                    }}
+                    title={`Response Tree — ${transaction.id}`}
+                  />
+                ) : responseSubView === 'preview' ? (
+                  <div className="h-full w-full bg-[#141517] overflow-hidden min-h-0">
+                    <iframe
+                      title="Response HTML Preview"
+                      sandbox="allow-same-origin"
+                      srcDoc={generateRenderablePreviewHtml(rawResFullText, resSearch, transaction.url)}
+                      className="w-full h-full border-0 bg-[#141517]"
+                    />
+                  </div>
+                ) : (
+                  <HttpSyntaxHighlighter
+                    content={formatRawHttpResponse(resDetails)}
+                    isResponse={true}
+                    showLineNumbers={true}
+                    searchQuery={resSearch}
+                    activeMatchIndex={resMatchIdx}
+                    wordWrap={resWordWrap}
+                    hideUninterestingHeaders={resHideBoring}
+                    showNonPrintable={resShowNonPrintable}
+                    onSelectionChange={(text) => setSelectionText(text)}
+                  />
+                )}
+              </div>
+
+              {/* 3. Response Bottom Search Bar */}
+              <BurpSearchBar
+                searchQuery={resSearch}
+                onSearchChange={(val) => {
+                  setResSearch(val);
+                  setResMatchIdx(0);
+                }}
+                activeMatchIndex={resMatchIdx}
+                totalMatches={resTotalMatches}
+                onPrevMatch={handleResPrev}
+                onNextMatch={handleResNext}
+                selectionInfo={`Length: ${new TextEncoder().encode(rawResFullText).length} bytes`}
+              />
+            </div>
+          }
+        />
       </div>
 
       {/* ========================================================= */}

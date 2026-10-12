@@ -127,4 +127,13 @@ export * from '../types/traffic';
 export * from '../types/httpql';
 export * from '../types/repeater';
 
+export interface CdpTargetPage {
+  id: string;
+  title: string;
+  type: string;
+  url: string;
+  webSocketDebuggerUrl?: string;
+  devtoolsFrontendUrl?: string;
+}
+
 

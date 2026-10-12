@@ -29,6 +29,50 @@ use crate::tls::{build_upstream_client_config, TlsServerConfigCache};
 
 static TX_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(100);
 
+/// Domains whose TLS connections must be passed through WITHOUT MITM termination.
+/// These are anti-bot challenge platforms that perform TLS certificate pinning,
+/// integrity verification, or embed WebWorker Proof-of-Work inside cross-origin
+/// iframes. MITM-terminating these connections causes challenges to loop forever.
+const TLS_PASSTHROUGH_DOMAINS: &[&str] = &[
+    "challenges.cloudflare.com",
+    "cloudflareinsights.com",
+    "static.cloudflareinsights.com",
+    "api.hcaptcha.com",
+    "newassets.hcaptcha.com",
+    "imgs.hcaptcha.com",
+    "accounts.hcaptcha.com",
+    "hcaptcha.com",
+    "www.google.com",              // reCAPTCHA anchor & bframe
+    "www.gstatic.com",             // reCAPTCHA assets
+    "recaptcha.net",
+    "www.recaptcha.net",
+    "api-js.datadome.co",
+    "geo.captcha-delivery.com",    // DataDome
+    "ct.captcha-delivery.com",
+    "client-api.arkoselabs.com",   // Arkose FunCaptcha
+    "api.funcaptcha.com",
+    "cdn.arkoselabs.com",
+    "*.perimeterx.net",
+    "captcha.px-cdn.net",
+    "collector-px*.perimeterx.net",
+];
+
+/// Returns `true` if `host` matches any TLS passthrough domain (exact or suffix).
+fn is_tls_passthrough_host(host: &str) -> bool {
+    let lower = host.to_lowercase();
+    for pattern in TLS_PASSTHROUGH_DOMAINS {
+        if pattern.starts_with("*.") {
+            let suffix = &pattern[1..]; // ".perimeterx.net"
+            if lower.ends_with(suffix) || lower == &pattern[2..] {
+                return true;
+            }
+        } else if lower == *pattern || lower.ends_with(&format!(".{}", pattern)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Shared state passed to every connection handler task.
 #[derive(Clone)]
 pub struct HandlerState {
@@ -38,7 +82,17 @@ pub struct HandlerState {
     pub tls_cache: Arc<TlsServerConfigCache>,
     pub recorder: Arc<PersistenceRecorder>,
     pub parser: Arc<SentinelHttpParser>,
-    pub upstream_proxy: Option<String>,
+    pub upstream_proxy: Arc<parking_lot::RwLock<Option<String>>>,
+}
+
+#[derive(Clone)]
+pub struct PendingReq {
+    pub id: String,
+    pub method: String,
+    pub url: String,
+    pub req_headers: Vec<sentinel_common::events::HttpHeaderData>,
+    pub req_body: Option<String>,
+    pub start_time: Instant,
 }
 
 /// Handles an incoming client TCP connection.
@@ -97,6 +151,29 @@ async fn handle_connect_tunnel(
         .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         .await?;
 
+    // 3.5 TLS Passthrough Gate: anti-bot challenge platforms must NOT be MITM'd.
+    //     Their iframes perform certificate pinning, WebWorker PoW with timing
+    //     integrity checks, and TLS fingerprint validation. MITM termination
+    //     breaks all of this and causes infinite "Verifying..." loops.
+    if is_tls_passthrough_host(&target_host) {
+        tracing::info!(
+            "TLS passthrough (no MITM) for challenge domain: {}:{}",
+            target_host,
+            target_port
+        );
+        let initial_proxy_str = state.upstream_proxy.read().clone();
+        let mut upstream_tcp = connect_upstream_stream(
+            &target_host,
+            target_port,
+            initial_proxy_str.as_deref(),
+        )
+        .await?;
+        let _ = tokio::io::copy_bidirectional(&mut client_stream, &mut upstream_tcp).await;
+        return Ok(());
+    }
+
+
+
     // 4. Terminate Client TLS with dynamically forged certificate
     let server_config = state.tls_cache.get_or_generate(&target_host)?;
     let acceptor = TlsAcceptor::from(server_config);
@@ -107,24 +184,14 @@ async fn handle_connect_tunnel(
         ))
     })?;
 
-    // 5. Establish Upstream TLS connection
-    let upstream_addr = format!("{}:{}", target_host, target_port);
-    let upstream_tcp = match TcpStream::connect(&upstream_addr).await {
-        Ok(s) => {
-            let _ = s.set_nodelay(true);
-            s
-        },
-        Err(e) => {
-            warn!(
-                "Failed to connect to upstream TLS target {}: {}",
-                upstream_addr, e
-            );
-            return Err(ProxyError::UpstreamConnection {
-                target: upstream_addr,
-                message: e.to_string(),
-            });
-        }
-    };
+    // 5. Establish Upstream TLS connection (direct or via upstream proxy)
+    let initial_proxy_str = state.upstream_proxy.read().clone();
+    let upstream_tcp = connect_upstream_stream(
+        &target_host,
+        target_port,
+        initial_proxy_str.as_deref(),
+    )
+    .await?;
 
     let client_config = build_upstream_client_config(true); // Insecure skip verify for flexible pentesting
     let connector = tokio_rustls::TlsConnector::from(client_config);
@@ -155,15 +222,8 @@ async fn handle_connect_tunnel(
     let target_host_clone = target_host.clone();
     let state_clone = state.clone();
 
-    struct PendingReq {
-        id: String,
-        method: String,
-        url: String,
-        req_headers: Vec<sentinel_common::events::HttpHeaderData>,
-        req_body: Option<String>,
-        start_time: Instant,
-    }
-
+    let initial_proxy_clone_1 = initial_proxy_str.clone();
+    let initial_proxy_clone_2 = initial_proxy_str.clone();
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<PendingReq>(64);
 
     let client_to_upstream = async move {
@@ -187,11 +247,17 @@ async fn handle_connect_tunnel(
                 || chunk.starts_with(b"PATCH ")
                 || chunk.starts_with(b"TRACE ")
             {
+                let current_proxy = state_clone.upstream_proxy.read().clone();
+                if current_proxy != initial_proxy_clone_1 {
+                    // Upstream proxy was rotated. Break socket cleanly so client connects through new node.
+                    break;
+                }
+
                 let raw_str = String::from_utf8_lossy(chunk);
-                let (headers_part, body_part) = if let Some(pos) = raw_str.find("\r\n\r\n") {
-                    (&raw_str[..pos], Some(raw_str[pos + 4..].to_string()))
+                let (headers_part, body_part_initial) = if let Some(pos) = raw_str.find("\r\n\r\n") {
+                    (&raw_str[..pos], if pos + 4 < raw_str.len() { Some(raw_str[pos + 4..].to_string()) } else { None })
                 } else if let Some(pos) = raw_str.find("\n\n") {
-                    (&raw_str[..pos], Some(raw_str[pos + 2..].to_string()))
+                    (&raw_str[..pos], if pos + 2 < raw_str.len() { Some(raw_str[pos + 2..].to_string()) } else { None })
                 } else {
                     (raw_str.as_ref(), None)
                 };
@@ -209,19 +275,60 @@ async fn handle_connect_tunnel(
                 };
 
                 let mut req_headers = Vec::new();
+                let mut content_len: usize = 0;
                 for line in lines {
                     if let Some((k, v)) = line.split_once(':') {
+                        let k_trim = k.trim();
+                        let v_trim = v.trim();
+                        if k_trim.eq_ignore_ascii_case("content-length") {
+                            content_len = v_trim.parse().unwrap_or(0);
+                        }
                         req_headers.push(sentinel_common::events::HttpHeaderData {
-                            name: k.trim().to_string(),
-                            value: v.trim().to_string(),
+                            name: k_trim.to_string(),
+                            value: v_trim.to_string(),
                         });
                     }
                 }
 
+                // Forward initial headers & partial body chunk upstream (normalize Accept-Encoding like Burp Suite)
+                let forwarded_chunk = normalize_request_accept_encoding(chunk);
+                if upstream_write.write_all(&forwarded_chunk).await.is_err() {
+                    break;
+                }
+
+                // If Content-Length > 0 and body wasn't fully in this chunk, stream the remaining body
+                let mut full_body = body_part_initial.unwrap_or_default();
+                if content_len > 0 && full_body.len() < content_len {
+                    let mut remaining = content_len.saturating_sub(full_body.len());
+                    while remaining > 0 {
+                        let to_read = remaining.min(buf.len());
+                        let body_n = match client_read.read(&mut buf[..to_read]).await {
+                            Ok(0) => break,
+                            Ok(bn) => bn,
+                            Err(_) => break,
+                        };
+                        let body_chunk = &buf[..body_n];
+                        if upstream_write.write_all(body_chunk).await.is_err() {
+                            break;
+                        }
+                        full_body.push_str(&String::from_utf8_lossy(body_chunk));
+                        if body_n >= remaining {
+                            break;
+                        }
+                        remaining -= body_n;
+                    }
+                }
+
+                let final_body = if !full_body.is_empty() {
+                    Some(full_body)
+                } else {
+                    None
+                };
+
                 let seq = TX_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let req_id = format!("tx-{:06}", seq);
 
-                // Publish immediate telemetry
+                // Publish immediate telemetry with complete request body
                 if let Some(ref bus) = state_clone.event_bus {
                     let _ = bus.publish_telemetry(sentinel_common::events::SentinelEvent::Traffic(
                         sentinel_common::events::TrafficEventData {
@@ -232,7 +339,7 @@ async fn handle_connect_tunnel(
                             duration_ms: 15,
                             in_scope: true,
                             req_headers: Some(req_headers.clone()),
-                            req_body: body_part.clone(),
+                            req_body: final_body.clone(),
                             res_headers: None,
                             res_body: None,
                         },
@@ -245,10 +352,12 @@ async fn handle_connect_tunnel(
                         method,
                         url: full_url,
                         req_headers,
-                        req_body: body_part,
+                        req_body: final_body,
                         start_time: Instant::now(),
                     })
                     .await;
+
+                continue;
             }
 
             if upstream_write.write_all(chunk).await.is_err() {
@@ -261,23 +370,49 @@ async fn handle_connect_tunnel(
     let state_clone_2 = state.clone();
     let upstream_to_client = async move {
         let mut buf = vec![0u8; 65536];
+        let mut active_res: Option<ActiveResponse> = None;
+
         loop {
             let n = match upstream_read.read(&mut buf).await {
-                Ok(0) => break,
+                Ok(0) => {
+                    if let Some(res) = active_res.take() {
+                        finalize_and_publish_proxy_response(&state_clone_2, res);
+                    }
+                    break;
+                }
                 Ok(n) => n,
-                Err(_) => break,
+                Err(_) => {
+                    if let Some(res) = active_res.take() {
+                        finalize_and_publish_proxy_response(&state_clone_2, res);
+                    }
+                    break;
+                }
             };
 
             let chunk = &buf[..n];
 
+            // 1. Immediately forward raw chunk to client for zero-lag streaming
+            if client_write.write_all(chunk).await.is_err() {
+                if let Some(res) = active_res.take() {
+                    finalize_and_publish_proxy_response(&state_clone_2, res);
+                }
+                break;
+            }
+
+            // 2. Response processing and full multi-packet accumulation
             if chunk.starts_with(b"HTTP/") {
+                // If there was an existing active response from previous request, finalize it
+                if let Some(res) = active_res.take() {
+                    finalize_and_publish_proxy_response(&state_clone_2, res);
+                }
+
                 let raw_str = String::from_utf8_lossy(chunk);
-                let (headers_part, body_part) = if let Some(pos) = raw_str.find("\r\n\r\n") {
-                    (&raw_str[..pos], Some(raw_str[pos + 4..].to_string()))
+                let headers_part = if let Some(pos) = raw_str.find("\r\n\r\n") {
+                    &raw_str[..pos]
                 } else if let Some(pos) = raw_str.find("\n\n") {
-                    (&raw_str[..pos], Some(raw_str[pos + 2..].to_string()))
+                    &raw_str[..pos]
                 } else {
-                    (raw_str.as_ref(), None)
+                    raw_str.as_ref()
                 };
 
                 let mut lines = headers_part.lines();
@@ -290,12 +425,17 @@ async fn handle_connect_tunnel(
 
                 let mut res_headers = Vec::new();
                 let mut is_chunked = false;
+                let mut content_len: Option<usize> = None;
+
                 for line in lines {
                     if let Some((k, v)) = line.split_once(':') {
                         let key = k.trim();
                         let val = v.trim();
                         if key.eq_ignore_ascii_case("transfer-encoding") && val.to_lowercase().contains("chunked") {
                             is_chunked = true;
+                        }
+                        if key.eq_ignore_ascii_case("content-length") {
+                            content_len = val.parse().ok();
                         }
                         res_headers.push(sentinel_common::events::HttpHeaderData {
                             name: key.to_string(),
@@ -312,49 +452,51 @@ async fn handle_connect_tunnel(
                     &[]
                 };
 
-                let clean_body = if !body_slice.is_empty() {
-                    Some(decode_and_decompress_proxy_body(&res_headers, body_slice, is_chunked))
-                } else {
-                    body_part
+                if let Ok(pending) = req_rx.try_recv() {
+                    let cur = ActiveResponse {
+                        pending,
+                        status_code,
+                        res_headers,
+                        content_length: content_len,
+                        is_chunked,
+                        body_buffer: body_slice.to_vec(),
+                    };
+
+                    let is_complete = match (cur.content_length, cur.is_chunked) {
+                        (Some(cl), _) => cur.body_buffer.len() >= cl,
+                        (None, true) => cur.body_buffer.windows(5).any(|w| w == b"0\r\n\r\n"),
+                        _ => status_code == 204 || status_code == 304,
+                    };
+
+                    if is_complete {
+                        finalize_and_publish_proxy_response(&state_clone_2, cur);
+                    } else {
+                        active_res = Some(cur);
+                    }
+                }
+            } else if let Some(ref mut cur) = active_res {
+                // Subsequent body chunk: accumulate up to 20MB
+                if cur.body_buffer.len() < 20 * 1024 * 1024 {
+                    cur.body_buffer.extend_from_slice(chunk);
+                }
+
+                let is_complete = match (cur.content_length, cur.is_chunked) {
+                    (Some(cl), _) => cur.body_buffer.len() >= cl,
+                    (None, true) => cur.body_buffer.windows(5).any(|w| w == b"0\r\n\r\n"),
+                    _ => false,
                 };
 
-                // Normalize headers for UI presentation (strip Content-Encoding gzip so UI matches Burp Suite)
-                let is_decompressed = clean_body.as_ref().map(|b| b.len() > body_slice.len()).unwrap_or(false);
-                let display_res_headers: Vec<sentinel_common::events::HttpHeaderData> = res_headers
-                    .into_iter()
-                    .filter(|h| {
-                        if is_decompressed && h.name.eq_ignore_ascii_case("content-encoding") {
-                            return false;
-                        }
-                        if is_decompressed && h.name.eq_ignore_ascii_case("transfer-encoding") && h.value.to_ascii_lowercase().contains("chunked") {
-                            return false;
-                        }
-                        true
-                    })
-                    .collect();
-
-                if let Ok(pending) = req_rx.try_recv() {
-                    if let Some(ref bus) = state_clone_2.event_bus {
-                        let duration = pending.start_time.elapsed().as_millis() as u64;
-                        let _ = bus.publish_telemetry(sentinel_common::events::SentinelEvent::Traffic(
-                            sentinel_common::events::TrafficEventData {
-                                id: pending.id,
-                                method: pending.method,
-                                url: pending.url,
-                                status: status_code,
-                                duration_ms: duration.max(5),
-                                in_scope: true,
-                                req_headers: Some(pending.req_headers),
-                                req_body: pending.req_body,
-                                res_headers: Some(display_res_headers),
-                                res_body: clean_body,
-                            },
-                        ));
-                    }
+                if is_complete {
+                    let completed = active_res.take().unwrap();
+                    finalize_and_publish_proxy_response(&state_clone_2, completed);
                 }
             }
 
-            if client_write.write_all(chunk).await.is_err() {
+            let current_proxy = state_clone_2.upstream_proxy.read().clone();
+            if current_proxy != initial_proxy_clone_2 {
+                if let Some(res) = active_res.take() {
+                    finalize_and_publish_proxy_response(&state_clone_2, res);
+                }
                 break;
             }
         }
@@ -416,20 +558,14 @@ async fn handle_plain_http(
 
     let wire_req = state.parser.serialize_request(&parsed_req)?;
 
-    // Connect to upstream HTTP target
-    let upstream_addr = format!("{}:{}", target_host, target_port);
-    let mut upstream_stream = match TcpStream::connect(&upstream_addr).await {
-        Ok(s) => {
-            let _ = s.set_nodelay(true);
-            s
-        },
-        Err(e) => {
-            return Err(ProxyError::UpstreamConnection {
-                target: upstream_addr,
-                message: e.to_string(),
-            });
-        }
-    };
+    // Connect to upstream HTTP target (direct or via upstream proxy)
+    let upstream_proxy_str = state.upstream_proxy.read().clone();
+    let mut upstream_stream = connect_upstream_stream(
+        &target_host,
+        target_port,
+        upstream_proxy_str.as_deref(),
+    )
+    .await?;
 
     if is_ws {
         // Forward WS handshake request
@@ -500,6 +636,33 @@ async fn handle_plain_http(
 
     if let Some(ref bus) = state.event_bus {
         let seq = TX_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let req_headers: Vec<sentinel_common::events::HttpHeaderData> = parsed_req
+            .headers
+            .iter()
+            .map(|(k, v)| sentinel_common::events::HttpHeaderData {
+                name: String::from_utf8_lossy(k).to_string(),
+                value: String::from_utf8_lossy(v).to_string(),
+            })
+            .collect();
+        let res_headers: Vec<sentinel_common::events::HttpHeaderData> = parsed_res
+            .headers
+            .iter()
+            .map(|(k, v)| sentinel_common::events::HttpHeaderData {
+                name: String::from_utf8_lossy(k).to_string(),
+                value: String::from_utf8_lossy(v).to_string(),
+            })
+            .collect();
+        let plain_res_body = if !parsed_res.body.is_empty() {
+            Some(decode_and_decompress_proxy_body(&res_headers, &parsed_res.body, false))
+        } else {
+            None
+        };
+        let plain_req_body = if !parsed_req.body.is_empty() {
+            Some(String::from_utf8_lossy(&parsed_req.body).to_string())
+        } else {
+            None
+        };
+
         let _ = bus.publish_telemetry(sentinel_common::events::SentinelEvent::Traffic(
             sentinel_common::events::TrafficEventData {
                 id: format!("tx-{:06}", seq),
@@ -508,10 +671,10 @@ async fn handle_plain_http(
                 status: parsed_res.status_code,
                 duration_ms: start_time.elapsed().as_millis() as u64,
                 in_scope: true,
-                req_headers: None,
-                req_body: None,
-                res_headers: None,
-                res_body: None,
+                req_headers: Some(req_headers),
+                req_body: plain_req_body,
+                res_headers: Some(res_headers),
+                res_body: plain_res_body,
             },
         ));
     }
@@ -626,6 +789,72 @@ fn extract_http_target(req: &ParsedRequest) -> Result<(String, u16, String), Pro
     ))
 }
 
+fn normalize_request_accept_encoding(chunk: &[u8]) -> Vec<u8> {
+    let lower = chunk.to_ascii_lowercase();
+    if let Some(pos) = lower.windows(16).position(|w| w == b"accept-encoding:") {
+        if let Some(line_end) = chunk[pos..].windows(2).position(|w| w == b"\r\n") {
+            let mut out = Vec::with_capacity(chunk.len());
+            out.extend_from_slice(&chunk[..pos]);
+            out.extend_from_slice(b"Accept-Encoding: gzip, deflate");
+            out.extend_from_slice(&chunk[pos + line_end..]);
+            return out;
+        }
+    }
+    chunk.to_vec()
+}
+
+struct ActiveResponse {
+    pending: PendingReq,
+    status_code: u16,
+    res_headers: Vec<sentinel_common::events::HttpHeaderData>,
+    content_length: Option<usize>,
+    is_chunked: bool,
+    body_buffer: Vec<u8>,
+}
+
+fn finalize_and_publish_proxy_response(
+    state: &HandlerState,
+    res: ActiveResponse,
+) {
+    let clean_body = decode_and_decompress_proxy_body(
+        &res.res_headers,
+        &res.body_buffer,
+        res.is_chunked,
+    );
+
+    let is_decompressed = clean_body.len() > res.body_buffer.len() || !clean_body.is_empty();
+    let display_res_headers: Vec<sentinel_common::events::HttpHeaderData> = res.res_headers
+        .into_iter()
+        .filter(|h| {
+            if is_decompressed && h.name.eq_ignore_ascii_case("content-encoding") {
+                return false;
+            }
+            if is_decompressed && h.name.eq_ignore_ascii_case("transfer-encoding") && h.value.to_ascii_lowercase().contains("chunked") {
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    if let Some(ref bus) = state.event_bus {
+        let duration = res.pending.start_time.elapsed().as_millis() as u64;
+        let _ = bus.publish_telemetry(sentinel_common::events::SentinelEvent::Traffic(
+            sentinel_common::events::TrafficEventData {
+                id: res.pending.id,
+                method: res.pending.method,
+                url: res.pending.url,
+                status: res.status_code,
+                duration_ms: duration.max(5),
+                in_scope: true,
+                req_headers: Some(res.pending.req_headers),
+                req_body: res.pending.req_body,
+                res_headers: Some(display_res_headers),
+                res_body: Some(clean_body),
+            },
+        ));
+    }
+}
+
 fn decode_and_decompress_proxy_body(
     res_headers: &[sentinel_common::events::HttpHeaderData],
     raw_body_bytes: &[u8],
@@ -640,7 +869,7 @@ fn decode_and_decompress_proxy_body(
 
     // 1. Unchunk if needed
     let working_bytes = if is_chunked {
-        if let Ok(decoded) = sentinel_parser::ChunkedDecoder::decode(raw_body_bytes, 10 * 1024 * 1024) {
+        if let Ok(decoded) = sentinel_parser::ChunkedDecoder::decode(raw_body_bytes, 20 * 1024 * 1024) {
             decoded.body
         } else {
             raw_body_bytes.to_vec()
@@ -649,7 +878,15 @@ fn decode_and_decompress_proxy_body(
         raw_body_bytes.to_vec()
     };
 
+    if working_bytes.is_empty() {
+        return String::new();
+    }
+
     // 2. Check for Content-Encoding
+    let is_brotli = res_headers.iter().any(|h| {
+        h.name.eq_ignore_ascii_case("content-encoding") && h.value.to_ascii_lowercase().contains("br")
+    });
+
     let is_gzip = res_headers.iter().any(|h| {
         h.name.eq_ignore_ascii_case("content-encoding") && h.value.to_ascii_lowercase().contains("gzip")
     }) || (working_bytes.len() >= 2 && working_bytes[0] == 0x1f && working_bytes[1] == 0x8b);
@@ -658,13 +895,23 @@ fn decode_and_decompress_proxy_body(
         h.name.eq_ignore_ascii_case("content-encoding") && h.value.to_ascii_lowercase().contains("deflate")
     });
 
+    if is_brotli {
+        let mut decompressed = Vec::new();
+        let mut decompressor = brotli::Decompressor::new(&working_bytes[..], 4096);
+        if decompressor.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
+            return String::from_utf8_lossy(&decompressed).to_string();
+        }
+    }
+
     if is_gzip {
         let mut decoder = GzDecoder::new(&working_bytes[..]);
         let mut decompressed = Vec::new();
         if decoder.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
             return String::from_utf8_lossy(&decompressed).to_string();
         }
-    } else if is_deflate {
+    }
+
+    if is_deflate {
         let mut decoder = DeflateDecoder::new(&working_bytes[..]);
         let mut decompressed = Vec::new();
         if decoder.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
@@ -677,6 +924,175 @@ fn decode_and_decompress_proxy_body(
         }
     }
 
-    String::from_utf8_lossy(&working_bytes).to_string()
+    // Auto-detect Gzip by magic bytes if header was missing
+    if working_bytes.len() >= 2 && working_bytes[0] == 0x1f && working_bytes[1] == 0x8b {
+        let mut decoder = GzDecoder::new(&working_bytes[..]);
+        let mut decompressed = Vec::new();
+        if decoder.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
+            return String::from_utf8_lossy(&decompressed).to_string();
+        }
+    }
+
+    // Universal fallback: if utf8_lossy contains unicode replacement characters (\u{FFFD}),
+    // attempt Brotli or Zlib trial decompression in case content-encoding header was stripped
+    let raw_utf8 = String::from_utf8_lossy(&working_bytes).to_string();
+    if raw_utf8.contains('\u{FFFD}') {
+        let mut decompressed = Vec::new();
+        let mut decompressor = brotli::Decompressor::new(&working_bytes[..], 4096);
+        if decompressor.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
+            return String::from_utf8_lossy(&decompressed).to_string();
+        }
+        let mut zlib = ZlibDecoder::new(&working_bytes[..]);
+        let mut zlib_decomp = Vec::new();
+        if zlib.read_to_end(&mut zlib_decomp).is_ok() && !zlib_decomp.is_empty() {
+            return String::from_utf8_lossy(&zlib_decomp).to_string();
+        }
+    }
+
+    raw_utf8
+}
+
+/// Connects to the upstream target either directly or chained through an upstream HTTP/SOCKS5 proxy.
+pub async fn connect_upstream_stream(
+    target_host: &str,
+    target_port: u16,
+    upstream_proxy: Option<&str>,
+) -> Result<TcpStream, ProxyError> {
+    if let Some(proxy) = upstream_proxy {
+        let proxy_str = proxy.trim();
+        if !proxy_str.is_empty() {
+            if let Ok(stream) = try_connect_proxy(target_host, target_port, proxy_str).await {
+                return Ok(stream);
+            }
+        }
+    }
+
+    // Direct Connect (Default & Resilient Fallback)
+    let upstream_addr = format!("{}:{}", target_host, target_port);
+    let s = TcpStream::connect(&upstream_addr).await.map_err(|e| {
+        ProxyError::UpstreamConnection {
+            target: upstream_addr,
+            message: e.to_string(),
+        }
+    })?;
+    let _ = s.set_nodelay(true);
+    Ok(s)
+}
+
+async fn try_connect_proxy(
+    target_host: &str,
+    target_port: u16,
+    proxy_str: &str,
+) -> Result<TcpStream, ProxyError> {
+    let (proxy_addr, is_socks) = if let Some(stripped) = proxy_str.strip_prefix("socks5://") {
+        (stripped, true)
+    } else if let Some(stripped) = proxy_str.strip_prefix("http://") {
+        (stripped, false)
+    } else if let Some(stripped) = proxy_str.strip_prefix("https://") {
+        (stripped, false)
+    } else {
+        (proxy_str, false)
+    };
+
+    let clean_proxy_addr = if let Some(at_idx) = proxy_addr.rfind('@') {
+        &proxy_addr[at_idx + 1..]
+    } else {
+        proxy_addr
+    };
+
+    // Fast timeout for upstream proxy connect (1.5s)
+    let stream_res = tokio::time::timeout(
+        std::time::Duration::from_millis(1500),
+        TcpStream::connect(clean_proxy_addr),
+    )
+    .await
+    .map_err(|_| ProxyError::UpstreamConnection {
+        target: clean_proxy_addr.to_string(),
+        message: "Upstream proxy connection timed out".to_string(),
+    })?;
+
+    let mut stream = stream_res.map_err(|e| ProxyError::UpstreamConnection {
+        target: clean_proxy_addr.to_string(),
+        message: format!("Failed to connect to upstream proxy ({}): {}", clean_proxy_addr, e),
+    })?;
+    let _ = stream.set_nodelay(true);
+
+    if is_socks {
+        // SOCKS5 Greeting
+        stream.write_all(&[0x05, 0x01, 0x00]).await?;
+        let mut method_buf = [0u8; 2];
+        stream.read_exact(&mut method_buf).await?;
+        if method_buf[0] != 0x05 || method_buf[1] != 0x00 {
+            return Err(ProxyError::UpstreamConnection {
+                target: clean_proxy_addr.to_string(),
+                message: "SOCKS5 auth negotiation failed".to_string(),
+            });
+        }
+
+        // SOCKS5 Connect Request (domain name)
+        let host_bytes = target_host.as_bytes();
+        let host_len = host_bytes.len().min(255) as u8;
+        let mut req = vec![0x05, 0x01, 0x00, 0x03, host_len];
+        req.extend_from_slice(&host_bytes[..host_len as usize]);
+        req.push((target_port >> 8) as u8);
+        req.push((target_port & 0xFF) as u8);
+
+        stream.write_all(&req).await?;
+
+        let mut resp_head = [0u8; 4];
+        stream.read_exact(&mut resp_head).await?;
+        if resp_head[1] != 0x00 {
+            return Err(ProxyError::UpstreamConnection {
+                target: clean_proxy_addr.to_string(),
+                message: format!("SOCKS5 connect failed with status 0x{:02x}", resp_head[1]),
+            });
+        }
+        match resp_head[3] {
+            0x01 => {
+                let mut ipv4_buf = [0u8; 4 + 2];
+                let _ = stream.read_exact(&mut ipv4_buf).await;
+            }
+            0x03 => {
+                let mut len_buf = [0u8; 1];
+                let _ = stream.read_exact(&mut len_buf).await;
+                let mut domain_buf = vec![0u8; len_buf[0] as usize + 2];
+                let _ = stream.read_exact(&mut domain_buf).await;
+            }
+            0x04 => {
+                let mut ipv6_buf = [0u8; 16 + 2];
+                let _ = stream.read_exact(&mut ipv6_buf).await;
+            }
+            _ => {}
+        }
+        Ok(stream)
+    } else {
+        // HTTP CONNECT Tunneling
+        let connect_req = format!(
+            "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\nProxy-Connection: Keep-Alive\r\n\r\n",
+            target_host, target_port, target_host, target_port
+        );
+        stream.write_all(connect_req.as_bytes()).await?;
+
+        let mut resp_buf = vec![0u8; 1024];
+        let mut total_read = 0;
+        while total_read < 1024 {
+            let n = stream.read(&mut resp_buf[total_read..]).await?;
+            if n == 0 {
+                break;
+            }
+            total_read += n;
+            if resp_buf[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                break;
+            }
+        }
+        let resp_str = String::from_utf8_lossy(&resp_buf[..total_read]);
+        if !resp_str.starts_with("HTTP/1.1 200") && !resp_str.starts_with("HTTP/1.0 200") {
+            return Err(ProxyError::UpstreamConnection {
+                target: clean_proxy_addr.to_string(),
+                message: format!("HTTP CONNECT proxy error: {}", resp_str.lines().next().unwrap_or("")),
+            });
+        }
+        Ok(stream)
+    }
 }
 

@@ -149,6 +149,19 @@ export const TrafficWorkspaceView: React.FC = () => {
         if (filterConfig.searchNegative ? matched : !matched) return false;
       }
 
+      // Hide internal browser telemetry / CDN performance beacons that pollute pentesting HTTP history
+      // (e.g. Cloudflare Real User Monitoring: /cdn-cgi/rum, /cdn-cgi/beacon)
+      const uLower = tx.url.toLowerCase();
+      const pLower = (tx.path || '').toLowerCase();
+      const isNoiseBeacon =
+        pLower.startsWith('/cdn-cgi/rum') ||
+        pLower.startsWith('/cdn-cgi/beacon') ||
+        uLower.includes('/cdn-cgi/rum') ||
+        uLower.includes('/cdn-cgi/beacon');
+      if (isNoiseBeacon && (!filterConfig.searchTerm || !filterConfig.searchTerm.toLowerCase().includes('cdn-cgi'))) {
+        return false;
+      }
+
       return true;
     });
   }, [transactions, filteredIndices, filterConfig]);

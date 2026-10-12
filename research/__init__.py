@@ -1,1 +1,0 @@
-# Root research package

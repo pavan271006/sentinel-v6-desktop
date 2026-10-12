@@ -336,7 +336,16 @@ impl ScopeEngine for DefaultScopeEngine {
             }
         }
 
-        // 3. If no inclusion rules are configured, default to DENY (fail-closed)
+        // 3. If no inclusion rules are configured, permit Open Scope (free egress to all domains)
+        if self.include_rules.is_empty() {
+            return ScopeDecision::allow_rule(
+                uri_trimmed,
+                self.scope_version,
+                Uuid::nil(),
+                "Open Scope: No targets constrained, all domains permitted".to_string(),
+            );
+        }
+
         ScopeDecision::default_deny(uri_trimmed, self.scope_version)
     }
 
@@ -364,6 +373,15 @@ impl ScopeEngine for DefaultScopeEngine {
                     &rule.raw,
                 );
             }
+        }
+
+        if self.include_rules.is_empty() {
+            return ScopeDecision::allow_rule(
+                ip_trimmed,
+                self.scope_version,
+                Uuid::nil(),
+                "Open Scope: No targets constrained".to_string(),
+            );
         }
 
         // 2. Check INCLUSION rules

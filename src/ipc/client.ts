@@ -25,6 +25,7 @@ import {
   RepeaterDiffRequest,
   RepeaterExportPayload,
   VariableExtractPayload,
+  CdpTargetPage,
 } from './contracts';
 import { mockBackendBridge } from './mockBridge';
 
@@ -146,6 +147,8 @@ export class SentinelIpcClient {
           window.open(targetUrl, '_blank');
         }
         return `Launched ${targetUrl}` as unknown as T;
+      case 'cmd_read_live_crawler_events':
+        return [[], 0] as unknown as T;
       case 'cmd_open_html_in_browser':
         const html = (args?.htmlContent as string) || '';
         if (typeof window !== 'undefined' && window.open) {
@@ -174,6 +177,24 @@ export class SentinelIpcClient {
           npcap_version: '1.88',
           default_filter: 'tcp.port == 8085 or tcp.port == 8080',
         } as unknown as T;
+      case 'cmd_get_cdp_targets':
+        try {
+          const res = await fetch(`http://127.0.0.1:${(args?.port as number) || 9222}/json`);
+          if (res.ok) {
+            const list = await res.json();
+            return list as unknown as T;
+          }
+        } catch {}
+        return [] as unknown as T;
+      case 'cmd_is_cdp_available':
+        try {
+          const res = await fetch(`http://127.0.0.1:${(args?.port as number) || 9222}/json`, { signal: AbortSignal.timeout(800) });
+          return res.ok as unknown as T;
+        } catch {
+          return false as unknown as T;
+        }
+      case 'cmd_activate_cdp_target':
+        return true as unknown as T;
       default:
         throw new Error(`Unhandled IPC command in fallback: ${command}`);
     }
@@ -297,12 +318,28 @@ export class SentinelIpcClient {
     return this.invoke<string | null>('cmd_repeater_extract_variable', { payload });
   }
 
-  public async launchSystemBrowser(targetUrl?: string, proxyPort?: number): Promise<string> {
-    return this.invoke<string>('cmd_launch_system_browser', { targetUrl, proxyPort });
+  public async launchSystemBrowser(targetUrl?: string, proxyPort?: number, proxyServer?: string, workers?: number): Promise<string> {
+    return this.invoke<string>('cmd_launch_system_browser', { targetUrl, proxyPort, proxyServer, workers });
   }
 
-  public async openHtmlInBrowser(htmlContent: string, baseUrl?: string, proxyPort?: number): Promise<string> {
-    return this.invoke<string>('cmd_open_html_in_browser', { htmlContent, baseUrl, proxyPort });
+  public async getCdpTargets(port: number = 9222): Promise<CdpTargetPage[]> {
+    return this.invoke<CdpTargetPage[]>('cmd_get_cdp_targets', { port });
+  }
+
+  public async isCdpAvailable(port: number = 9222): Promise<boolean> {
+    return this.invoke<boolean>('cmd_is_cdp_available', { port });
+  }
+
+  public async activateCdpTarget(targetId: string, port: number = 9222): Promise<boolean> {
+    return this.invoke<boolean>('cmd_activate_cdp_target', { targetId, port });
+  }
+
+  public async readLiveCrawlerEvents(offset: number = 0): Promise<[string[], number]> {
+    return this.invoke<[string[], number]>('cmd_read_live_crawler_events', { offset });
+  }
+
+  public async openHtmlInBrowser(htmlContent: string, baseUrl?: string, proxyPort?: number, proxyServer?: string): Promise<string> {
+    return this.invoke<string>('cmd_open_html_in_browser', { htmlContent, baseUrl, proxyPort, proxyServer });
   }
 
   // UCMA-X Methods
@@ -357,12 +394,16 @@ export class SentinelIpcClient {
   }
 
   // VPN / Physical Egress Rotation Methods
-  public async rotateSystemVpn(): Promise<string> {
-    return this.invoke<string>('cmd_rotate_system_vpn');
+  public async rotateSystemVpn(): Promise<{ ip: string; colo: string; country: string; city: string; flag: string }> {
+    return this.invoke<{ ip: string; colo: string; country: string; city: string; flag: string }>('cmd_rotate_system_vpn');
   }
 
   public async toggleSystemVpn(connect: boolean): Promise<boolean> {
     return this.invoke<boolean>('cmd_toggle_system_vpn', { connect });
+  }
+
+  public async setUpstreamProxy(proxyUrl?: string | null): Promise<boolean> {
+    return this.invoke<boolean>('cmd_set_upstream_proxy', { proxyUrl: proxyUrl || null });
   }
 }
 

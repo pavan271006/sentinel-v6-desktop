@@ -1,6 +1,7 @@
 import { SentinelUiEvent } from '../types/ipc';
 import { useEventBusStore } from '../stores/eventBusStore';
 import { useTrafficStore } from '../stores/trafficStore';
+import { useInterceptStore } from '../stores/interceptStore';
 import { isTauriEnvironment } from './client';
 
 export type EventListener = (event: SentinelUiEvent) => void;
@@ -34,6 +35,40 @@ export class SentinelStreamDispatcher {
     // 2. If traffic event, directly ingest into trafficStore
     if (event.type === 'traffic') {
       useTrafficStore.getState().ingestStreamEvent(event.data);
+
+      // If Intercept is active, enqueue request for inspection & tampering
+      if (useInterceptStore.getState().isInterceptOn) {
+        const d = event.data;
+        let host = 'target.local';
+        let path = '/';
+        try {
+          const u = new URL(d.uri);
+          host = u.hostname;
+          path = u.pathname + u.search;
+        } catch {
+          host = d.uri.replace(/^https?:\/\//, '').split('/')[0] || 'target.local';
+          path = d.uri.replace(/^https?:\/\/[^\/]+/, '') || '/';
+        }
+
+        const headersStr = (d.reqHeaders || [])
+          .map((h) => `${h.name}: ${h.value}`)
+          .join('\r\n');
+        const rawReq = `${d.method} ${path} HTTP/1.1\r\nHost: ${host}\r\n${headersStr ? headersStr + '\r\n' : ''}\r\n${d.reqBody || ''}`;
+
+        useInterceptStore.getState().enqueueRequest(
+          {
+            id: d.transactionId,
+            method: d.method,
+            url: d.uri,
+            host,
+            path,
+            rawRequest: rawReq,
+            status: d.status,
+            direction: 'Request',
+          },
+          d.uri
+        );
+      }
     }
 
     // 3. Dispatch to custom subscribers

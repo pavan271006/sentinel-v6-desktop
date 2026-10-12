@@ -22,7 +22,7 @@ import { InterceptedRequestItem, useInterceptStore } from '../../stores/intercep
 import { parseRawHttpRequest, serializeHttpRequest } from '../../utils/repeaterUtils';
 
 export interface InspectorDrilldownTarget {
-  section: 'attribute' | 'query' | 'cookie' | 'reqHeader' | 'resHeader';
+  section: 'attribute' | 'query' | 'bodyParam' | 'cookie' | 'reqHeader' | 'resHeader';
   index: number;
   name: string;
   value: string;
@@ -64,6 +64,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
         path: item?.path || '/',
         protocol: item?.protocol || 'HTTP/1.1',
         queryParams: item?.queryParams || [],
+        bodyParams: [],
         cookies: item?.cookies || [],
         headers: item?.headers || [],
         body: '',
@@ -110,12 +111,56 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
         });
       }
 
+      // Parse Body Parameters (URL-encoded form data or JSON properties)
+      const bParams: { name: string; value: string }[] = [];
+      if (parsed.body && parsed.body.trim()) {
+        const trimmed = parsed.body.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          try {
+            const obj = JSON.parse(trimmed);
+            if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+              Object.entries(obj).forEach(([k, v]) => {
+                bParams.push({
+                  name: k,
+                  value: typeof v === 'object' ? JSON.stringify(v) : String(v),
+                });
+              });
+            }
+          } catch {}
+        } else if (!trimmed.startsWith('<') && !trimmed.startsWith('[')) {
+          // Standard x-www-form-urlencoded
+          trimmed.split('&').forEach((pair) => {
+            if (!pair) return;
+            const eq = pair.indexOf('=');
+            if (eq === -1) {
+              try {
+                bParams.push({ name: decodeURIComponent(pair.replace(/\+/g, ' ')), value: '' });
+              } catch {
+                bParams.push({ name: pair, value: '' });
+              }
+            } else {
+              try {
+                const k = decodeURIComponent(pair.substring(0, eq).replace(/\+/g, ' '));
+                const v = decodeURIComponent(pair.substring(eq + 1).replace(/\+/g, ' '));
+                bParams.push({ name: k, value: v });
+              } catch {
+                bParams.push({
+                  name: pair.substring(0, eq),
+                  value: pair.substring(eq + 1),
+                });
+              }
+            }
+          });
+        }
+      }
+
       return {
         method: parsed.method || 'GET',
         url: parsed.path || '/',
         path: pathname || '/',
         protocol: parsed.protocol || 'HTTP/1.1',
         queryParams: qParams,
+        bodyParams: bParams,
         cookies: cookiesList,
         headers: parsed.headers,
         body: parsed.body || '',
@@ -127,6 +172,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
         path: item?.path || '/',
         protocol: item?.protocol || 'HTTP/1.1',
         queryParams: item?.queryParams || [],
+        bodyParams: [],
         cookies: item?.cookies || [],
         headers: item?.headers || [],
         body: '',
@@ -162,6 +208,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
     selection: boolean;
     attributes: boolean;
     query: boolean;
+    bodyParams: boolean;
     cookies: boolean;
     reqHeaders: boolean;
     resHeaders: boolean;
@@ -169,6 +216,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
     selection: true,
     attributes: true,
     query: true,
+    bodyParams: true,
     cookies: true,
     reqHeaders: true,
     resHeaders: true,
@@ -183,6 +231,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
       selection: false,
       attributes: false,
       query: false,
+      bodyParams: false,
       cookies: false,
       reqHeaders: false,
       resHeaders: false,
@@ -194,6 +243,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
       selection: true,
       attributes: true,
       query: true,
+      bodyParams: true,
       cookies: true,
       reqHeaders: true,
       resHeaders: true,
@@ -248,8 +298,10 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
     protocol?: string;
     path?: string;
     queryParams?: { name: string; value: string }[];
+    bodyParams?: { name: string; value: string }[];
     cookies?: { name: string; value: string }[];
     headers?: { name: string; value: string }[];
+    body?: string;
   }) => {
     const finalMethod = updates.method ?? parsedRequest.method;
     const finalProtocol = updates.protocol ?? parsedRequest.protocol;
@@ -257,6 +309,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
     const finalQueryParams = updates.queryParams ?? parsedRequest.queryParams;
     const finalCookies = updates.cookies ?? parsedRequest.cookies;
     let finalHeaders = updates.headers ? [...updates.headers] : [...parsedRequest.headers];
+    let finalBody = updates.body ?? parsedRequest.body;
 
     // Rebuild full query string
     let fullPath = finalPathBase;
@@ -265,6 +318,31 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
         .map((q) => `${encodeURIComponent(q.name)}=${encodeURIComponent(q.value).replace(/%20/g, '+')}`)
         .join('&');
       fullPath = `${finalPathBase}?${qStr}`;
+    }
+
+    // Rebuild Body if bodyParams changed
+    if (updates.bodyParams) {
+      if (parsedRequest.body.trim().startsWith('{')) {
+        try {
+          const obj: Record<string, any> = {};
+          updates.bodyParams.forEach((p) => {
+            try {
+              obj[p.name] = JSON.parse(p.value);
+            } catch {
+              obj[p.name] = p.value;
+            }
+          });
+          finalBody = JSON.stringify(obj, null, 2);
+        } catch {
+          finalBody = updates.bodyParams
+            .map((p) => `${encodeURIComponent(p.name)}=${encodeURIComponent(p.value).replace(/%20/g, '+')}`)
+            .join('&');
+        }
+      } else {
+        finalBody = updates.bodyParams
+          .map((p) => `${encodeURIComponent(p.name)}=${encodeURIComponent(p.value).replace(/%20/g, '+')}`)
+          .join('&');
+      }
     }
 
     // Rebuild Cookie header if cookies were changed
@@ -282,6 +360,15 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
       }
     }
 
+    // Update Content-Length header if body changed
+    if (updates.bodyParams || updates.body !== undefined) {
+      const lenIdx = finalHeaders.findIndex((h) => h.name.toLowerCase() === 'content-length');
+      const byteLen = new TextEncoder().encode(finalBody).length;
+      if (lenIdx !== -1) {
+        finalHeaders[lenIdx] = { name: finalHeaders[lenIdx].name, value: String(byteLen) };
+      }
+    }
+
     // Rebuild serialized raw HTTP request string
     const headerRowItems = finalHeaders.map((h, idx) => ({
       id: (h as any).id || `h-${idx}`,
@@ -295,7 +382,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
       fullPath,
       finalProtocol as any,
       headerRowItems,
-      parsedRequest.body
+      finalBody
     );
 
     if (onUpdateRawRequest) {
@@ -324,6 +411,14 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
         nextParams.push({ name: newName, value: newVal });
       }
       commitRequestMutation({ queryParams: nextParams });
+    } else if (drilldown.section === 'bodyParam') {
+      const nextBodyParams = [...parsedRequest.bodyParams];
+      if (drilldown.index < nextBodyParams.length) {
+        nextBodyParams[drilldown.index] = { name: newName, value: newVal };
+      } else {
+        nextBodyParams.push({ name: newName, value: newVal });
+      }
+      commitRequestMutation({ bodyParams: nextBodyParams });
     } else if (drilldown.section === 'cookie') {
       const nextCookies = [...parsedRequest.cookies];
       if (drilldown.index < nextCookies.length) {
@@ -349,6 +444,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
     let listLength = 0;
 
     if (drilldown.section === 'query') listLength = parsedRequest.queryParams.length;
+    else if (drilldown.section === 'bodyParam') listLength = parsedRequest.bodyParams.length;
     else if (drilldown.section === 'cookie') listLength = parsedRequest.cookies.length;
     else if (drilldown.section === 'reqHeader') listLength = parsedRequest.headers.length;
     else if (drilldown.section === 'resHeader') listLength = parsedResponseHeaders.length;
@@ -358,6 +454,7 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
 
     let targetItem = { name: '', value: '' };
     if (drilldown.section === 'query') targetItem = parsedRequest.queryParams[nextIdx];
+    else if (drilldown.section === 'bodyParam') targetItem = parsedRequest.bodyParams[nextIdx];
     else if (drilldown.section === 'cookie') targetItem = parsedRequest.cookies[nextIdx];
     else if (drilldown.section === 'reqHeader') targetItem = parsedRequest.headers[nextIdx];
     else if (drilldown.section === 'resHeader') targetItem = parsedResponseHeaders[nextIdx];
@@ -438,6 +535,8 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
           <span className="text-[11px] font-semibold text-[#9da5b4] capitalize">
             {drilldown.section === 'query'
               ? 'Query parameter'
+              : drilldown.section === 'bodyParam'
+              ? 'Body parameter'
               : drilldown.section === 'cookie'
               ? 'Cookie'
               : drilldown.section === 'reqHeader'
@@ -736,6 +835,88 @@ export const BurpInspectorPanel: React.FC<BurpInspectorPanelProps> = ({
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add query parameter</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ================================================================= */}
+          {/* SECTION: REQUEST BODY PARAMETERS (Form Data / JSON)               */}
+          {/* ================================================================= */}
+          <div>
+            <div
+              onClick={() => toggleSection('bodyParams')}
+              className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[#282b30] text-[#dfdfdf] text-xs font-medium"
+            >
+              <span>Request body parameters</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[#8c9099] font-mono text-[11px] bg-[#141517] px-1.5 py-0.5 rounded border border-[#2b2d30]">
+                  {parsedRequest.bodyParams.length}
+                </span>
+                {openSections.bodyParams ? <ChevronDown className="w-3.5 h-3.5 text-[#8c9099]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#8c9099]" />}
+              </div>
+            </div>
+
+            {openSections.bodyParams && (
+              <div className="px-3 pb-3 pt-1 bg-[#141517] border-t border-[#282b30]">
+                {parsedRequest.bodyParams.length === 0 ? (
+                  <div className="text-[#6f737a] italic py-2 text-center text-xs">No body parameters in request</div>
+                ) : (
+                  <div className="border border-[#2b2d30] rounded overflow-hidden">
+                    <table className="w-full text-left font-mono text-xs">
+                      <thead className="bg-[#1e1f22] text-[#8c9099] border-b border-[#2b2d30] text-[11px]">
+                        <tr>
+                          <th className="px-2.5 py-1 w-24">Name</th>
+                          <th className="px-2.5 py-1">Value</th>
+                          <th className="px-1.5 py-1 w-6 text-right">
+                            <TableIcon className="w-3 h-3 text-[#6f737a]" />
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#232529]">
+                        {parsedRequest.bodyParams.map((p, idx) => (
+                          <tr
+                            key={idx}
+                            onClick={() =>
+                              openDrilldown({
+                                section: 'bodyParam',
+                                index: idx,
+                                name: p.name,
+                                value: p.value,
+                              })
+                            }
+                            className="cursor-pointer hover:bg-[#282b30] group transition-colors"
+                          >
+                            <td className="px-2.5 py-1.5 text-white font-medium truncate max-w-[90px]" title={p.name}>
+                              {p.name}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-[#34d399] font-mono truncate max-w-[140px]" title={p.value}>
+                              {p.value || <span className="text-[#6f737a] italic">empty</span>}
+                            </td>
+                            <td className="px-1.5 py-1.5 text-right text-[#6f737a] group-hover:text-white">
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Add Body Parameter Button */}
+                <button
+                  onClick={() =>
+                    openDrilldown({
+                      section: 'bodyParam',
+                      index: parsedRequest.bodyParams.length,
+                      name: 'param_name',
+                      value: '',
+                    })
+                  }
+                  className="flex items-center gap-1 text-[11px] text-[#9da5b4] hover:text-[#f37021] pt-2 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add body parameter</span>
                 </button>
               </div>
             )}

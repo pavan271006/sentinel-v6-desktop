@@ -193,6 +193,78 @@ function computeFilteredIndices(
   return indices;
 }
 
+// Global O(1) Index Lookup Map & 60-FPS Stream Batch Buffer for High Request Loads
+const idToIndexMap = new Map<string, number>();
+let streamQueue: TrafficSummary[] = [];
+let streamFlushScheduled = false;
+
+function flushStreamQueue(get: any, set: any) {
+  streamFlushScheduled = false;
+  if (streamQueue.length === 0) return;
+  const batch = streamQueue;
+  streamQueue = [];
+
+  const state = get();
+  if (state.isPaused) return;
+
+  let transactions = [...state.transactions];
+  let transactionMap = new Map(state.transactionMap);
+  let newAdded = 0;
+
+  for (const tx of batch) {
+    const existingIdx = idToIndexMap.get(tx.id);
+    if (existingIdx !== undefined && existingIdx < transactions.length && transactions[existingIdx]?.id === tx.id) {
+      transactions[existingIdx] = { ...transactions[existingIdx], ...tx };
+      transactionMap.set(tx.id, transactions[existingIdx]);
+    } else {
+      transactions.push(tx);
+      transactionMap.set(tx.id, tx);
+      idToIndexMap.set(tx.id, transactions.length - 1);
+      newAdded++;
+    }
+  }
+
+  // Efficient Ring Buffer Slice
+  if (transactions.length > state.maxRingBufferSize) {
+    transactions = transactions.slice(-state.maxRingBufferSize);
+    idToIndexMap.clear();
+    transactionMap.clear();
+    for (let i = 0; i < transactions.length; i++) {
+      idToIndexMap.set(transactions[i].id, i);
+      transactionMap.set(transactions[i].id, transactions[i]);
+    }
+  }
+
+  // Only recompute filters if quick filters or search are active
+  const filteredIndices = computeFilteredIndices(transactions, state.parsedAst, state);
+
+  set({
+    transactions,
+    transactionMap,
+    filteredIndices,
+    totalCapturedCount: state.totalCapturedCount + newAdded,
+    selectedId: state.selectedId === null && transactions.length > 0 ? transactions[0].id : state.selectedId,
+  });
+}
+
+function enqueueStreamTransaction(tx: TrafficSummary, get: any, set: any) {
+  streamQueue.push(tx);
+  // Flush immediately if buffer reaches 50 items to keep latency low, or in testing environments
+  if (streamQueue.length >= 50 || (typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || process.env.VITEST))) {
+    flushStreamQueue(get, set);
+    return;
+  }
+  // Otherwise schedule a 16ms animation frame / microtask batch
+  if (!streamFlushScheduled) {
+    streamFlushScheduled = true;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => flushStreamQueue(get, set));
+    } else {
+      setTimeout(() => flushStreamQueue(get, set), 16);
+    }
+  }
+}
+
 export const useTrafficStore = create<TrafficStoreState>((set, get) => ({
   transactions: [],
   transactionMap: new Map(),
@@ -227,39 +299,12 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => ({
     txB: null,
   },
 
+  // High-throughput O(1) Index Lookup Map & Microtask Frame Batching
   addTransaction: (tx: TrafficSummary) => {
-    const state = get();
-    if (state.isPaused) return;
-
-    let transactions = [...state.transactions];
-    let transactionMap = new Map(state.transactionMap);
-
-    const existingIdx = transactions.findIndex((t) => t.id === tx.id);
-    if (existingIdx !== -1) {
-      // Merge with existing transaction
-      transactions[existingIdx] = { ...transactions[existingIdx], ...tx };
-      transactionMap.set(tx.id, transactions[existingIdx]);
-    } else {
-      transactions.push(tx);
-      // Evict oldest if exceeding maxRingBufferSize
-      if (transactions.length > state.maxRingBufferSize) {
-        const removed = transactions.shift();
-        if (removed) {
-          transactionMap.delete(removed.id);
-        }
-      }
-      transactionMap.set(tx.id, tx);
+    if (streamQueue.length > 0) {
+      flushStreamQueue(get, set);
     }
-
-    const filteredIndices = computeFilteredIndices(transactions, state.parsedAst, state);
-
-    set({
-      transactions,
-      transactionMap,
-      filteredIndices,
-      totalCapturedCount: existingIdx !== -1 ? state.totalCapturedCount : state.totalCapturedCount + 1,
-      selectedId: state.selectedId === null && transactions.length === 1 ? tx.id : state.selectedId,
-    });
+    get().ingestBatch([tx]);
   },
 
   ingestBatch: (txs: TrafficSummary[]) => {
@@ -267,11 +312,31 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => ({
     const state = get();
     if (state.isPaused) return;
 
-    const transactions = [...state.transactions, ...txs].slice(-state.maxRingBufferSize);
-    const transactionMap = new Map();
+    let transactions = [...state.transactions];
+    let transactionMap = new Map(state.transactionMap);
+    let newItemsAdded = 0;
 
-    for (const t of transactions) {
-      transactionMap.set(t.id, t);
+    for (const tx of txs) {
+      const existingIdx = idToIndexMap.get(tx.id);
+      if (existingIdx !== undefined && existingIdx < transactions.length && transactions[existingIdx]?.id === tx.id) {
+        transactions[existingIdx] = { ...transactions[existingIdx], ...tx };
+        transactionMap.set(tx.id, transactions[existingIdx]);
+      } else {
+        transactions.push(tx);
+        transactionMap.set(tx.id, tx);
+        idToIndexMap.set(tx.id, transactions.length - 1);
+        newItemsAdded++;
+      }
+    }
+
+    if (transactions.length > state.maxRingBufferSize) {
+      transactions = transactions.slice(-state.maxRingBufferSize);
+      idToIndexMap.clear();
+      transactionMap.clear();
+      for (let i = 0; i < transactions.length; i++) {
+        idToIndexMap.set(transactions[i].id, i);
+        transactionMap.set(transactions[i].id, transactions[i]);
+      }
     }
 
     const filteredIndices = computeFilteredIndices(transactions, state.parsedAst, state);
@@ -280,7 +345,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => ({
       transactions,
       transactionMap,
       filteredIndices,
-      totalCapturedCount: state.totalCapturedCount + txs.length,
+      totalCapturedCount: state.totalCapturedCount + newItemsAdded,
       selectedId: state.selectedId === null && transactions.length > 0 ? transactions[0].id : state.selectedId,
     });
   },
@@ -334,7 +399,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => ({
       resBody: event.resBody,
     };
 
-    get().addTransaction(summary);
+    enqueueStreamTransaction(summary, get, set);
   },
 
   setHttpqlQuery: (query: string) => {
@@ -590,6 +655,9 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => ({
     } catch {
       // IPC fallback handles local
     }
+    idToIndexMap.clear();
+    streamQueue = [];
+    streamFlushScheduled = false;
     set({
       transactions: [],
       transactionMap: new Map(),

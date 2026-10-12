@@ -18,6 +18,8 @@ export interface AttackResultItem {
   rawResponse: string;
 }
 
+export type EgressStrategy = 'direct' | 'aws_fireprox';
+
 export interface IntruderTabState {
   id: string;
   title: string;
@@ -43,6 +45,10 @@ export interface IntruderTabState {
   ghostJitter: boolean;
   browserMimicry: boolean;
   adaptiveThrottle: boolean;
+  egressStrategy: EgressStrategy;
+  awsGatewayUrl: string;
+  upstreamProxyUrl: string;
+  refreshTokensPerRequest: boolean;
 }
 
 export interface IntruderState {
@@ -116,7 +122,7 @@ export function createDefaultTab(
   const req =
     requestText ||
     `POST /example?p1=§p1val§&p2=§p2val§ HTTP/1.0\r\nCookie: c=§cval§\r\nContent-Length: 17\r\n\r\np3=§p3val§&p4=§p4val§`;
-  const url = targetUrl || 'https://ims.ritchennai.edu.in';
+  const url = targetUrl || 'https://target.local';
   const firstLine = req.split(/\r?\n/)[0] || 'POST /example';
   const [method, path] = firstLine.split(/\s+/);
   const derivedTitle = title || extractTabTitle(method || 'POST', path || '/example');
@@ -151,6 +157,10 @@ export function createDefaultTab(
     ghostJitter: true,
     browserMimicry: true,
     adaptiveThrottle: true,
+    egressStrategy: 'aws_fireprox',
+    awsGatewayUrl: 'https://blrfqpv182.execute-api.us-east-1.amazonaws.com/fireprox',
+    upstreamProxyUrl: '',
+    refreshTokensPerRequest: false,
   };
 }
 

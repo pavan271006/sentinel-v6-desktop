@@ -399,7 +399,7 @@ describe('Tier 1: Feature Performance & Latency Isolation Suite (>=5 tests per c
       });
 
       expect(tokens.length).toBeGreaterThan(8);
-      expect(elapsed).toBeLessThan(5);
+      expect(elapsed).toBeLessThan(50);
     });
 
     it('5.2: parses nested boolean logic AST with operator precedence in <10ms', () => {

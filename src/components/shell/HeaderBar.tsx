@@ -17,6 +17,7 @@ import { ipcClient } from '../../ipc/client';
 import { Tooltip } from '../../design-system/Tooltip';
 import { Dropdown, DropdownItem } from '../../design-system/Dropdown';
 import { ProjectModal } from '../project/ProjectModal';
+import { EgressControlModal } from './EgressControlModal';
 
 export interface BurpTabItem {
   id: WorkspaceId;
@@ -33,7 +34,6 @@ export const BURP_TABS: BurpTabItem[] = [
   { id: 'traffic', label: 'Proxy', ariaLabel: 'Traffic History', burpEquivalent: 'Proxy / HTTP History', hotkey: '3', badgeKey: 'trafficCount' },
   { id: 'fuzzer', label: 'Intruder', ariaLabel: 'Intruder', burpEquivalent: 'Intruder / Fuzzer', hotkey: '4' },
   { id: 'repeater', label: 'Repeater', ariaLabel: 'Repeater', burpEquivalent: 'Repeater', hotkey: '5' },
-  { id: 'sql', label: 'SQL', ariaLabel: 'SQL Scanner', burpEquivalent: 'SQL Security Scanner', hotkey: 'U' },
   { id: 'oast', label: 'Collaborator', ariaLabel: 'Collaborator', burpEquivalent: 'Burp Collaborator / OAST', hotkey: '6' },
   { id: 'sequencer', label: 'Sequencer', ariaLabel: 'Sequencer', burpEquivalent: 'Sequencer', hotkey: 'Q' },
   { id: 'decoder', label: 'Decoder', ariaLabel: 'Decoder', burpEquivalent: 'Decoder', hotkey: 'D' },
@@ -52,8 +52,6 @@ export const BURP_TABS: BurpTabItem[] = [
   { id: 'findings', label: 'Findings', ariaLabel: 'Findings', burpEquivalent: 'Findings & CAS', hotkey: 'F', badgeKey: 'criticalFindings' },
   { id: 'apis', label: 'API Security', ariaLabel: 'API Security', burpEquivalent: 'API Security', hotkey: 'S' },
   { id: 'graph', label: 'Attack Graph', ariaLabel: 'Attack Graph', burpEquivalent: 'Attack Graph', hotkey: 'G' },
-  { id: 'notebook', label: 'Notebook', ariaLabel: 'Notebook', burpEquivalent: 'Notebook', hotkey: 'N' },
-  { id: 'reports', label: 'Reporting', ariaLabel: 'Reporting', burpEquivalent: 'Reporting', hotkey: 'R' },
 ];
 
 export const HeaderBar: React.FC = () => {
@@ -67,7 +65,12 @@ export const HeaderBar: React.FC = () => {
   const { trafficCount, criticalFindingCount } = useEventBusStore();
   const { openModal: openProjectModal, commitWalCheckpoint } = useProjectStore();
   const { addToast } = useToastStore();
-  const { isActive: isVpnActive, currentNode: vpnNode, isRotating, rotateVpn, toggleVpn } = useVpnRotatorStore();
+  const { isActive: isVpnActive, currentNode: vpnNode, isRotating, rotateVpn, initEgressIp, toggleProxy } = useVpnRotatorStore();
+  const [isEgressModalOpen, setIsEgressModalOpen] = React.useState(false);
+
+  useEffect(() => {
+    initEgressIp();
+  }, [initEgressIp]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -147,26 +150,26 @@ export const HeaderBar: React.FC = () => {
             <span>Open Browser</span>
           </button>
 
-          {/* Built-in VPN / Upstream Egress Rotator */}
+          {/* Built-in Upstream Proxy Rotator */}
           <div className="flex items-center rounded bg-[#141517] border border-[#313438] overflow-hidden shadow-sm">
             <button
-              onClick={() => toggleVpn()}
-              title={isVpnActive ? `VPN Shield Active: Egress via ${vpnNode.city}, ${vpnNode.country} (${vpnNode.ip}). Click to toggle.` : 'VPN Shield Disabled. Click to enable.'}
-              className={`flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+              onClick={() => toggleProxy()}
+              title={isVpnActive ? `Active Upstream Proxy: ${vpnNode.ip}:${vpnNode.port}. Click to turn OFF.` : 'Direct Egress (Proxy is OFF). Click to turn ON.'}
+              className={`flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
                 isVpnActive
                   ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                  : 'bg-transparent text-[#6f737a] hover:text-white'
+                  : 'bg-transparent text-[#9da5b4] hover:text-white'
               }`}
             >
-              <span className="text-[12px]">{vpnNode.flag}</span>
-              <span>VPN: {vpnNode.ip}</span>
+              <span className="text-[12px]">{isVpnActive ? vpnNode.flag : '🌐'}</span>
+              <span>{isVpnActive ? `PROXY: ${vpnNode.ip}:${vpnNode.port}` : 'PROXY: OFF (DIRECT)'}</span>
               <span className={`w-1.5 h-1.5 rounded-full ${isVpnActive ? 'bg-emerald-400 animate-pulse' : 'bg-[#6f737a]'}`} />
             </button>
             <button
               onClick={() => rotateVpn()}
               disabled={isRotating}
-              title="Rotate Physical VPN Egress: Click to generate new WireGuard keys and switch physical exit IP"
-              className="px-1.5 py-0.5 bg-[#1e2024] hover:bg-[#2b2d30] text-[#a1a1aa] hover:text-white border-l border-[#313438] transition-colors flex items-center gap-1 text-[10px] disabled:opacity-60"
+              title="Rotate Upstream Proxy: Switch to next proxy node or fetch new ones"
+              className="px-2 py-0.5 bg-[#1e2024] hover:bg-[#2b2d30] text-[#a1a1aa] hover:text-white border-l border-[#313438] transition-colors flex items-center gap-1 text-[10px] cursor-pointer disabled:opacity-60"
             >
               <RotateCw className={`w-2.5 h-2.5 ${isRotating ? 'animate-spin text-emerald-400' : 'hover:rotate-180'} transition-transform`} />
               <span>{isRotating ? 'Rotating...' : 'Rotate'}</span>
@@ -195,7 +198,7 @@ export const HeaderBar: React.FC = () => {
       </div>
 
       {/* 2. Primary Horizontal Workspace Tab Bar */}
-      <nav className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center px-1 select-none flex-shrink-0 z-20 overflow-x-auto scrollbar-none font-sans text-xs">
+      <nav className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center px-1 select-none flex-shrink-0 z-20 overflow-x-auto no-scrollbar scrollbar-none font-sans text-xs">
         <div className="flex items-center gap-0 h-full">
           {BURP_TABS.map((tab) => {
             const isActive = activeWorkspace === tab.id;
@@ -248,6 +251,9 @@ export const HeaderBar: React.FC = () => {
 
       {/* Global Project Modal */}
       <ProjectModal />
+
+      {/* Global Egress Routing & Anti-Ban Modal */}
+      <EgressControlModal isOpen={isEgressModalOpen} onClose={() => setIsEgressModalOpen(false)} />
     </>
   );
 };

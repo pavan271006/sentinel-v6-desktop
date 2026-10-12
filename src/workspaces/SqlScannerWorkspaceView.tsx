@@ -49,6 +49,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Button } from '../design-system/Button';
+import { SplitPane } from '../design-system/SplitPane';
 
 export const SqlScannerWorkspaceView: React.FC = () => {
   const {
@@ -817,124 +818,143 @@ export const SqlScannerWorkspaceView: React.FC = () => {
         {/* SITE MAP & PROXY SINK EXPLORER SIDEBAR */}
         {showSiteMap && <ProxyTargetSiteMap />}
 
-        {/* LEFT PANE: Request, Response & Vector Importer (400px) */}
-        <div className="w-[420px] border-r border-border-subtle flex flex-col bg-bg-panel flex-shrink-0 overflow-hidden">
-          {/* 1. Request Header */}
-          <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowSiteMap(!showSiteMap)}
-                title={showSiteMap ? 'Collapse Site Map' : 'Show Site Map'}
-                className={`p-1 rounded hover:bg-[#12151c] transition-colors ${
-                  showSiteMap ? 'text-accent-cyan' : 'text-text-muted hover:text-white'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-accent-cyan" /> Target Request
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setRequestViewMode('raw')}
-                className={`px-1.5 py-0.5 text-[10px] font-mono rounded ${
-                  requestViewMode === 'raw' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted'
-                }`}
-              >
-                Raw
-              </button>
-              <button
-                onClick={() => setRequestViewMode('pretty')}
-                className={`px-1.5 py-0.5 text-[10px] font-mono rounded ${
-                  requestViewMode === 'pretty' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted'
-                }`}
-              >
-                Pretty
-              </button>
-              <button
-                onClick={() => {
-                  let host = '';
-                  try {
-                    if (targetConfig.url) host = new URL(targetConfig.url).host;
-                  } catch {}
-                  if (!host) {
-                    for (const l of targetConfig.rawRequest.split(/\r?\n/)) {
-                      if (l.toLowerCase().startsWith('host:')) {
-                        host = l.substring(5).trim();
-                        break;
-                      }
-                    }
-                  }
-                  const txs = useTrafficStore.getState().transactions.filter((t: any) => !host || t.host === host);
-                  const latestTx = txs[txs.length - 1];
-                  if (latestTx) {
-                    const method = latestTx.method || 'GET';
-                    const path = latestTx.path || '/';
-                    const txHost = latestTx.host || host || 'target.local';
-                    const headersStr = latestTx.reqHeaders
-                      ? latestTx.reqHeaders.map((h: any) => `${h.name}: ${h.value}`).join('\r\n')
-                      : `Host: ${txHost}\r\nUser-Agent: Sentinel/6.0`;
-                    const bodyStr = latestTx.reqBody || '';
-                    const raw = `${method} ${path} HTTP/1.1\r\n${headersStr}\r\n\r\n${bodyStr}`;
-                    setRawRequest(raw);
-                    probeTargetRequest(raw);
-                    addToast({
-                      type: 'success',
-                      title: 'Browser Session Synced',
-                      description: `Loaded latest ${method} ${path} with your active browser cookies!`,
-                    });
-                  } else {
-                    addToast({
-                      type: 'info',
-                      title: 'No Browser Traffic Captured',
-                      description: 'Browse the site in the Sentinel browser to capture your session.',
-                    });
-                  }
-                }}
-                className="px-2 py-0.5 text-[10px] font-mono rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1 transition-all shadow-sm"
-                title="Sync the latest authenticated request & cookies from your Sentinel browser session"
-              >
-                <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
-                <span>Sync Browser</span>
-              </button>
-              <button
-                onClick={() => probeTargetRequest()}
-                disabled={isProbing}
-                title="Send live probe request to target"
-                className="px-2 py-0.5 text-[10px] font-mono rounded bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20 flex items-center gap-1 border border-accent-cyan/30 disabled:opacity-50 font-bold transition-colors"
-              >
-                <Zap className={`w-2.5 h-2.5 ${isProbing ? 'animate-spin' : 'fill-current'}`} />
-                {isProbing ? 'Probing...' : 'Probe'}
-              </button>
-              <button
-                onClick={() => handleSendToRepeater(targetConfig.rawRequest, undefined, 'Target Request')}
-                title="Send target request to Repeater"
-                className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-[#12151c] text-accent-cyan hover:text-white flex items-center gap-1 border border-border-subtle"
-              >
-                <Send className="w-2.5 h-2.5" />
-              </button>
-            </div>
-          </div>
+        <SplitPane
+          direction="horizontal"
+          initialSize={440}
+          minSize={300}
+          maxSize={850}
+          storageKey="sqlscanner_left_width"
+          className="flex-1"
+          primary={
+            /* LEFT PANE: Request, Response & Vector Importer */
+            <div className="w-full h-full flex flex-col bg-bg-panel overflow-hidden">
+              <SplitPane
+                direction="vertical"
+                initialSize={220}
+                minSize={110}
+                maxSize={550}
+                storageKey="sqlscanner_req_height"
+                className="flex-1"
+                primary={
+                  <div className="w-full h-full flex flex-col bg-[#0c0e14] overflow-hidden">
+                    {/* 1. Request Header */}
+                    <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setShowSiteMap(!showSiteMap)}
+                          title={showSiteMap ? 'Collapse Site Map' : 'Show Site Map'}
+                          className={`p-1 rounded hover:bg-[#12151c] transition-colors ${
+                            showSiteMap ? 'text-accent-cyan' : 'text-text-muted hover:text-white'
+                          }`}
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-accent-cyan" /> Target Request
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setRequestViewMode('raw')}
+                          className={`px-1.5 py-0.5 text-[10px] font-mono rounded ${
+                            requestViewMode === 'raw' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted'
+                          }`}
+                        >
+                          Raw
+                        </button>
+                        <button
+                          onClick={() => setRequestViewMode('pretty')}
+                          className={`px-1.5 py-0.5 text-[10px] font-mono rounded ${
+                            requestViewMode === 'pretty' ? 'bg-[#12151c] text-white font-bold' : 'text-text-muted'
+                          }`}
+                        >
+                          Pretty
+                        </button>
+                        <button
+                          onClick={() => {
+                            let host = '';
+                            try {
+                              if (targetConfig.url) host = new URL(targetConfig.url).host;
+                            } catch {}
+                            if (!host) {
+                              for (const l of targetConfig.rawRequest.split(/\r?\n/)) {
+                                if (l.toLowerCase().startsWith('host:')) {
+                                  host = l.substring(5).trim();
+                                  break;
+                                }
+                              }
+                            }
+                            const txs = useTrafficStore.getState().transactions.filter((t: any) => !host || t.host === host);
+                            const latestTx = txs[txs.length - 1];
+                            if (latestTx) {
+                              const method = latestTx.method || 'GET';
+                              const path = latestTx.path || '/';
+                              const txHost = latestTx.host || host || 'target.local';
+                              const headersStr = latestTx.reqHeaders
+                                ? latestTx.reqHeaders.map((h: any) => `${h.name}: ${h.value}`).join('\r\n')
+                                : `Host: ${txHost}\r\nUser-Agent: Sentinel/6.0`;
+                              const bodyStr = latestTx.reqBody || '';
+                              const raw = `${method} ${path} HTTP/1.1\r\n${headersStr}\r\n\r\n${bodyStr}`;
+                              setRawRequest(raw);
+                              probeTargetRequest(raw);
+                              addToast({
+                                type: 'success',
+                                title: 'Browser Session Synced',
+                                description: `Loaded latest ${method} ${path} with your active browser cookies!`,
+                              });
+                            } else {
+                              addToast({
+                                type: 'info',
+                                title: 'No Browser Traffic Captured',
+                                description: 'Browse the site in the Sentinel browser to capture your session.',
+                              });
+                            }
+                          }}
+                          className="px-2 py-0.5 text-[10px] font-mono rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1 transition-all shadow-sm"
+                          title="Sync the latest authenticated request & cookies from your Sentinel browser session"
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>Sync Browser</span>
+                        </button>
+                        <button
+                          onClick={() => probeTargetRequest()}
+                          disabled={isProbing}
+                          title="Send live probe request to target"
+                          className="px-2 py-0.5 text-[10px] font-mono rounded bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20 flex items-center gap-1 border border-accent-cyan/30 disabled:opacity-50 font-bold transition-colors"
+                        >
+                          <Zap className={`w-2.5 h-2.5 ${isProbing ? 'animate-spin' : 'fill-current'}`} />
+                          {isProbing ? 'Probing...' : 'Probe'}
+                        </button>
+                        <button
+                          onClick={() => handleSendToRepeater(targetConfig.rawRequest, undefined, 'Target Request')}
+                          title="Send target request to Repeater"
+                          className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-[#12151c] text-accent-cyan hover:text-white flex items-center gap-1 border border-border-subtle"
+                        >
+                          <Send className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    </div>
 
-          {/* Request Textarea */}
-          <div className="p-2 border-b border-border-subtle flex flex-col h-44 flex-shrink-0 bg-[#0c0e14]">
-            <textarea
-              value={targetConfig.rawRequest}
-              onChange={(e) => setRawRequest(e.target.value)}
-              disabled={scanState === 'running'}
-              placeholder="Paste raw HTTP request here..."
-              className="w-full h-full bg-[#12151c] p-2.5 font-mono text-xs rounded border border-border-subtle resize-none text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-cyan leading-relaxed"
-              spellCheck={false}
-            />
-          </div>
-
-          {/* 2. HTTP Response Viewer - Displayed Directly Below Request */}
-            {/* 2. HTTP Response Viewer - Displayed Directly Below Request */}
-            {(() => {
-              const redirectLoc = extractRedirectLocation(lastResponse, targetConfig.url);
-              return (
-                <div className="flex-1 flex flex-col min-h-[180px] border-b border-border-subtle bg-[#080a0f] overflow-hidden">
+                    {/* Request Textarea */}
+                    <div className="flex-1 p-2 flex flex-col min-h-0 bg-[#0c0e14]">
+                      <textarea
+                        value={targetConfig.rawRequest}
+                        onChange={(e) => setRawRequest(e.target.value)}
+                        disabled={scanState === 'running'}
+                        placeholder="Paste raw HTTP request here..."
+                        className="w-full h-full bg-[#12151c] p-2.5 font-mono text-xs rounded border border-border-subtle resize-none text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-cyan leading-relaxed"
+                        spellCheck={false}
+                      />
+                    </div>
+                  </div>
+                }
+                secondary={
+                  <div className="w-full h-full flex flex-col bg-bg-panel overflow-hidden">
+                    {/* 2. HTTP Response Viewer - Displayed Directly Below Request */}
+                    {(() => {
+                      const redirectLoc = extractRedirectLocation(lastResponse, targetConfig.url);
+                      return (
+                        <div className="flex-1 flex flex-col min-h-[160px] border-b border-border-subtle bg-[#080a0f] overflow-hidden">
                   <div className="h-8 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel-elevated flex-shrink-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider text-[10px] flex items-center gap-1">
@@ -1231,7 +1251,7 @@ export const SqlScannerWorkspaceView: React.FC = () => {
                       <iframe
                         title="Response HTML Preview"
                         srcDoc={generateRenderablePreviewHtml(lastResponse.body || lastResponse.rawResponse || '', undefined, targetConfig.url)}
-                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                        sandbox="allow-same-origin allow-forms allow-popups"
                         className="w-full h-full border-0 bg-white"
                       />
                     </div>
@@ -1439,11 +1459,15 @@ export const SqlScannerWorkspaceView: React.FC = () => {
             <span className="text-emerald-400 font-bold">Auto-Redaction Active</span>
           </div>
         </div>
-
-        {/* RIGHT PANE: Tabs & Explorer Dashboard */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#0a0c10] overflow-hidden">
-          {/* Sub-navigation Tabs */}
-          <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel">
+      }
+    />
+  </div>
+}
+secondary={
+  /* RIGHT PANE: Tabs & Explorer Dashboard */
+  <div className="w-full h-full flex flex-col min-w-0 bg-[#0a0c10] overflow-hidden">
+    {/* Sub-navigation Tabs */}
+    <div className="h-9 px-3 border-b border-border-subtle flex items-center justify-between bg-bg-panel flex-shrink-0">
             <div className="flex items-center gap-1.5 py-1">
               <button
                 onClick={() => setActiveTab('database')}
@@ -2818,7 +2842,9 @@ export const SqlScannerWorkspaceView: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
+      }
+    />
+  </div>
 
       {/* 3. AUTHORIZATION MODAL */}
       {showAuthModal && (

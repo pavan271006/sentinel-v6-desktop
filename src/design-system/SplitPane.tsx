@@ -28,9 +28,11 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
   className,
   storageKey,
 }) => {
+  const actualStorageKey = storageKey ? `${storageKey}_${direction}` : undefined;
+
   const [size, setSize] = useState<number>(() => {
-    if (storageKey) {
-      const saved = localStorage.getItem(`splitpane_${storageKey}`);
+    if (actualStorageKey) {
+      const saved = localStorage.getItem(`splitpane_${actualStorageKey}`);
       if (saved) {
         const parsed = parseInt(saved, 10);
         if (!isNaN(parsed) && parsed >= minSize && parsed <= maxSize) {
@@ -40,6 +42,21 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
     }
     return initialSize;
   });
+
+  // Re-sync when direction changes
+  useEffect(() => {
+    if (actualStorageKey) {
+      const saved = localStorage.getItem(`splitpane_${actualStorageKey}`);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= minSize && parsed <= maxSize) {
+          setSize(parsed);
+          return;
+        }
+      }
+    }
+    setSize(initialSize);
+  }, [actualStorageKey, direction, initialSize, minSize, maxSize]);
 
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,9 +72,11 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
 
       const rect = containerRef.current.getBoundingClientRect();
       let newSize: number;
+      let effectiveMax = maxSize;
 
       if (direction === 'horizontal') {
         // Horizontal split = Left/Right panels
+        effectiveMax = rect.width > 0 ? Math.min(maxSize, Math.max(minSize, rect.width - minSize)) : maxSize;
         if (isPrimaryFirst) {
           newSize = e.clientX - rect.left;
         } else {
@@ -65,6 +84,7 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
         }
       } else {
         // Vertical split = Top/Bottom panels
+        effectiveMax = rect.height > 0 ? Math.min(maxSize, Math.max(minSize, rect.height - minSize)) : maxSize;
         if (isPrimaryFirst) {
           newSize = e.clientY - rect.top;
         } else {
@@ -72,14 +92,14 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
         }
       }
 
-      const clampedSize = Math.max(minSize, Math.min(maxSize, newSize));
+      const clampedSize = Math.max(minSize, Math.min(effectiveMax, newSize));
       setSize(clampedSize);
       if (onSizeChange) onSizeChange(clampedSize);
-      if (storageKey) {
-        localStorage.setItem(`splitpane_${storageKey}`, clampedSize.toString());
+      if (actualStorageKey) {
+        localStorage.setItem(`splitpane_${actualStorageKey}`, clampedSize.toString());
       }
     },
-    [isDragging, direction, isPrimaryFirst, minSize, maxSize, onSizeChange, storageKey]
+    [isDragging, direction, isPrimaryFirst, minSize, maxSize, onSizeChange, actualStorageKey]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -117,7 +137,7 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
       className={cn(
         'w-full h-full flex overflow-hidden relative',
         isHorizontal ? 'flex-row' : 'flex-col',
-        isDragging && 'select-none cursor-col-resize',
+        isDragging && (isHorizontal ? 'select-none cursor-col-resize' : 'select-none cursor-row-resize'),
         className
       )}
     >
@@ -129,17 +149,18 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
           <div
             onMouseDown={handleMouseDown}
             className={cn(
-              'group relative flex items-center justify-center transition-colors z-10 flex-shrink-0',
+              'group relative flex items-center justify-center transition-colors z-10 flex-shrink-0 select-none',
               isHorizontal
-                ? 'w-1.5 h-full cursor-col-resize hover:bg-accent-cyan/50 bg-border-subtle'
-                : 'h-1.5 w-full cursor-row-resize hover:bg-accent-cyan/50 bg-border-subtle',
-              isDragging && 'bg-accent-cyan'
+                ? 'w-2 h-full cursor-col-resize hover:bg-[#f37021]/50 bg-[#2b2d30] border-x border-[#1e1f22]'
+                : 'h-2 w-full cursor-row-resize hover:bg-[#f37021]/50 bg-[#2b2d30] border-y border-[#1e1f22]',
+              isDragging && 'bg-[#f37021]'
             )}
+            title={isHorizontal ? 'Drag left/right to resize' : 'Drag up/down to resize'}
           >
             <div
               className={cn(
-                'rounded-full bg-border-strong group-hover:bg-accent-cyan transition-colors',
-                isHorizontal ? 'w-0.5 h-6' : 'h-0.5 w-6'
+                'rounded-full bg-[#5c6370] group-hover:bg-white transition-colors',
+                isHorizontal ? 'w-0.5 h-7' : 'h-0.5 w-7'
               )}
             />
           </div>
@@ -151,17 +172,18 @@ export const SplitPane: React.FC<SplitPaneProps> = ({
           <div
             onMouseDown={handleMouseDown}
             className={cn(
-              'group relative flex items-center justify-center transition-colors z-10 flex-shrink-0',
+              'group relative flex items-center justify-center transition-colors z-10 flex-shrink-0 select-none',
               isHorizontal
-                ? 'w-1.5 h-full cursor-col-resize hover:bg-accent-cyan/50 bg-border-subtle'
-                : 'h-1.5 w-full cursor-row-resize hover:bg-accent-cyan/50 bg-border-subtle',
-              isDragging && 'bg-accent-cyan'
+                ? 'w-2 h-full cursor-col-resize hover:bg-[#f37021]/50 bg-[#2b2d30] border-x border-[#1e1f22]'
+                : 'h-2 w-full cursor-row-resize hover:bg-[#f37021]/50 bg-[#2b2d30] border-y border-[#1e1f22]',
+              isDragging && 'bg-[#f37021]'
             )}
+            title={isHorizontal ? 'Drag left/right to resize' : 'Drag up/down to resize'}
           >
             <div
               className={cn(
-                'rounded-full bg-border-strong group-hover:bg-accent-cyan transition-colors',
-                isHorizontal ? 'w-0.5 h-6' : 'h-0.5 w-6'
+                'rounded-full bg-[#5c6370] group-hover:bg-white transition-colors',
+                isHorizontal ? 'w-0.5 h-7' : 'h-0.5 w-7'
               )}
             />
           </div>

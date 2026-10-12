@@ -27,7 +27,6 @@ import { ExtensionsWorkspaceView } from '../../workspaces/ExtensionsWorkspaceVie
 import { DiscoverWorkspaceView } from '../../workspaces/DiscoverWorkspaceView';
 import { InQLWorkspaceView } from '../../workspaces/InQLWorkspaceView';
 import { VulnIntelWorkspaceView } from '../../workspaces/VulnIntelWorkspaceView';
-import { SqlScannerWorkspaceView } from '../../workspaces/SqlScannerWorkspaceView';
 
 export const MainCanvas: React.FC = () => {
   const { activeWorkspace } = useAppShellStore();
@@ -42,9 +41,6 @@ export const MainCanvas: React.FC = () => {
 
       case 'repeater':
         return <RepeaterWorkspaceView />;
-
-      case 'sql':
-        return <SqlScannerWorkspaceView />;
 
       case 'scanner':
         return <ScannerWorkspaceView />;

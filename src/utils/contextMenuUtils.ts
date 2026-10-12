@@ -49,7 +49,7 @@ export function buildTrafficContextMenu(
   const { sendToIntruder } = useIntruderStore.getState();
   const { addScanTarget } = useScannerStore.getState();
   const { sendToSequencer } = useSequencerStore.getState();
-  const { sendToComparer } = useComparerStore.getState();
+  const { sendRequestToComparer, sendResponseToComparer } = useComparerStore.getState();
   const { sendToDecoder } = useDecoderStore.getState();
   const { sendToOrganizer } = useOrganizerStore.getState();
 
@@ -142,11 +142,19 @@ export function buildTrafficContextMenu(
       },
     },
     {
-      label: 'Send to Comparer',
+      label: 'Send request to Comparer',
       onClick: () => {
-        sendToComparer(tx);
+        sendRequestToComparer(tx);
         setActiveWorkspace('comparer');
-        addToast({ type: 'info', title: 'Sent to Comparer', description: 'Populated diff buffer' });
+        addToast({ type: 'info', title: 'Sent Request to Comparer', description: 'Loaded HTTP request into Comparer diff buffer' });
+      },
+    },
+    {
+      label: 'Send response to Comparer',
+      onClick: () => {
+        sendResponseToComparer(tx);
+        setActiveWorkspace('comparer');
+        addToast({ type: 'info', title: 'Sent Response to Comparer', description: 'Loaded HTTP response into Comparer diff buffer' });
       },
     },
     {

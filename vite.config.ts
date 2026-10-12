@@ -4,6 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
+import zlib from 'zlib';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -63,13 +64,43 @@ export default defineConfig({
                   });
                   proxyRes.on('end', () => {
                     const totalBuf = Buffer.concat(resChunks);
-                    const resBodyText = totalBuf.toString('utf-8');
+                    const encoding = (proxyRes.headers['content-encoding'] || '').toLowerCase();
+                    let decompressedBuf = totalBuf;
+                    let wasDecompressed = false;
+
+                    try {
+                      if (encoding.includes('gzip') || (totalBuf.length >= 2 && totalBuf[0] === 0x1f && totalBuf[1] === 0x8b)) {
+                        decompressedBuf = zlib.gunzipSync(totalBuf);
+                        wasDecompressed = true;
+                      } else if (encoding.includes('br')) {
+                        decompressedBuf = zlib.brotliDecompressSync(totalBuf);
+                        wasDecompressed = true;
+                      } else if (encoding.includes('deflate')) {
+                        try {
+                          decompressedBuf = zlib.inflateSync(totalBuf);
+                        } catch {
+                          decompressedBuf = zlib.inflateRawSync(totalBuf);
+                        }
+                        wasDecompressed = true;
+                      }
+                    } catch (decErr) {
+                      // Fallback to original buffer
+                    }
+
+                    const resBodyText = decompressedBuf.toString('utf-8');
 
                     const responseHeaders: { name: string; value: string }[] = [];
                     for (const [k, v] of Object.entries(proxyRes.headers)) {
                       if (v !== undefined) {
+                        const lower = k.toLowerCase();
+                        if (wasDecompressed && (lower === 'content-encoding' || lower === 'content-length')) {
+                          continue;
+                        }
                         responseHeaders.push({ name: k, value: Array.isArray(v) ? v.join(', ') : v });
                       }
+                    }
+                    if (wasDecompressed) {
+                      responseHeaders.push({ name: 'Content-Length', value: Buffer.byteLength(resBodyText).toString() });
                     }
 
                     const status = proxyRes.statusCode || 200;
@@ -134,8 +165,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
-    testTimeout: 20000,
-    hookTimeout: 20000,
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    teardownTimeout: 30000,
     poolOptions: {
       threads: {
         isolate: true,

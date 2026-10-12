@@ -8,6 +8,7 @@ interface AppShellState {
   bottomDrawerOpen: boolean;
   bottomDrawerTab: BottomDrawerTab;
   theme: AppTheme;
+  uiZoom: number;
 
   // Project & Scope status
   activeProjectName: string | null;
@@ -33,6 +34,10 @@ interface AppShellState {
   setBottomDrawerTab: (tab: BottomDrawerTab) => void;
   setTheme: (theme: AppTheme) => void;
   toggleTheme: () => void;
+  setUiZoom: (zoom: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
   setProxyRunning: (running: boolean) => void;
   setScopeStatus: (active: boolean, count: number) => void;
   setActiveProjectName: (name: string | null) => void;
@@ -41,13 +46,14 @@ interface AppShellState {
   setProject: (name: string | null, dbPath: string | null) => void;
 }
 
-export const useAppShellStore = create<AppShellState>((set) => ({
-  activeWorkspace: 'sql',
+export const useAppShellStore = create<AppShellState>((set, get) => ({
+  activeWorkspace: 'scanner',
   sidebarCollapsed: false,
   inspectorCollapsed: false,
   bottomDrawerOpen: false,
   bottomDrawerTab: 'logs',
   theme: (localStorage.getItem('sentinel_theme') as AppTheme) || 'dark',
+  uiZoom: Number(localStorage.getItem('sentinel_ui_zoom')) || 100,
 
   activeProjectName: 'Production Target Assessment',
   activeProjectDbPath: 'sentinel_assessment.db',
@@ -81,6 +87,35 @@ export const useAppShellStore = create<AppShellState>((set) => ({
       document.documentElement.setAttribute('data-theme', next);
       return { theme: next };
     }),
+
+  setUiZoom: (zoom) => {
+    const clamped = Math.min(200, Math.max(60, zoom));
+    localStorage.setItem('sentinel_ui_zoom', String(clamped));
+    document.documentElement.style.zoom = `${(clamped / 100).toFixed(2)}`;
+    set({ uiZoom: clamped });
+  },
+
+  zoomIn: () => {
+    const current = get().uiZoom;
+    const next = Math.min(200, current + 10);
+    localStorage.setItem('sentinel_ui_zoom', String(next));
+    document.documentElement.style.zoom = `${(next / 100).toFixed(2)}`;
+    set({ uiZoom: next });
+  },
+
+  zoomOut: () => {
+    const current = get().uiZoom;
+    const next = Math.max(60, current - 10);
+    localStorage.setItem('sentinel_ui_zoom', String(next));
+    document.documentElement.style.zoom = `${(next / 100).toFixed(2)}`;
+    set({ uiZoom: next });
+  },
+
+  resetZoom: () => {
+    localStorage.setItem('sentinel_ui_zoom', '100');
+    document.documentElement.style.zoom = '1.0';
+    set({ uiZoom: 100 });
+  },
 
   setProxyRunning: (running) => set({ proxyRunning: running }),
   setScopeStatus: (active, count) => set({ scopeActive: active, scopeRulesCount: count }),

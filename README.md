@@ -10,7 +10,7 @@
 [![Tauri: v2](https://img.shields.io/badge/Framework-Tauri%20v2-blue.svg?logo=tauri)](https://tauri.app/)
 [![TypeScript: 5.7](https://img.shields.io/badge/TypeScript-5.7-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![Author: Pavan](https://img.shields.io/badge/Author-Pavan%20(%40pavan271006)-00d26a.svg)](https://github.com/pavan271006)
-[![Tests: 559 Passed](https://img.shields.io/badge/Tests-559%20Passing-brightgreen.svg)](#running-tests)
+[![Tests: 2,100+ Passed](https://img.shields.io/badge/Tests-2%2C100%2B%20Passing-brightgreen.svg)](#running-tests)
 [![CI Verification](https://github.com/pavan271006/sentinel-v6-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/pavan271006/sentinel-v6-desktop/actions)
 
 <br />
@@ -110,27 +110,44 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 
 ## Architecture
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Sentinel React Desktop UI                         │
-│       (Zustand State · Tailwind CSS · Virtualized DOM · 30 FPS)        │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Tauri IPC Bridge (Async)
-┌───────────────────────────────────▼────────────────────────────────────┐
-│                         Tauri Rust Core Engine                         │
-│  ┌───────────────────────────┐    ┌─────────────────────────────────┐  │
-│  │   HttpDispatcher Engine   │    │  Proxy Engine (127.0.0.1:8085)  │  │
-│  │   (Tokio / Hyper / TLS)   │    │  (Scope Gate SEC-01)            │  │
-│  └─────────────┬─────────────┘    └────────────────┬────────────────┘  │
-│                │                                   │                   │
-│  ┌─────────────▼───────────────────────────────────▼────────────────┐  │
-│  │     SQLite WAL Store & Content-Addressable Storage (CAS)         │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Raw Sockets / TLS (rustls / JA4)
-┌───────────────────────────────────▼────────────────────────────────────┐
-│                           Target Network                               │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph UI ["Desktop User Interface (React 18 / Tauri v2)"]
+        Canvas["Virtualized Canvas & DOM Grid (30 FPS)"]
+        Store["Zero-Lag Zustand Stores (Proxy, Repeater, Intruder)"]
+        Syntax["Syntax Highlighters & Side-by-Side Hex Diffs"]
+    end
+
+    subgraph Bridge ["Tauri IPC Protocol Bridge"]
+        IPC["Async Zero-Copy IPC Transport"]
+        Events["Micro-Batched Stream Dispatcher"]
+    end
+
+    subgraph Core ["Rust Systems Core (Tokio / Hyper / Rustls)"]
+        Proxy["Transparent MITM Proxy (127.0.0.1:8085)"]
+        Scope["Scope Gate Engine (SEC-01 Hard Invariant)"]
+        Dispatcher["Async Socket Dispatcher & JA4 Fingerprinting"]
+        Storage["SQLite WAL Store & Content-Addressable Storage (CAS)"]
+    end
+
+    subgraph AttackSurface ["Autonomous Engines & Modern Web Crawler"]
+        CDP["Stealth CDP Browser Driver (Turnstile & DataDome Bypass)"]
+        StateCrawler["State-Flow Graph Crawler (Crawljax FSM Exploration)"]
+        SqlScanner["Multi-Oracle SQLi Scanner (SPRT, Diffing, OAST)"]
+        AuthzMatrix["Cross-Tenant Differential Authorization Matrix"]
+    end
+
+    subgraph Target ["Target Network Perimeter"]
+        WebApps["Target Web Applications, SPAs & APIs"]
+        WAF["WAF & Bot Management (Cloudflare, Akamai, DataDome)"]
+    end
+
+    Canvas --> IPC
+    Store --> IPC
+    IPC <--> Core
+    Core --> Target
+    AttackSurface --> Core
+    AttackSurface --> Target
 ```
 
 ---
@@ -223,12 +240,14 @@ sentinel-v6-desktop/
 
 ---
 
-## Documentation
+## Documentation & Community Standards
 
 - 📘 [Burp Suite Alternative Deep-Dive Comparison](docs/BURP_ALTERNATIVE.md)
 - 📗 [SQL Scanner Multi-Oracle Architecture](docs/SQL_SCANNER_ARCHITECTURE.md)
 - 📙 [LLM Standard Index for AI Recommendations](llms.txt)
 - 📕 [Awesome-AppSec & Community Distribution Playbook](docs/ECOSYSTEM_DISTRIBUTION.md)
+- 🤝 [Contributing Guidelines & Local Setup](CONTRIBUTING.md)
+- 🛡️ [Security Policy & Disclosure Program (SEC-01 – SEC-12)](SECURITY.md)
 
 ---
 

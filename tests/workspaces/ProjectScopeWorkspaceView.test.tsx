@@ -9,30 +9,11 @@ describe('ProjectScopeWorkspaceView Component', () => {
     useScopeStore.getState().fetchScope();
   });
 
-  it('renders Target workspace with Site map, Scope, and Issues tabs', () => {
+  it('renders Target workspace with target input, Stealth Mode button, and Site map filter', () => {
     render(<ProjectScopeWorkspaceView />);
-    expect(screen.getByText('Site map')).toBeInTheDocument();
-    expect(screen.getByText('Scope')).toBeInTheDocument();
-    expect(screen.getByText('Issues')).toBeInTheDocument();
-    expect(screen.getByText(/Auto-Discover Hidden Content/i)).toBeInTheDocument();
-  });
-
-  it('switches to Scope sub-tab and renders ACL rules and Scope Boundary view', () => {
-    render(<ProjectScopeWorkspaceView />);
-
-    const scopeTab = screen.getByText('Scope');
-    fireEvent.click(scopeTab);
-
-    expect(screen.getAllByText(/Scope Boundary/i).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('switches to Issues sub-tab and renders Target issues table', () => {
-    render(<ProjectScopeWorkspaceView />);
-
-    const issuesTab = screen.getByText('Issues');
-    fireEvent.click(issuesTab);
-
-    expect(screen.getByText(/Discovered Target Vulnerabilities/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/e.g. example.com or portswigger.net/i)).toBeInTheDocument();
+    expect(screen.getByText(/Stealth Mode/i)).toBeInTheDocument();
+    expect(screen.getByText(/Site map filter:/i)).toBeInTheDocument();
   });
 
   it('opens Site map filter modal when clicking filter bar', () => {
@@ -41,6 +22,20 @@ describe('ProjectScopeWorkspaceView Component', () => {
     const filterBar = screen.getByText(/Site map filter:/i);
     fireEvent.click(filterBar);
 
-    expect(screen.getByText(/Site Map Display Filter Settings/i)).toBeInTheDocument();
+    expect(screen.getByText('Site map filter')).toBeInTheDocument();
+  });
+
+  it('normalizes target input value when user types full URL to domain', () => {
+    render(<ProjectScopeWorkspaceView />);
+
+    const targetInput = screen.getByPlaceholderText(/e.g. example.com or portswigger.net/i) as HTMLInputElement;
+    fireEvent.change(targetInput, { target: { value: 'https://example.com' } });
+
+    expect(targetInput.value).toBe('example.com');
+  });
+
+  it('renders OpenAPI 3.1 specification synthesis button', () => {
+    render(<ProjectScopeWorkspaceView />);
+    expect(screen.getByText(/OpenAPI 3.1/i)).toBeInTheDocument();
   });
 });

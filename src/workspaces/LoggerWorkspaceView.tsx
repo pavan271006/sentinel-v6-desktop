@@ -3,6 +3,8 @@ import { useToastStore } from '../stores/toastStore';
 import { useTrafficStore } from '../stores/trafficStore';
 import { useRepeaterStore } from '../stores/repeaterStore';
 import { Button } from '../design-system/Button';
+import { SplitPane } from '../design-system/SplitPane';
+import { TransactionInspectorPanel } from '../components/traffic/TransactionInspectorPanel';
 import {
   Layers,
   Search,
@@ -104,6 +106,24 @@ export const LoggerWorkspaceView: React.FC = () => {
     if (!selectedTxId) return filteredLogs[0] || null;
     return logEntries.find((l) => l.id === selectedTxId) || filteredLogs[0] || null;
   }, [selectedTxId, logEntries, filteredLogs]);
+
+  const selectedTxForInspector = useMemo(() => {
+    if (!selectedLog) return null;
+    const realTx = transactions.find((t) => t.id === selectedLog.id);
+    if (realTx) return realTx;
+    return {
+      id: selectedLog.id,
+      url: selectedLog.url,
+      method: selectedLog.method,
+      statusCode: selectedLog.status,
+      host: selectedLog.host,
+      path: selectedLog.url.replace(/^https?:\/\/[^\/]+/, '') || '/',
+      rawRequest: selectedLog.requestRaw,
+      rawResponse: selectedLog.responseRaw,
+      sizeBytes: selectedLog.length,
+      durationMs: selectedLog.timeMs,
+    } as any;
+  }, [selectedLog, transactions]);
 
   const handleSendToRepeater = (entry: typeof logEntries[0]) => {
     createTab({
@@ -209,99 +229,74 @@ export const LoggerWorkspaceView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Split: Log Stream Virtual Table (Top/Left) vs Raw Request/Response (Bottom/Right) */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Logs Table */}
-        <div className="h-1/2 border-b border-[#2b2d30] overflow-y-auto bg-[#141517]">
-          <table className="w-full text-left font-mono text-xs">
-            <thead className="bg-[#1e1f22] text-[#9da5b4] text-[11px] border-b border-[#3e4249] sticky top-0">
-              <tr>
-                <th className="px-2.5 py-1.5 w-12">#</th>
-                <th className="px-2.5 py-1.5 w-20">Tool</th>
-                <th className="px-2.5 py-1.5 w-16">Method</th>
-                <th className="px-2.5 py-1.5">Host & Path</th>
-                <th className="px-2.5 py-1.5 w-20">Status</th>
-                <th className="px-2.5 py-1.5 w-20">Length</th>
-                <th className="px-2.5 py-1.5 w-20">Time</th>
-                <th className="px-2.5 py-1.5 w-24">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2b2d30]">
-              {filteredLogs.map((entry) => {
-                const isSelected = selectedLog?.id === entry.id;
-                return (
-                  <tr
-                    key={entry.id}
-                    onClick={() => setSelectedTxId(entry.id)}
-                    className={`hover:bg-[#1e1f22] cursor-pointer transition-colors ${
-                      isSelected ? 'bg-[#1e1f22] border-l-2 border-[#38bdf8]' : ''
-                    }`}
-                  >
-                    <td className="px-2.5 py-1 text-[#6f737a]">{entry.seq}</td>
-                    <td className="px-2.5 py-1">
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#1e1f22] border border-[#3e4249] text-white">
-                        {entry.tool}
-                      </span>
-                    </td>
-                    <td className="px-2.5 py-1 font-bold text-[#38bdf8]">{entry.method}</td>
-                    <td className="px-2.5 py-1 text-white truncate max-w-md">
-                      <span className="text-[#9da5b4]">{entry.host}</span>
-                      <span>{entry.url.replace(`https://${entry.host}`, '').replace(`http://${entry.host}`, '')}</span>
-                    </td>
-                    <td className="px-2.5 py-1">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getStatusColor(entry.status)}`}>
-                        {entry.status}
-                      </span>
-                    </td>
-                    <td className="px-2.5 py-1 text-[#9da5b4]">{entry.length} B</td>
-                    <td className="px-2.5 py-1 text-[#38bdf8]">{entry.timeMs}ms</td>
-                    <td className="px-2.5 py-1 text-[#6f737a]">{entry.timestamp}</td>
+      {/* Main Split: Log Stream Virtual Table (Top) vs Burp Inspector (Bottom) with SplitPane */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <SplitPane
+          direction="vertical"
+          initialSize={260}
+          minSize={100}
+          maxSize={800}
+          storageKey="sentinel_logger_split"
+          primary={
+            /* Logs Table */
+            <div className="w-full h-full border-b border-[#2b2d30] overflow-y-auto bg-[#141517]">
+              <table className="w-full text-left font-mono text-xs">
+                <thead className="bg-[#1e1f22] text-[#9da5b4] text-[11px] border-b border-[#3e4249] sticky top-0 select-none">
+                  <tr>
+                    <th className="px-2.5 py-1.5 w-12">#</th>
+                    <th className="px-2.5 py-1.5 w-20">Tool</th>
+                    <th className="px-2.5 py-1.5 w-16">Method</th>
+                    <th className="px-2.5 py-1.5">Host & Path</th>
+                    <th className="px-2.5 py-1.5 w-20">Status</th>
+                    <th className="px-2.5 py-1.5 w-20">Length</th>
+                    <th className="px-2.5 py-1.5 w-20">Time</th>
+                    <th className="px-2.5 py-1.5 w-24">Timestamp</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Bottom Inspector Split: Request (Left) vs Response (Right) */}
-        <div className="flex-1 flex min-h-0 bg-[#1e1f22]">
-          {/* Request Panel */}
-          <div className="flex-1 flex flex-col border-r border-[#2b2d30] p-2.5 bg-[#141517]">
-            <div className="flex items-center justify-between pb-1.5 border-b border-[#2b2d30] text-xs font-semibold text-[#38bdf8]">
-              <span>Request Wire Stream</span>
-              {selectedLog && (
-                <Button
-                  variant="secondary"
-                  size="xs"
-                  leftIcon={<Send className="w-3 h-3 text-[#38bdf8]" />}
-                  onClick={() => handleSendToRepeater(selectedLog)}
-                >
-                  Send to Repeater
-                </Button>
-              )}
+                </thead>
+                <tbody className="divide-y divide-[#2b2d30]">
+                  {filteredLogs.map((entry) => {
+                    const isSelected = selectedLog?.id === entry.id;
+                    return (
+                      <tr
+                        key={entry.id}
+                        onClick={() => setSelectedTxId(entry.id)}
+                        className={`hover:bg-[#1e1f22] cursor-pointer transition-colors ${
+                          isSelected ? 'bg-[#1e1f22] border-l-2 border-[#38bdf8]' : ''
+                        }`}
+                      >
+                        <td className="px-2.5 py-1 text-[#6f737a]">{entry.seq}</td>
+                        <td className="px-2.5 py-1">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#1e1f22] border border-[#3e4249] text-white">
+                            {entry.tool}
+                          </span>
+                        </td>
+                        <td className="px-2.5 py-1 font-bold text-[#38bdf8]">{entry.method}</td>
+                        <td className="px-2.5 py-1 text-white truncate max-w-md">
+                          <span className="text-[#9da5b4]">{entry.host}</span>
+                          <span>{entry.url.replace(`https://${entry.host}`, '').replace(`http://${entry.host}`, '')}</span>
+                        </td>
+                        <td className="px-2.5 py-1">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getStatusColor(entry.status)}`}>
+                            {entry.status}
+                          </span>
+                        </td>
+                        <td className="px-2.5 py-1 text-[#9da5b4]">{entry.length} B</td>
+                        <td className="px-2.5 py-1 text-[#38bdf8]">{entry.timeMs}ms</td>
+                        <td className="px-2.5 py-1 text-[#6f737a]">{entry.timestamp}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            <textarea
-              readOnly
-              value={selectedLog?.requestRaw || ''}
-              className="flex-1 w-full bg-[#1e1f22] text-[#34d399] font-mono text-[11px] p-2.5 rounded border border-[#313438] focus:outline-none resize-none leading-4 mt-2 select-all"
+          }
+          secondary={
+            <TransactionInspectorPanel
+              transaction={selectedTxForInspector}
+              onSendToRepeater={(tx) => selectedLog && handleSendToRepeater(selectedLog)}
             />
-          </div>
-
-          {/* Response Panel */}
-          <div className="flex-1 flex flex-col p-2.5 bg-[#1e1f22]">
-            <div className="flex items-center justify-between pb-1.5 border-b border-[#2b2d30] text-xs font-semibold text-[#34d399]">
-              <span>Response Wire Stream</span>
-              <span className="text-[10px] text-[#9da5b4] font-mono">
-                {selectedLog?.length || 0} bytes
-              </span>
-            </div>
-            <textarea
-              readOnly
-              value={selectedLog?.responseRaw || ''}
-              className="flex-1 w-full bg-[#141517] text-[#dfdfdf] font-mono text-[11px] p-2.5 rounded border border-[#313438] focus:outline-none resize-none leading-4 mt-2 select-all"
-            />
-          </div>
-        </div>
+          }
+        />
       </div>
     </div>
   );

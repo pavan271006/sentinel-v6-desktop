@@ -1,4 +1,4 @@
-import React, { useRef, useImperativeHandle, forwardRef, useEffect } from 'react';
+import React, { useRef, useImperativeHandle, forwardRef, useEffect, useState } from 'react';
 
 export interface SyntaxHighlightedEditorRef {
   focus: () => void;
@@ -39,7 +39,7 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
       activeMatchIndex = 0,
       placeholder = '',
       className = '',
-      wordWrap = false,
+      wordWrap = true,
       hideUninterestingHeaders: _hideUninterestingHeaders = false,
       showNonPrintable = false,
       onContextMenu,
@@ -50,6 +50,23 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const backdropRef = useRef<HTMLDivElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
+    const [lineHeights, setLineHeights] = useState<number[]>([]);
+
+    useEffect(() => {
+      if (!wordWrap || !backdropRef.current) {
+        setLineHeights([]);
+        return;
+      }
+      const updateHeights = () => {
+        if (!backdropRef.current) return;
+        const children = Array.from(backdropRef.current.children) as HTMLElement[];
+        const heights = children.map((c) => c.offsetHeight || 20);
+        setLineHeights(heights);
+      };
+      updateHeights();
+      const raf = requestAnimationFrame(updateHeights);
+      return () => cancelAnimationFrame(raf);
+    }, [value, wordWrap]);
 
     const handleSelection = () => {
       if (onSelectionChange && textareaRef.current) {
@@ -180,7 +197,48 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
       });
     };
 
+    const renderCookieValue = (val: string) => {
+      const parts = val.split(';');
+      return (
+        <>
+          {parts.map((part, pIdx) => {
+            const eq = part.indexOf('=');
+            if (eq === -1) {
+              return (
+                <React.Fragment key={pIdx}>
+                  {pIdx > 0 && <span className="text-[#8c9099]">;</span>}
+                  <span className="text-[#8ea834] font-medium">{renderTokens(part)}</span>
+                </React.Fragment>
+              );
+            }
+            const leadingSpaces = part.match(/^\s*/)?.[0] || '';
+            const trimmed = part.trim();
+            const trimmedEq = trimmed.indexOf('=');
+            const k = trimmed.substring(0, trimmedEq);
+            const v = trimmed.substring(trimmedEq + 1);
+
+            return (
+              <React.Fragment key={pIdx}>
+                {pIdx > 0 && <span className="text-[#8c9099]">{';' + leadingSpaces}</span>}
+                {pIdx === 0 && leadingSpaces && <span>{leadingSpaces}</span>}
+                <span className="text-[#ffffff] font-bold">{renderTokens(k)}</span>
+                <span className="text-[#8c9099]">=</span>
+                <span className="text-[#8ea834] font-medium">{renderTokens(v)}</span>
+              </React.Fragment>
+            );
+          })}
+        </>
+      );
+    };
+
     const renderHighlightedLine = (line: string, idx: number, inBody: boolean) => {
+      const lineStyle: React.CSSProperties = {
+        minHeight: '20px',
+        lineHeight: '20px',
+        whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+        wordBreak: wordWrap ? 'break-all' : 'normal',
+      };
+
       if (idx === 0) {
         const parts = line.split(' ');
         const method = parts[0] || '';
@@ -188,12 +246,6 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
         const proto = parts.slice(2).join(' ');
 
         const qIdx = uri.indexOf('?');
-        const lineStyle: React.CSSProperties = {
-          minHeight: '20px',
-          lineHeight: '20px',
-          whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-          wordBreak: wordWrap ? 'break-all' : 'normal',
-        };
 
         return (
           <div key={idx} style={lineStyle}>
@@ -201,11 +253,32 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
             {parts.length > 1 && ' '}
             {parts.length > 1 && (
               qIdx === -1 ? (
-                <span className="text-[#38bdf8] font-medium">{renderTokens(uri)}</span>
+                <span className="text-[#ffffff] font-medium">{renderTokens(uri)}</span>
               ) : (
                 <>
-                  <span className="text-[#38bdf8] font-medium">{renderTokens(uri.substring(0, qIdx))}</span>
-                  <span className="text-[#8ea834] font-medium">{renderTokens(uri.substring(qIdx))}</span>
+                  <span className="text-[#ffffff] font-medium">{renderTokens(uri.substring(0, qIdx))}</span>
+                  <span className="text-[#8c9099]">?</span>
+                  {uri.substring(qIdx + 1).split('&').map((pair, pIdx) => {
+                    const eqIdx = pair.indexOf('=');
+                    if (eqIdx === -1) {
+                      return (
+                        <React.Fragment key={pIdx}>
+                          {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
+                          <span className="text-[#ffffff] font-semibold">{renderTokens(pair)}</span>
+                        </React.Fragment>
+                      );
+                    }
+                    const k = pair.substring(0, eqIdx);
+                    const v = pair.substring(eqIdx + 1);
+                    return (
+                      <React.Fragment key={pIdx}>
+                        {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
+                        <span className="text-[#ffffff] font-bold">{renderTokens(k)}</span>
+                        <span className="text-[#8c9099]">=</span>
+                        <span className="text-[#8ea834] font-medium">{renderTokens(v)}</span>
+                      </React.Fragment>
+                    );
+                  })}
                 </>
               )
             )}
@@ -216,27 +289,57 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
         );
       }
 
-      const lineStyle: React.CSSProperties = {
-        minHeight: '20px',
-        lineHeight: '20px',
-        whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
-        wordBreak: wordWrap ? 'break-all' : 'normal',
-      };
-
       if (!inBody) {
         const colonIdx = line.indexOf(':');
         if (colonIdx !== -1) {
           const hName = line.substring(0, colonIdx);
           const hVal = line.substring(colonIdx + 1);
+          const lowerH = hName.toLowerCase().trim();
+
           return (
             <div key={idx} style={lineStyle}>
-              <span className="text-[#dfdfdf] font-semibold">{renderTokens(hName)}</span>
+              <span className="text-[#ffffff] font-bold">{renderTokens(hName)}</span>
               <span className="text-[#8c9099]">:</span>
-              <span className="text-[#8ea834] font-medium">{renderTokens(hVal)}</span>
+              {lowerH === 'cookie' || lowerH === 'set-cookie' ? (
+                renderCookieValue(hVal)
+              ) : (
+                <span className="text-[#8ea834] font-medium">{renderTokens(hVal)}</span>
+              )}
               {showNonPrintable && renderCrlfBadges()}
             </div>
           );
         }
+      }
+
+      // In Body: if url-encoded params, highlight keys in white and values in green
+      if (inBody && line.includes('=') && !line.startsWith('<') && !line.startsWith('{') && !line.startsWith('[')) {
+        const pairs = line.split('&');
+        return (
+          <div key={idx} style={lineStyle}>
+            {pairs.map((pair, pIdx) => {
+              const eqIdx = pair.indexOf('=');
+              if (eqIdx === -1) {
+                return (
+                  <React.Fragment key={pIdx}>
+                    {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
+                    <span className="text-[#dfdfdf]">{renderTokens(pair)}</span>
+                  </React.Fragment>
+                );
+              }
+              const k = pair.substring(0, eqIdx);
+              const v = pair.substring(eqIdx + 1);
+              return (
+                <React.Fragment key={pIdx}>
+                  {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
+                  <span className="text-[#ffffff] font-bold">{renderTokens(k)}</span>
+                  <span className="text-[#8c9099]">=</span>
+                  <span className="text-[#8ea834] font-medium">{renderTokens(v)}</span>
+                </React.Fragment>
+              );
+            })}
+            {showNonPrintable && renderCrlfBadges()}
+          </div>
+        );
       }
 
       return (
@@ -257,12 +360,18 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
           className="w-10 bg-[#1a1b1e] border-r border-[#2b2d30] select-none text-right pr-2 text-[#6f737a] font-mono text-[11px] overflow-hidden flex-shrink-0"
           style={{
             paddingTop: '10px',
-            paddingBottom: '10px',
+            paddingBottom: '48px',
             fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
           }}
         >
           {lines.map((_, idx) => (
-            <div key={idx} style={{ height: '20px', lineHeight: '20px' }}>
+            <div
+              key={idx}
+              style={{
+                height: wordWrap && lineHeights[idx] ? `${lineHeights[idx]}px` : '20px',
+                lineHeight: '20px',
+              }}
+            >
               {idx + 1}
             </div>
           ))}
@@ -276,7 +385,7 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
             aria-hidden="true"
             className="absolute inset-0 overflow-hidden font-mono text-[11px] pointer-events-none select-none"
             style={{
-              padding: '10px',
+              padding: '10px 10px 48px 10px',
               fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               letterSpacing: 'normal',
               whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
@@ -306,7 +415,7 @@ export const SyntaxHighlightedEditor = forwardRef<SyntaxHighlightedEditorRef, Sy
             spellCheck={false}
             className="absolute inset-0 w-full h-full bg-transparent font-mono text-[11px] resize-none outline-none border-0 caret-white selection:bg-[#f37021]/30 selection:text-white overflow-auto"
             style={{
-              padding: '10px',
+              padding: '10px 10px 48px 10px',
               fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               lineHeight: '20px',
               letterSpacing: 'normal',

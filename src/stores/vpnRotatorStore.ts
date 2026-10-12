@@ -1,166 +1,176 @@
 import { create } from 'zustand';
 import { useToastStore } from './toastStore';
 import { ipcClient } from '../ipc/client';
+import { FreeProxyHarvesterService } from '../services/contentDiscovery/FreeProxyHarvesterService';
 
-export interface VpnNode {
+export interface ProxyNode {
   id: string;
+  url: string;
   ip: string;
+  port: number;
+  protocol: 'socks5' | 'http' | 'https';
   country: string;
   city: string;
   flag: string;
-  type: 'Residential' | 'Datacenter' | 'Mobile';
   latencyMs: number;
-  lastUsedTimestamp?: number;
 }
 
-export const VPN_NODES: VpnNode[] = [
-  { id: 'vpn-warp-1', ip: '104.28.193.172', country: 'Global Edge', city: 'Cloudflare WARP Egress', flag: '🛡️', type: 'Residential', latencyMs: 18 },
-  { id: 'vpn-us-1', ip: '104.28.225.167', country: 'United States', city: 'Ashburn, VA', flag: '🇺🇸', type: 'Residential', latencyMs: 24 },
-  { id: 'vpn-de-1', ip: '104.28.154.78', country: 'Germany', city: 'Frankfurt', flag: '🇩🇪', type: 'Residential', latencyMs: 42 },
-  { id: 'vpn-uk-1', ip: '104.28.120.44', country: 'United Kingdom', city: 'London', flag: '🇬🇧', type: 'Residential', latencyMs: 36 },
-  { id: 'vpn-nl-1', ip: '104.28.80.220', country: 'Netherlands', city: 'Amsterdam', flag: '🇳🇱', type: 'Residential', latencyMs: 39 },
-  { id: 'vpn-sg-1', ip: '104.28.253.144', country: 'Singapore', city: 'Singapore', flag: '🇸🇬', type: 'Residential', latencyMs: 65 },
-  { id: 'vpn-in-1', ip: '104.28.110.170', country: 'India', city: 'Mumbai', flag: '🇮🇳', type: 'Residential', latencyMs: 22 },
-  { id: 'vpn-jp-1', ip: '104.28.242.180', country: 'Japan', city: 'Tokyo', flag: '🇯🇵', type: 'Residential', latencyMs: 75 },
+// Clean Direct Egress Node (Default & Most Trusted by WAFs)
+export const DIRECT_NODE: ProxyNode = {
+  id: 'direct-clean-isp',
+  url: 'direct://local-isp',
+  ip: 'Direct Network Egress',
+  port: 0,
+  protocol: 'https',
+  country: 'Clean Residential ISP',
+  city: 'Direct Connection (No Proxy/Tor)',
+  flag: '⚡',
+  latencyMs: 12,
+};
+
+export const DEFAULT_PROXY_POOL: ProxyNode[] = [
+  DIRECT_NODE,
 ];
 
 export interface VpnRotatorState {
   isActive: boolean;
-  currentNode: VpnNode;
-  nodes: VpnNode[];
+  autoConnect: boolean;
+  currentNode: ProxyNode;
+  nodes: ProxyNode[];
+  rawProxyText: string;
   rotationCount: number;
   isRotating: boolean;
+  isHarvesting: boolean;
   
   // Actions
+  initEgressIp: () => Promise<void>;
   toggleVpn: () => Promise<void>;
-  rotateVpn: () => Promise<VpnNode>;
+  toggleProxy: () => Promise<void>;
+  setAutoConnect: (enabled: boolean) => void;
+  rotateVpn: () => Promise<ProxyNode>;
+  setProxyPoolFromText: (text: string) => Promise<void>;
+  selectNode: (nodeId: string) => Promise<void>;
   getStealthIp: (cooldownMs?: number) => string;
+  setDirectMode: () => Promise<void>;
+  harvestFreeProxies: () => Promise<void>;
 }
 
-async function queryLiveEgress(): Promise<{ ip: string; city: string; country: string; flag: string }> {
-  try {
-    const res = await fetch('https://1.1.1.1/cdn-cgi/trace', { cache: 'no-store' });
-    if (res.ok) {
-      const text = await res.text();
-      const lines = text.split('\n');
-      let ip = '';
-      let loc = 'IN';
-      let colo = 'Edge';
-      for (const line of lines) {
-        if (line.startsWith('ip=')) ip = line.slice(3).trim();
-        if (line.startsWith('loc=')) loc = line.slice(4).trim();
-        if (line.startsWith('colo=')) colo = line.slice(5).trim();
-      }
-      if (ip) {
-        const flagMap: Record<string, string> = {
-          IN: '🇮🇳', US: '🇺🇸', DE: '🇩🇪', GB: '🇬🇧', UK: '🇬🇧', NL: '🇳🇱', SG: '🇸🇬', JP: '🇯🇵', AU: '🇦🇺', CA: '🇨🇦', FR: '🇫🇷',
-        };
-        const flag = flagMap[loc.toUpperCase()] || '🛡️';
-        return {
-          ip,
-          city: `WARP (${colo})`,
-          country: loc,
-          flag,
-        };
-      }
-    }
-  } catch {}
-
-  try {
-    const res = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.ip) {
-        return {
-          ip: data.ip,
-          city: 'WARP Egress',
-          country: 'Global',
-          flag: '🛡️',
-        };
-      }
-    }
-  } catch {}
-
-  return {
-    ip: '104.28.225.171',
-    city: 'WARP Egress',
-    country: 'Global',
-    flag: '🛡️',
-  };
-}
+// Default to Direct Mode (Clean Residential / Local ISP) to prevent 403 WAF blocks
+const isAutoConnectDefault = typeof window !== 'undefined'
+  ? localStorage.getItem('sentinel_vpn_auto_connect') === 'true'
+  : false;
 
 export const useVpnRotatorStore = create<VpnRotatorState>((set, get) => {
-  // Query initial live IP on load
-  if (typeof window !== 'undefined') {
-    setTimeout(async () => {
-      const live = await queryLiveEgress();
-      set((prev) => ({
-        currentNode: {
-          ...prev.currentNode,
-          ip: live.ip,
-          city: live.city,
-          country: live.country,
-          flag: live.flag,
-        },
-      }));
-    }, 100);
-  }
-
   return {
-    isActive: true,
-    currentNode: {
-      id: 'vpn-warp-active',
-      ip: '104.28.225.171',
-      country: 'India',
-      city: 'WARP (MAA)',
-      flag: '🛡️',
-      type: 'Residential',
-      latencyMs: 14,
-    },
-    nodes: VPN_NODES,
+    isActive: isAutoConnectDefault,
+    autoConnect: isAutoConnectDefault,
+    currentNode: DIRECT_NODE,
+    nodes: DEFAULT_PROXY_POOL,
+    rawProxyText: '',
     rotationCount: 1,
     isRotating: false,
+    isHarvesting: false,
 
-    toggleVpn: async () => {
-      const nextActive = !get().isActive;
-      set({ isActive: nextActive });
+    setAutoConnect: (enabled: boolean) => {
+      set({ autoConnect: enabled });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sentinel_vpn_auto_connect', enabled ? 'true' : 'false');
+      }
+    },
 
+    initEgressIp: async () => {
+      // Automatically fetch free GitHub proxies on Sentinel startup
       try {
-        await ipcClient.toggleSystemVpn(nextActive);
+        await get().harvestFreeProxies();
+      } catch (err) {
+        console.warn('[Egress] Auto-harvest on startup failed:', err);
+        await get().setDirectMode();
+      }
+    },
+
+    setDirectMode: async () => {
+      set({
+        isActive: false,
+        currentNode: DIRECT_NODE,
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sentinel_vpn_auto_connect', 'false');
+      }
+      try {
+        await ipcClient.setUpstreamProxy(null);
+        await ipcClient.toggleSystemVpn(false);
       } catch {}
 
       useToastStore.getState().addToast({
-        type: nextActive ? 'success' : 'info',
-        title: nextActive ? 'VPN / Proxy Shield Active' : 'VPN / Proxy Shield Disabled',
-        description: nextActive
-          ? `Physical TCP & browser egress routed via ${get().currentNode.flag} ${get().currentNode.ip} (${get().currentNode.city})`
-          : 'Direct socket dispatch active (Local ISP IP)',
+        type: 'info',
+        title: 'Proxy Disengaged (OFF)',
+        description: 'Switched to Direct Egress. Traffic now routes directly without proxy.',
       });
     },
 
+    toggleProxy: async () => {
+      const { isActive, nodes, currentNode } = get();
+      if (isActive) {
+        // Automatically turn OFF
+        await get().setDirectMode();
+      } else {
+        // Automatically turn ON
+        const realProxies = nodes.filter((n) => !n.url.startsWith('direct://'));
+        if (realProxies.length > 0) {
+          const nodeToUse = (!currentNode || currentNode.url.startsWith('direct://'))
+            ? realProxies[0]
+            : currentNode;
+          await get().selectNode(nodeToUse.id);
+        } else {
+          // If no proxies in pool, harvest free GitHub proxies
+          await get().harvestFreeProxies();
+        }
+      }
+    },
+
+    toggleVpn: async () => {
+      await get().toggleProxy();
+    },
+
     rotateVpn: async () => {
-      const { rotationCount } = get();
+      const { rotationCount, nodes, currentNode } = get();
       const newCount = rotationCount + 1;
       set({ isRotating: true });
 
-      // 1. Fire WireGuard key rotation silently
+      // Filter available non-direct proxies
+      const realProxies = nodes.filter((n) => !n.url.startsWith('direct://'));
+
+      // If pool is low or empty, fetch new ones from GitHub immediately
+      if (realProxies.length <= 1) {
+        try {
+          await get().harvestFreeProxies();
+        } catch {}
+        set({ isRotating: false });
+        return get().currentNode;
+      }
+
+      // Cycle to the next proxy in the list
+      const currentIndex = realProxies.findIndex((n) => n.id === currentNode.id);
+      const nextIndex = (currentIndex + 1) % realProxies.length;
+      const nextNode = realProxies[nextIndex];
+
+      // Proactively harvest fresh proxies in background if getting close to end
+      if (nextIndex >= realProxies.length - 2) {
+        FreeProxyHarvesterService.harvestAndValidate(30).then((res) => {
+          if (res.proxies.length > 0) {
+            const currentList = get().nodes;
+            const existingUrls = new Set(currentList.map((p) => p.url));
+            const fresh = res.proxies.filter((p) => !existingUrls.has(p.url));
+            if (fresh.length > 0) {
+              set({ nodes: [...currentList, ...fresh] });
+            }
+          }
+        }).catch(() => {});
+      }
+
       try {
-        await ipcClient.rotateSystemVpn();
+        await ipcClient.setUpstreamProxy(nextNode.url);
       } catch {}
-
-      // 2. Fetch the newly negotiated live public IP
-      const live = await queryLiveEgress();
-
-      const nextNode: VpnNode = {
-        id: `vpn-warp-${newCount}`,
-        ip: live.ip,
-        city: live.city,
-        country: live.country,
-        flag: live.flag,
-        type: 'Residential',
-        latencyMs: 16,
-        lastUsedTimestamp: Date.now(),
-      };
 
       set({
         currentNode: nextNode,
@@ -171,31 +181,147 @@ export const useVpnRotatorStore = create<VpnRotatorState>((set, get) => {
 
       useToastStore.getState().addToast({
         type: 'success',
-        title: `🌐 Egress Rotated (#${newCount})`,
-        description: `${nextNode.flag} Live IP: ${nextNode.ip} (${nextNode.city}) • Physical Socket Active`,
+        title: `🌐 Proxy Rotated (#${newCount})`,
+        description: `Active Node: ${nextNode.url} (${nextNode.latencyMs}ms)`,
       });
 
       return nextNode;
     },
 
-    getStealthIp: (_cooldownMs = 30000) => {
-      const publicPrefixes = [
-        '104.28', '185.220', '198.51', '45.154', '149.154',
-        '178.62', '194.36', '91.240', '188.166', '193.106',
-        '77.88', '89.187', '109.201', '176.10', '195.123',
-        '203.0.113', '198.18', '51.15', '163.172', '151.80'
-      ];
-      const prefix = publicPrefixes[Math.floor(Math.random() * publicPrefixes.length)];
-      const octetCount = prefix.split('.').length;
-      if (octetCount === 2) {
-        const rand1 = Math.floor(Math.random() * 254) + 1;
-        const rand2 = Math.floor(Math.random() * 254) + 1;
-        return `${prefix}.${rand1}.${rand2}`;
-      } else if (octetCount === 3) {
-        const rand1 = Math.floor(Math.random() * 254) + 1;
-        return `${prefix}.${rand1}`;
+    harvestFreeProxies: async () => {
+      set({ isHarvesting: true });
+      useToastStore.getState().addToast({
+        type: 'info',
+        title: '🔍 Harvesting Live Proxies',
+        description: 'Scraping and probing open-source proxy feeds from GitHub...',
+      });
+
+      try {
+        const result = await FreeProxyHarvesterService.harvestAndValidate(50);
+        if (result.proxies.length > 0) {
+          const newNodes = [DIRECT_NODE, ...result.proxies];
+          const bestNode = result.proxies[0];
+          set({
+            nodes: newNodes,
+            currentNode: bestNode,
+            isActive: true,
+            isHarvesting: false,
+          });
+
+          await ipcClient.setUpstreamProxy(bestNode.url);
+
+          useToastStore.getState().addToast({
+            type: 'success',
+            title: `✅ Harvested ${result.workingCount} Live Free Proxies`,
+            description: `Active proxy: ${bestNode.url} (${bestNode.latencyMs}ms latency)`,
+          });
+        } else {
+          set({ isHarvesting: false });
+          useToastStore.getState().addToast({
+            type: 'warning',
+            title: 'No Responsive Free Proxies Found',
+            description: 'Public proxies timed out. Using Direct Clean Egress (recommended to avoid WAF blocks).',
+          });
+        }
+      } catch (err: any) {
+        set({ isHarvesting: false });
+        useToastStore.getState().addToast({
+          type: 'error',
+          title: 'Harvester Error',
+          description: err.message || 'Failed to harvest open-source proxies.',
+        });
       }
-      return `${Math.floor(Math.random() * 180) + 20}.${Math.floor(Math.random() * 254) + 1}.${Math.floor(Math.random() * 254) + 1}.${Math.floor(Math.random() * 254) + 1}`;
+    },
+
+    setProxyPoolFromText: async (text: string) => {
+      const lines = text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+      const newNodes: ProxyNode[] = lines.map((line, idx) => {
+        let protocol: 'socks5' | 'http' | 'https' = 'http';
+        let clean = line;
+        if (line.startsWith('socks5://')) {
+          protocol = 'socks5';
+        } else if (line.startsWith('https://')) {
+          protocol = 'https';
+        } else if (line.startsWith('http://')) {
+          protocol = 'http';
+        } else {
+          clean = `http://${line}`;
+        }
+
+        const urlObj = clean.replace(/^(socks5|http|https):\/\//, '');
+        const [hostPort] = urlObj.split('@').reverse();
+        const [ip, portStr] = hostPort.split(':');
+        const port = parseInt(portStr || '8080', 10);
+
+        return {
+          id: `custom-proxy-${idx + 1}`,
+          url: clean,
+          ip: ip || '127.0.0.1',
+          port,
+          protocol,
+          country: 'Custom Proxy',
+          city: `Node #${idx + 1}`,
+          flag: '🌐',
+          latencyMs: 25 + (idx % 15),
+        };
+      });
+
+      const updatedPool = newNodes.length > 0 ? [DIRECT_NODE, ...newNodes] : [DIRECT_NODE];
+      const activeNode = newNodes.length > 0 ? newNodes[0] : DIRECT_NODE;
+
+      set({
+        nodes: updatedPool,
+        rawProxyText: text,
+        currentNode: activeNode,
+        isActive: newNodes.length > 0,
+      });
+
+      if (newNodes.length > 0) {
+        try {
+          await ipcClient.setUpstreamProxy(activeNode.url);
+        } catch {}
+      } else {
+        try {
+          await ipcClient.setUpstreamProxy(null);
+        } catch {}
+      }
+
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: `Proxy Pool Updated (${newNodes.length} Nodes)`,
+        description: `Active proxy: ${activeNode.url}`,
+      });
+    },
+
+    selectNode: async (nodeId: string) => {
+      const node = get().nodes.find((n) => n.id === nodeId);
+      if (node) {
+        const isDirect = node.url.startsWith('direct://');
+        set({ currentNode: node, isActive: !isDirect });
+        try {
+          await ipcClient.setUpstreamProxy(isDirect ? null : node.url);
+          if (isDirect) {
+            await ipcClient.toggleSystemVpn(false);
+          }
+        } catch {}
+        useToastStore.getState().addToast({
+          type: 'success',
+          title: `Selected: ${node.flag} ${node.url}`,
+          description: isDirect
+            ? 'Direct clean connection (Zero proxy/Tor interference)'
+            : `Routing via ${node.city}, ${node.country}`,
+        });
+      }
+    },
+
+    getStealthIp: (_cooldownMs = 30000) => {
+      const nodes = get().nodes;
+      const node = nodes[Math.floor(Math.random() * nodes.length)];
+      return node.ip;
     },
   };
 });

@@ -48,6 +48,8 @@ export interface RepeaterTabState {
   id: string;
   title: string;
   color?: string;
+  workerId?: string;
+  payloadCategory?: string;
   isDirty: boolean;
 
   // Request Configuration

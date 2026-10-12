@@ -583,6 +583,7 @@ export const WebSocketHistoryView: React.FC = () => {
                         isResponse={activeMessage.direction === 'To client'}
                         searchQuery={editorSearchQuery}
                         activeMatchIndex={activeMatchIndex}
+                        showLineNumbers={true}
                       />
                     </div>
                   ) : (

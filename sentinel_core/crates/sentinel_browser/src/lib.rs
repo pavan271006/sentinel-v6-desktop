@@ -11,7 +11,7 @@ pub mod service;
 pub mod workers;
 
 pub use crawler::{AutonomousCrawlerEngine, CrawledForm, CrawledItem, CrawlerConfig};
-pub use dom::{DomExtractor, DomSnapshot, FormElement};
+pub use dom::{DomExtractor, DomSnapshot, FormElement, MetaRedirect};
 pub use dom_telemetry::{DomSinkCategory, DomTaintEvent, DomTaintTracker};
 pub use service::DefaultBrowserService;
 pub use workers::{ServiceWorkerRegistrationInfo, WorkerSecurityFinding, WorkerSecurityInspector};

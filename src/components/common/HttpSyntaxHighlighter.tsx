@@ -96,12 +96,12 @@ function highlightSearch(text: string, query?: string): React.ReactNode {
 }
 
 /**
- * Parse & highlight URI with query parameters (Burp Suite styling: path in white, query values in olive green #8ea834)
+ * Parse & highlight URI with query parameters (Burp Suite styling: path in white, query keys in white #ffffff, query values in olive green #8ea834)
  */
 function renderUriWithQueryParams(uri: string, query?: string): React.ReactNode {
   const qIdx = uri.indexOf('?');
   if (qIdx === -1) {
-    return <span className="text-[#dfdfdf]">{highlightSearch(uri, query)}</span>;
+    return <span className="text-[#ffffff]">{highlightSearch(uri, query)}</span>;
   }
 
   const path = uri.substring(0, qIdx);
@@ -110,7 +110,7 @@ function renderUriWithQueryParams(uri: string, query?: string): React.ReactNode 
 
   return (
     <>
-      <span className="text-[#dfdfdf]">{highlightSearch(path, query)}</span>
+      <span className="text-[#ffffff]">{highlightSearch(path, query)}</span>
       <span className="text-[#8c9099]">?</span>
       {pairs.map((pair, pIdx) => {
         const eqIdx = pair.indexOf('=');
@@ -118,7 +118,7 @@ function renderUriWithQueryParams(uri: string, query?: string): React.ReactNode 
           return (
             <React.Fragment key={pIdx}>
               {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
-              <span className="text-[#dfdfdf]">{highlightSearch(pair, query)}</span>
+              <span className="text-[#ffffff] font-semibold">{highlightSearch(pair, query)}</span>
             </React.Fragment>
           );
         }
@@ -129,7 +129,7 @@ function renderUriWithQueryParams(uri: string, query?: string): React.ReactNode 
         return (
           <React.Fragment key={pIdx}>
             {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
-            <span className="text-[#dfdfdf]">{highlightSearch(key, query)}</span>
+            <span className="text-[#ffffff] font-bold">{highlightSearch(key, query)}</span>
             <span className="text-[#8c9099]">=</span>
             <span className="text-[#8ea834] font-medium">{highlightSearch(val, query)}</span>
           </React.Fragment>
@@ -140,7 +140,7 @@ function renderUriWithQueryParams(uri: string, query?: string): React.ReactNode 
 }
 
 /**
- * Parse & highlight URL-encoded key=value parameters (Burp Suite: keys in white, values in olive green #8ea834)
+ * Parse & highlight URL-encoded key=value parameters (Keys in crisp white #ffffff, values in olive green #8ea834)
  */
 function renderUrlEncodedParams(line: string, query?: string): React.ReactNode {
   if (!line.includes('=') && !line.includes('&')) {
@@ -156,7 +156,7 @@ function renderUrlEncodedParams(line: string, query?: string): React.ReactNode {
           return (
             <React.Fragment key={pIdx}>
               {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
-              <span className="text-[#dfdfdf]">{highlightSearch(pair, query)}</span>
+              <span className="text-[#ffffff] font-semibold">{highlightSearch(pair, query)}</span>
             </React.Fragment>
           );
         }
@@ -167,7 +167,7 @@ function renderUrlEncodedParams(line: string, query?: string): React.ReactNode {
         return (
           <React.Fragment key={pIdx}>
             {pIdx > 0 && <span className="text-[#8c9099]">&</span>}
-            <span className="text-[#dfdfdf]">{highlightSearch(key, query)}</span>
+            <span className="text-[#ffffff] font-bold">{highlightSearch(key, query)}</span>
             <span className="text-[#8c9099]">=</span>
             <span className="text-[#8ea834] font-medium">{highlightSearch(val, query)}</span>
           </React.Fragment>
@@ -178,7 +178,7 @@ function renderUrlEncodedParams(line: string, query?: string): React.ReactNode {
 }
 
 /**
- * Highlight Cookie and Set-Cookie header values
+ * Highlight Cookie and Set-Cookie header values (Cookie topics/names in crisp white #ffffff, values in signature Burp green #8ea834)
  */
 function renderCookieHeader(val: string, query?: string): React.ReactNode {
   const parts = val.split(';');
@@ -191,7 +191,7 @@ function renderCookieHeader(val: string, query?: string): React.ReactNode {
           return (
             <React.Fragment key={idx}>
               {idx > 0 && <span className="text-[#8c9099]">; </span>}
-              <span className="text-[#dfdfdf]">{highlightSearch(trimmed, query)}</span>
+              <span className="text-[#8ea834] font-medium">{highlightSearch(trimmed, query)}</span>
             </React.Fragment>
           );
         }
@@ -200,7 +200,7 @@ function renderCookieHeader(val: string, query?: string): React.ReactNode {
         return (
           <React.Fragment key={idx}>
             {idx > 0 && <span className="text-[#8c9099]">; </span>}
-            <span className="text-[#dfdfdf]">{highlightSearch(k, query)}</span>
+            <span className="text-[#ffffff] font-bold">{highlightSearch(k, query)}</span>
             <span className="text-[#8c9099]">=</span>
             <span className="text-[#8ea834] font-medium">{highlightSearch(v, query)}</span>
           </React.Fragment>
@@ -549,7 +549,7 @@ export const HttpSyntaxHighlighter: React.FC<HttpSyntaxHighlighterProps> = ({
   fontSize = 'text-[11px]',
   showLineNumbers = true,
   autoFormatJson = true,
-  wordWrap = false,
+  wordWrap = true,
   hideUninterestingHeaders = false,
   showNonPrintable = false,
   onContextMenu,

@@ -72,6 +72,17 @@ export interface RepeaterStoreState {
   diffRevisionB: RepeaterRevisionItem | null;
   splitOrientation: 'horizontal' | 'vertical';
 
+  // Worker Organization & Dual Pane State
+  selectedWorkerFilter: string | null;
+  setSelectedWorkerFilter: (worker: string | null) => void;
+  dualPaneMode: boolean;
+  secondaryActiveTabId: string | null;
+  toggleDualPaneMode: () => void;
+  setSecondaryActiveTabId: (tabId: string | null) => void;
+  isWorkerSidebarOpen: boolean;
+  toggleWorkerSidebar: () => void;
+  setWorkerSidebarOpen: (open: boolean) => void;
+
   // Actions: Tab Management
   createTab: (seed?: Partial<RepeaterTabState>) => string;
   createTabFromTransaction: (
@@ -154,6 +165,16 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
   diffRevisionB: null,
   splitOrientation: 'horizontal',
 
+  selectedWorkerFilter: null,
+  setSelectedWorkerFilter: (worker) => set({ selectedWorkerFilter: worker }),
+  dualPaneMode: false,
+  secondaryActiveTabId: null,
+  toggleDualPaneMode: () => set((state) => ({ dualPaneMode: !state.dualPaneMode })),
+  setSecondaryActiveTabId: (tabId) => set({ secondaryActiveTabId: tabId }),
+  isWorkerSidebarOpen: true,
+  toggleWorkerSidebar: () => set((state) => ({ isWorkerSidebarOpen: !state.isWorkerSidebarOpen })),
+  setWorkerSidebarOpen: (open) => set({ isWorkerSidebarOpen: open }),
+
   createTab: (seed) => {
     const id = `rep-tab-${uuidv4().substring(0, 8)}`;
     const tabNumber = get().tabs.length + 1;
@@ -191,6 +212,7 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       baselineRevisionIndex: seed?.baselineRevisionIndex ?? null,
       isExecuting: false,
       abortController: null,
+      lastExecutionOutput: seed?.lastExecutionOutput,
       requestViewMode: seed?.requestViewMode || 'pretty',
       responseViewMode: seed?.responseViewMode || 'pretty',
       isDirty: false,
@@ -254,6 +276,60 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       rawRequest = rawRequest.replace(/ (https?:\/\/[^/]+)?\/https?:\/\/[^/]+/gi, '');
     }
 
+    // Extract captured response details from transaction
+    const resp = anyTx.response;
+    const resBody =
+      resp?.bodyText ||
+      (typeof resp?.bodyBytes === 'string' ? resp.bodyBytes : '') ||
+      anyTx.resBody ||
+      anyTx.responseBody ||
+      '';
+    const statusCode: number =
+      resp?.statusCode || anyTx.status || anyTx.statusCode || 200;
+    const statusText: string =
+      resp?.statusText ||
+      anyTx.statusText ||
+      (statusCode >= 200 && statusCode < 300
+        ? 'OK'
+        : statusCode === 500
+        ? 'Internal Server Error'
+        : statusCode === 404
+        ? 'Not Found'
+        : 'OK');
+    const durationMs = anyTx.durationMs || resp?.durationMs || 45;
+
+    let initialRevision: RepeaterRevisionItem | undefined = undefined;
+    if (resBody || anyTx.status || resp?.statusCode) {
+      const respHeaders = resp?.headers || anyTx.resHeaders || [
+        { name: 'Content-Type', value: anyTx.mimeType || 'text/html; charset=utf-8' },
+        { name: 'Content-Length', value: String(resBody.length) },
+        { name: 'Server', value: 'PortSwigger-Lab' },
+      ];
+      const rawResponse =
+        resp?.rawResponse ||
+        anyTx.rawResponse ||
+        `HTTP/1.1 ${statusCode} ${statusText}\r\n${respHeaders.map((h: any) => `${h.name}: ${h.value}`).join('\r\n')}\r\n\r\n${resBody}`;
+
+      initialRevision = {
+        revisionId: anyTx.id || uuidv4(),
+        revisionNumber: 1,
+        timestamp: anyTx.timestamp || new Date().toLocaleTimeString(),
+        timestampMs: anyTx.timestampMs || Date.now(),
+        method,
+        url,
+        requestRaw: rawRequest,
+        requestHeaders: headers.map((h) => ({ name: h.name, value: h.value })),
+        requestBody: body,
+        responseRaw: rawResponse,
+        responseHeaders: respHeaders,
+        responseBody: resBody,
+        statusCode,
+        statusText,
+        durationMs,
+        sizeBytes: resBody.length || anyTx.sizeBytes || 0,
+      };
+    }
+
     const tabId = get().createTab({
       title,
       method,
@@ -266,6 +342,11 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       rawMode: false,
       requestViewMode: 'pretty',
       responseViewMode: 'pretty',
+      workerId: anyTx.workerId || anyTx.worker_id || undefined,
+      payloadCategory: anyTx.payloadCategory || anyTx.payload_category || undefined,
+      history: initialRevision ? [initialRevision] : [],
+      lastExecutionOutput: initialRevision,
+      activeRevisionIndex: 0,
     });
 
     useToastStore.getState().addToast({
@@ -604,8 +685,25 @@ export const useRepeaterStore = create<RepeaterStoreState>((set, get) => ({
       }
 
       const mergedVars = { ...globalVariables, ...tab.localVariables };
-      const interpolatedRaw = interpolateRequest(tabId, tab.rawRequest);
+      let interpolatedRaw = interpolateRequest(tabId, tab.rawRequest);
       const interpolatedUrl = interpolateRequest(tabId, targetUrl);
+
+      // If Auto Content-Length is enabled (or POST/PUT/PATCH with body), ensure accurate Content-Length header
+      if (tab.autoContentLength || ['POST', 'PUT', 'PATCH'].includes(tab.method.toUpperCase())) {
+        const bodySep = interpolatedRaw.indexOf('\r\n\r\n') !== -1 ? '\r\n\r\n' : '\n\n';
+        const sepIdx = interpolatedRaw.indexOf(bodySep);
+        if (sepIdx !== -1) {
+          const headerPart = interpolatedRaw.substring(0, sepIdx);
+          const bodyPart = interpolatedRaw.substring(sepIdx + bodySep.length);
+          const bodyBytes = new TextEncoder().encode(bodyPart).length;
+
+          if (/Content-Length:\s*\d+/i.test(headerPart)) {
+            interpolatedRaw = headerPart.replace(/Content-Length:\s*\d+/i, `Content-Length: ${bodyBytes}`) + bodySep + bodyPart;
+          } else if (bodyBytes > 0 || ['POST', 'PUT', 'PATCH'].includes(tab.method.toUpperCase())) {
+            interpolatedRaw = `${headerPart}\r\nContent-Length: ${bodyBytes}${bodySep}${bodyPart}`;
+          }
+        }
+      }
 
       const result: RepeaterExecutionResult = await ipcClient.sendRepeaterRequest({
         tabId,

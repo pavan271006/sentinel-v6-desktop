@@ -30,6 +30,7 @@ url = { workspace = true }
 regex = { workspace = true }
 parking_lot = { workspace = true }
 flate2 = { workspace = true }
+brotli = "9.0.0"
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -139,6 +139,15 @@ export function parseRawHttpRequestToItem(
 
 
 
+export interface InterceptResponseData {
+  statusCode: number;
+  statusText?: string;
+  body: string;
+  rawResponse: string;
+  timestamp: string;
+  url: string;
+}
+
 export interface InterceptStoreState {
   isInterceptOn: boolean;
   interceptedQueue: InterceptedRequestItem[];
@@ -146,6 +155,8 @@ export interface InterceptStoreState {
   editedRawRequest: string;
   viewMode: 'Pretty' | 'Raw' | 'Hex';
   inspectorOpen: boolean;
+  lastResponse: InterceptResponseData | null;
+  responseHistoryMap: Record<string, InterceptResponseData>;
 
   // Actions
   toggleIntercept: () => void;
@@ -177,6 +188,8 @@ export const useInterceptStore = create<InterceptStoreState>((set, get) => ({
   editedRawRequest: '',
   viewMode: 'Pretty',
   inspectorOpen: true,
+  lastResponse: null,
+  responseHistoryMap: {},
 
   toggleIntercept: () => {
     const next = !get().isInterceptOn;
@@ -263,6 +276,7 @@ export const useInterceptStore = create<InterceptStoreState>((set, get) => ({
     let resStatus = 200;
     let resBody = 'OK';
     let durationMs = 45;
+    let resRaw = '';
     try {
       const execResult = await ipcClient.sendRepeaterRequest({
         tabId: `intercept-${forwardId}`,
@@ -272,9 +286,20 @@ export const useInterceptStore = create<InterceptStoreState>((set, get) => ({
       resStatus = execResult.statusCode || 200;
       resBody = execResult.body || '';
       durationMs = execResult.durationMs || 45;
+      resRaw = execResult.rawResponse || `HTTP/1.1 ${resStatus} OK\r\nContent-Length: ${new TextEncoder().encode(resBody).length}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${resBody}`;
     } catch {
       resStatus = 200;
+      resRaw = `HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK`;
     }
+
+    const responseData: InterceptResponseData = {
+      statusCode: resStatus,
+      statusText: 'OK',
+      body: resBody,
+      rawResponse: resRaw,
+      timestamp: new Date().toLocaleTimeString(),
+      url: currentItem.url,
+    };
 
     // 2. Ingest into HTTP history (trafficStore)
     const histItem: TrafficSummary = {
@@ -305,6 +330,11 @@ export const useInterceptStore = create<InterceptStoreState>((set, get) => ({
       interceptedQueue: nextQueue,
       selectedQueueId: nextActive ? nextActive.id : null,
       editedRawRequest: nextActive ? nextActive.rawRequest : '',
+      lastResponse: responseData,
+      responseHistoryMap: {
+        ...get().responseHistoryMap,
+        [forwardId]: responseData,
+      },
     });
 
     useToastStore.getState().addToast({

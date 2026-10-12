@@ -33,3 +33,34 @@ build/
 Thumbs.db
 *.log
 sentinel_desktop_debug.log
+launch_err.txt
+run_log.txt
+
+# Testing & Scrape Debug Artifacts
+scripts/*.png
+scripts/*.html
+scripts/*.json
+scripts/debug_*.cjs
+scripts/inspect_*.cjs
+scripts/inspect_*.py
+scripts/check_*.cjs
+scripts/check_*.py
+scripts/trace_*.cjs
+scripts/track_*.cjs
+scripts/poll_*.cjs
+scripts/test_*.cjs
+scripts/take_*.cjs
+scripts/read_*.cjs
+scripts/observe_*.cjs
+scripts/diagnose_*.cjs
+scripts/analyze_*.cjs
+scripts/fetch_*.cjs
+scripts/parse_*.cjs
+scripts/live_self_test.cjs
+scripts/run_all_test_platforms.cjs
+scripts/run_benchmarks.cjs
+scripts/test_iframe_render.js
+
+# Internal agents & test reports
+.agents/
+coverage/

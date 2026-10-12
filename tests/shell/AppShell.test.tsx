@@ -19,7 +19,7 @@ describe('AppShell Layout Component', () => {
 
     // Status bar metrics
     expect(screen.getByText(/Sentinel V6.0.0/i)).toBeInTheDocument();
-    expect(screen.getByText(/FAIL-CLOSED/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/FAIL-CLOSED/i)[0]).toBeInTheDocument();
   });
 
   it('switches active workspace when activity bar button is clicked', () => {

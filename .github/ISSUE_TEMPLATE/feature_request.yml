@@ -1,0 +1,59 @@
+name: 💡 Feature Request
+description: Propose a new feature, protocol parser, or scanner capability for Sentinel V6
+title: "[FEATURE]: "
+labels: ["enhancement", "proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping shape the future of Sentinel V6 Desktop! Please provide as much technical detail as possible to help us assess implementation viability.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: Which area does this feature target?
+      options:
+        - Intercepting Proxy / Protocol Support (e.g. HTTP/3, WebSockets, gRPC)
+        - Intruder / Parameter Fuzzing Engines & Generators
+        - Autonomous SQLi & Vulnerability Scanners
+        - Stealth CDP Crawling & Anti-Bot Evasion
+        - Repeater & Traffic Diffing Tools
+        - Decoder & Cryptographic Transforms
+        - Plugin SDK (Rhai / WebAssembly)
+        - Desktop UI / Virtualized Grid Performance
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a specific problem or workflow bottleneck?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your proposed solution or technical implementation idea.
+      placeholder: Describe the desired feature, CLI/UI workflow, or protocol handling...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or how other tools (Burp Suite, Caido, OWASP ZAP) handle this?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution Willingness
+      options:
+        - label: I am interested in implementing or contributing a Pull Request for this feature.

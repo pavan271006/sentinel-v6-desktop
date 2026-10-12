@@ -32,9 +32,13 @@ export const RepeaterWorkspaceView: React.FC = () => {
     selectionData,
     updateTabRawRequest,
     applySelectionReplacement,
+    dualPaneMode,
+    secondaryActiveTabId,
+    setSecondaryActiveTabId,
   } = useRepeaterStore();
 
   const tab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  const secondaryTab = tabs.find((t) => t.id === secondaryActiveTabId) || tabs.find((t) => t.id !== activeTabId) || tabs[0];
   const activeRev = tab ? (tab.history[tab.activeRevisionIndex] || tab.lastExecutionOutput) : null;
   const rawResponse = activeRev
     ? (activeRev.responseRaw || `HTTP/1.1 ${activeRev.statusCode} ${activeRev.statusText}\r\n\r\n${activeRev.responseBody}`)
@@ -126,19 +130,110 @@ export const RepeaterWorkspaceView: React.FC = () => {
       {/* Top Tab Strip & Workspace Toolbar */}
       <RepeaterTabBar />
 
-      {/* Main Work Area: Request/Response Split + Inspector/Notes Panel + Far Right Dock Strip */}
+      {/* Main Work Area: Request/Response Split + Inspector/Notes Panel */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Center: Split View (Request & Response) */}
         <div className="flex-1 overflow-hidden relative min-w-0">
-          <SplitPane
-            direction={splitOrientation}
-            initialSize={550}
-            minSize={250}
-            maxSize={1200}
-            storageKey="sentinel_repeater_split"
-            primary={<RequestEditorPanel />}
-            secondary={<ResponseViewerPanel />}
-          />
+          {!dualPaneMode ? (
+            <SplitPane
+              direction={splitOrientation}
+              initialSize={550}
+              minSize={250}
+              maxSize={1200}
+              storageKey="sentinel_repeater_split"
+              primary={<RequestEditorPanel tabId={tab?.id} />}
+              secondary={<ResponseViewerPanel tabId={tab?.id} />}
+            />
+          ) : (
+            <SplitPane
+              direction="horizontal"
+              initialSize={700}
+              minSize={320}
+              maxSize={1800}
+              storageKey="sentinel_repeater_dual_pane_master"
+              primary={
+                <div className="flex flex-col h-full w-full overflow-hidden border-r border-[#2b2d30]">
+                  {/* Pane A Header */}
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-[#18191c] border-b border-[#2b2d30] text-xs flex-shrink-0 select-none">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#00ffff] font-mono tracking-wider">PANE A</span>
+                      <span className="text-text-muted font-mono">|</span>
+                      <span className="text-text-primary font-mono text-[11px] truncate max-w-[200px]">
+                        {tab?.title}
+                      </span>
+                      {tab?.workerId && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-400 border border-cyan-800/60 font-semibold">
+                          {tab.workerId}
+                        </span>
+                      )}
+                      {tab?.payloadCategory && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-400 border border-amber-800/60">
+                          {tab.payloadCategory}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-mono text-text-muted">Primary Active Tab</span>
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <SplitPane
+                      direction={splitOrientation}
+                      initialSize={340}
+                      minSize={160}
+                      maxSize={1000}
+                      storageKey="sentinel_repeater_dual_pane_a"
+                      primary={<RequestEditorPanel tabId={tab?.id} />}
+                      secondary={<ResponseViewerPanel tabId={tab?.id} />}
+                    />
+                  </div>
+                </div>
+              }
+              secondary={
+                <div className="flex flex-col h-full w-full overflow-hidden">
+                  {/* Pane B Header with Comparison Selector */}
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-[#18191c] border-b border-[#2b2d30] text-xs flex-shrink-0 select-none">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="font-bold text-[#38bdf8] font-mono tracking-wider">PANE B</span>
+                      <span className="text-text-muted font-mono">|</span>
+                      <select
+                        value={secondaryTab?.id || ''}
+                        onChange={(e) => setSecondaryActiveTabId(e.target.value)}
+                        className="bg-[#141517] text-white text-xs px-2 py-0.5 rounded border border-[#2b2d30] outline-none font-mono truncate max-w-[260px]"
+                        title="Select Tab for Side-by-Side Comparison"
+                      >
+                        {tabs.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.workerId ? `[${t.workerId}] ` : ''}{t.title} ({t.method})
+                          </option>
+                        ))}
+                      </select>
+                      {secondaryTab?.workerId && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-400 border border-cyan-800/60 font-semibold">
+                          {secondaryTab.workerId}
+                        </span>
+                      )}
+                      {secondaryTab?.payloadCategory && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-400 border border-amber-800/60">
+                          {secondaryTab.payloadCategory}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-mono text-[#38bdf8]">Concurrent Dual Audit</span>
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <SplitPane
+                      direction={splitOrientation}
+                      initialSize={340}
+                      minSize={160}
+                      maxSize={1000}
+                      storageKey="sentinel_repeater_dual_pane_b"
+                      primary={<RequestEditorPanel tabId={secondaryTab?.id} />}
+                      secondary={<ResponseViewerPanel tabId={secondaryTab?.id} />}
+                    />
+                  </div>
+                </div>
+              }
+            />
+          )}
 
           {/* History Slide-Out Drawer */}
           <RepeaterHistoryDrawer />

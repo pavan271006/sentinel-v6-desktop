@@ -98,10 +98,10 @@ describe('ResponseViewerPanel Component Tests', () => {
     expect(screen.getByText('Roundtrip Timing Waterfall')).toBeInTheDocument();
     expect(screen.getByText('1.2 ms')).toBeInTheDocument();
 
-    // Switch to Render (SEC-11)
+    // Switch to Render
     const previewTab = screen.getByRole('tab', { name: /Render/i });
     fireEvent.click(previewTab);
-    expect(screen.getByText(/SEC-11 Sandboxed Preview/i)).toBeInTheDocument();
+    expect(screen.getByTitle(/Response HTML Preview/i)).toBeInTheDocument();
   });
 
   it('renders empty state when no execution history exists', () => {

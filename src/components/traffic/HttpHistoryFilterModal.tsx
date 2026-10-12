@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, HelpCircle, Settings, Flame } from 'lucide-react';
+import { X, HelpCircle, Settings, Flame, ShieldCheck } from 'lucide-react';
 import { Button } from '../../design-system/Button';
 
 export interface HttpHistoryFilterConfig {
@@ -7,6 +7,7 @@ export interface HttpHistoryFilterConfig {
   showOnlyInScope: boolean;
   hideNoResponse: boolean;
   showOnlyParameterized: boolean;
+  showOnlyQualityData?: boolean;
 
   // MIME Types
   mimeHtml: boolean;
@@ -48,13 +49,14 @@ export const DEFAULT_FILTER_CONFIG: HttpHistoryFilterConfig = {
   showOnlyInScope: false,
   hideNoResponse: false,
   showOnlyParameterized: false,
+  showOnlyQualityData: false,
 
   mimeHtml: true,
   mimeScript: true,
   mimeXml: true,
-  mimeCss: false,
+  mimeCss: true,
   mimeOtherText: true,
-  mimeImages: false,
+  mimeImages: true,
   mimeFlash: true,
   mimeOtherBinary: true,
 
@@ -70,7 +72,7 @@ export const DEFAULT_FILTER_CONFIG: HttpHistoryFilterConfig = {
 
   filterShowOnlyExt: false,
   showOnlyExtList: 'asp,aspx,jsp,php',
-  filterHideExt: true,
+  filterHideExt: false,
   hideExtList: 'js,gif,jpg,png,ico,css,woff,woff2',
 
   showOnlyWithNotes: false,
@@ -84,6 +86,7 @@ export interface HttpHistoryFilterModalProps {
   onClose: () => void;
   config: HttpHistoryFilterConfig;
   onApply: (newConfig: HttpHistoryFilterConfig) => void;
+  title?: string;
 }
 
 export const HttpHistoryFilterModal: React.FC<HttpHistoryFilterModalProps> = ({
@@ -91,6 +94,7 @@ export const HttpHistoryFilterModal: React.FC<HttpHistoryFilterModalProps> = ({
   onClose,
   config,
   onApply,
+  title,
 }) => {
   const [draft, setDraft] = useState<HttpHistoryFilterConfig>(config);
 
@@ -163,7 +167,7 @@ export const HttpHistoryFilterModal: React.FC<HttpHistoryFilterModalProps> = ({
         <div className="h-8 bg-[#2b2d30] border-b border-[#3e4249] flex items-center justify-between px-3">
           <div className="flex items-center gap-1.5 font-medium text-white text-xs">
             <Flame className="w-4 h-4 text-[#f37021]" />
-            <span>HTTP history filter</span>
+            <span>{title || 'HTTP history filter'}</span>
           </div>
           <div className="flex items-center gap-2 text-[#9da5b4]">
             <button className="hover:text-white" title="Help">
@@ -218,6 +222,15 @@ export const HttpHistoryFilterModal: React.FC<HttpHistoryFilterModalProps> = ({
                   className="rounded bg-[#141517] border-[#4b5563] text-[#0284c7] focus:ring-0 w-3.5 h-3.5"
                 />
                 <span>Show only parameterized requests</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer hover:text-white">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.showOnlyQualityData)}
+                  onChange={(e) => setDraft({ ...draft, showOnlyQualityData: e.target.checked })}
+                  className="rounded bg-[#141517] border-[#4b5563] text-[#0284c7] focus:ring-0 w-3.5 h-3.5"
+                />
+                <span>Show only quality data</span>
               </label>
             </fieldset>
 

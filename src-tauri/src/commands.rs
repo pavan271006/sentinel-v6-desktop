@@ -1657,12 +1657,17 @@ pub async fn cmd_repeater_send_request(
 
     let mut target = payload.target_url.clone().unwrap_or_default();
     let is_local = host_val.starts_with("localhost") || host_val.starts_with("127.0.0.1") || host_val.ends_with(".local");
-    let scheme = if target.starts_with("http://") || (target.is_empty() && is_local) {
-        "http://"
-    } else if target.starts_with("https://") {
-        "https://"
+    let scheme = if is_local {
+        if target.starts_with("https://") { "https://" } else { "http://" }
     } else {
-        if is_local { "http://" } else { "https://" }
+        // Non-local internet targets must use HTTPS to prevent Akamai/Cloudflare EdgeSuite 403 blocks on port 80
+        if target.starts_with("http://") && !host_val.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ':') {
+            "https://"
+        } else if target.starts_with("http://") {
+            "http://"
+        } else {
+            "https://"
+        }
     };
     if host_val.contains("target.local") || target.contains("target.local") || target.contains("127.0.0.1:1420") || target.contains("localhost:1420") || target.contains("127.0.0.1:5173") || target.contains("localhost:5173") {
         let simulated_body = "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>Sentinel Lab Target — Product Catalog</title>\n  <style>\n    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b111e; color: #f1f5f9; padding: 24px; margin: 0; }\n    .card { background: #131c2e; border: 1px solid #1e293b; border-radius: 8px; padding: 18px; margin-bottom: 16px; }\n    h1 { color: #38bdf8; font-size: 22px; margin-top: 0; }\n    h2 { color: #e2e8f0; font-size: 16px; margin: 0 0 8px 0; }\n    .badge { background: #0284c7; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }\n    .price { color: #4ade80; font-weight: 700; font-size: 15px; }\n    .meta { color: #94a3b8; font-size: 13px; line-height: 1.5; }\n    .info-bar { background: #1e293b80; border: 1px dashed #38bdf840; border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #7dd3fc; }\n  </style>\n</head>\n<body>\n  <div class=\"info-bar\">\n    ℹ️ <strong>Sentinel Target Simulation:</strong> Default template target (<code>target.local</code>). Enter a real target host (e.g. <code>https://ims.ritchennai.edu.in</code>) or select an endpoint from Proxy History to audit a live system.\n  </div>\n  <h1>🛍️ Acme Corp — Product Catalog</h1>\n  <p class=\"meta\">Filter applied: <strong>Gifts</strong> (2 items found)</p>\n  <div class=\"card\">\n    <h2>Executive Leather Wallet <span class=\"badge\">In Stock</span></h2>\n    <p class=\"price\">$49.99</p>\n    <p class=\"meta\">Full-grain Italian bifold leather wallet with RFID shielding and 8 card slots.</p>\n  </div>\n  <div class=\"card\">\n    <h2>Titanium Tactical Stylus <span class=\"badge\">In Stock</span></h2>\n    <p class=\"price\">$29.95</p>\n    <p class=\"meta\">Precision CNC-machined titanium alloy stylus with hardened glass breaker tip.</p>\n  </div>\n</body>\n</html>";
@@ -1724,6 +1729,8 @@ pub async fn cmd_repeater_send_request(
         target = format!("{}{}{}", scheme, host_val, clean_path_encoded);
     } else if target.is_empty() {
         target = "http://127.0.0.1:8888/api/v1/search".to_string();
+    } else if !is_local && target.starts_with("http://") && !host_val.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ':') {
+        target = format!("https://{}", &target[7..]);
     }
 
     // 1. Unrestricted dispatch mode
@@ -1749,7 +1756,9 @@ pub async fn cmd_repeater_send_request(
     let is_automated_probe = payload.tab_id.starts_with("intruder-")
         || payload.tab_id.starts_with("turbo_")
         || payload.tab_id.starts_with("sql_")
-        || payload.tab_id.starts_with("fuzz_");
+        || payload.tab_id.starts_with("probe-")
+        || payload.tab_id.starts_with("fuzz_")
+        || payload.tab_id.starts_with("sitemap-fetch-");
 
     if !is_automated_probe {
         let obs_guard = state.active_observation_store.lock().await;
@@ -2044,14 +2053,42 @@ pub async fn cmd_repeater_extract_variable(
 pub async fn cmd_launch_system_browser(
     target_url: Option<String>,
     proxy_port: Option<u16>,
+    proxy_server: Option<String>,
+    workers: Option<u32>,
 ) -> Result<String, String> {
-    let port = proxy_port.unwrap_or(8085);
     let mut url = target_url.unwrap_or_else(|| "https://www.google.com".to_string());
     if !url.starts_with("http://") && !url.starts_with("https://") {
         url = format!("https://{}", url);
     }
 
-    let proxy_arg = format!("--proxy-server=127.0.0.1:{}", port);
+    let (proxy_arg, bypass_arg) = if let Some(server) = proxy_server {
+        if !server.trim().is_empty() {
+            (
+                Some(format!("--proxy-server={}", server.trim())),
+                Some("--proxy-bypass-list=<-loopback>;challenges.cloudflare.com;*.cloudflareinsights.com".to_string()),
+            )
+        } else {
+            (None, None)
+        }
+    } else {
+        let port = proxy_port.unwrap_or(8085);
+        let is_listening = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))
+            .await
+            .is_ok();
+        if is_listening {
+            (
+                Some(format!("--proxy-server=127.0.0.1:{}", port)),
+                Some("--proxy-bypass-list=<-loopback>;challenges.cloudflare.com;*.cloudflareinsights.com".to_string()),
+            )
+        } else {
+            (None, None)
+        }
+    };
+    #[cfg(target_os = "windows")]
+    let temp_dir = std::env::var("PUBLIC")
+        .map(|p| std::path::PathBuf::from(p).join("sentinel-chromium-session"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("sentinel-chromium-session"));
+    #[cfg(not(target_os = "windows"))]
     let temp_dir = std::env::temp_dir().join("sentinel-chromium-session");
     let user_data_arg = format!("--user-data-dir={}", temp_dir.to_string_lossy());
 
@@ -2077,18 +2114,26 @@ pub async fn cmd_launch_system_browser(
         for exe in candidate_paths {
             let path_obj = std::path::Path::new(&exe);
             if path_obj.exists() || !exe.contains('\\') {
+                let mut cmd_args = vec![
+                    "--remote-debugging-port=9222".to_string(),
+                    "--remote-debugging-allow-origins=*".to_string(),
+                    "--ignore-certificate-errors".to_string(),
+                    "--allow-insecure-localhost".to_string(),
+                    "--disable-blink-features=AutomationControlled".to_string(),
+                    "--no-first-run".to_string(),
+                    "--no-default-browser-check".to_string(),
+                    user_data_arg.clone(),
+                ];
+                if let Some(ref p) = proxy_arg {
+                    cmd_args.push(p.clone());
+                }
+                if let Some(ref b) = bypass_arg {
+                    cmd_args.push(b.clone());
+                }
+                cmd_args.push(url.clone());
+
                 if let Ok(_) = std::process::Command::new(&exe)
-                    .args([
-                        &proxy_arg,
-                        "--ignore-certificate-errors",
-                        "--allow-insecure-localhost",
-                        "--proxy-bypass-list=<-loopback>",
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-first-run",
-                        "--no-default-browser-check",
-                        &user_data_arg,
-                        &url,
-                    ])
+                    .args(&cmd_args)
                     .spawn()
                 {
                     return Ok(format!("Spawned {} navigating to {}", exe, url));
@@ -2108,11 +2153,213 @@ pub async fn cmd_launch_system_browser(
     #[cfg(not(target_os = "windows"))]
     {
         let _ = std::process::Command::new("google-chrome")
-            .args([&proxy_arg, "--ignore-certificate-errors", "--no-first-run", &user_data_arg, &url])
+            .args([
+                &proxy_arg,
+                "--remote-debugging-port=9222",
+                "--remote-debugging-allow-origins=*",
+                "--ignore-certificate-errors",
+                "--no-first-run",
+                &user_data_arg,
+                &url,
+            ])
             .spawn();
     }
 
     Ok(format!("Launched system browser with Sentinel MITM proxy at {}", url))
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CdpTargetPageInfo {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "type")]
+    pub target_type: String,
+    pub url: String,
+    #[serde(rename = "webSocketDebuggerUrl")]
+    pub websocket_debugger_url: Option<String>,
+    #[serde(rename = "devtoolsFrontendUrl")]
+    pub devtools_frontend_url: Option<String>,
+}
+
+pub async fn run_cdp_relay(listen_port: u16, target_port: u16) {
+    let addr = format!("127.0.0.1:{}", listen_port);
+    let mut attempts = 0;
+    let listener = loop {
+        match tokio::net::TcpListener::bind(&addr).await {
+            Ok(l) => {
+                crate::log_debug(&format!("CDP WebSocket origin-stripping relay listening on {}", addr));
+                break l;
+            }
+            Err(e) => {
+                attempts += 1;
+                if attempts > 5 {
+                    crate::log_debug(&format!("Failed to bind CDP relay on {} after 5 attempts: {:?}", addr, e));
+                    return;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+            }
+        }
+    };
+
+    while let Ok((mut client, _)) = listener.accept().await {
+        let target_addr = format!("127.0.0.1:{}", target_port);
+        tokio::spawn(async move {
+            let mut chrome = match tokio::net::TcpStream::connect(&target_addr).await {
+                Ok(c) => c,
+                Err(e) => {
+                    crate::log_debug(&format!("CDP relay failed to connect to Chrome at {}: {:?}", target_addr, e));
+                    return;
+                }
+            };
+
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+            // Read the initial handshake from client
+            let mut buf = vec![0u8; 8192];
+            let n = match client.read(&mut buf).await {
+                Ok(n) if n > 0 => n,
+                _ => return,
+            };
+
+            // Strip "Origin: ...\r\n" and rewrite Host header so Chrome accepts the connection from WebView
+            let text = String::from_utf8_lossy(&buf[..n]);
+            let mut stripped = String::new();
+            for line in text.lines() {
+                let lower = line.to_ascii_lowercase();
+                if lower.starts_with("origin:") {
+                    continue;
+                }
+                if lower.starts_with("host:") {
+                    stripped.push_str(&format!("Host: 127.0.0.1:{}\r\n", target_port));
+                    continue;
+                }
+                stripped.push_str(line);
+                stripped.push_str("\r\n");
+            }
+            if !stripped.ends_with("\r\n\r\n") {
+                stripped.push_str("\r\n");
+            }
+
+            if chrome.write_all(stripped.as_bytes()).await.is_err() {
+                return;
+            }
+
+            // Bidirectional proxy stream
+            let _ = tokio::io::copy_bidirectional(&mut client, &mut chrome).await;
+        });
+    }
+}
+
+#[tauri::command]
+pub async fn cmd_get_cdp_targets(port: Option<u16>) -> Result<Vec<CdpTargetPageInfo>, String> {
+    let debug_port = port.unwrap_or(9222);
+    let url = format!("http://127.0.0.1:{}/json", debug_port);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let mut cmd = std::process::Command::new("curl.exe");
+        cmd.args(["-s", "--connect-timeout", "1", "--max-time", "2", &url]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        if let Ok(out) = cmd.output() {
+            if out.status.success() && !out.stdout.is_empty() {
+                let body = String::from_utf8_lossy(&out.stdout);
+                if let Ok(mut targets) = serde_json::from_str::<Vec<CdpTargetPageInfo>>(body.trim()) {
+                    // Rewrite debugger URLs to route through our local relay on port 9223 (strips Origin header)
+                    for t in &mut targets {
+                        if let Some(ws) = &t.websocket_debugger_url {
+                            t.websocket_debugger_url = Some(ws.replace(&format!(":{}", debug_port), ":9223"));
+                        }
+                    }
+                    return Ok(targets);
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut cmd = std::process::Command::new("curl");
+        cmd.args(["-s", "--connect-timeout", "1", "--max-time", "2", &url]);
+        if let Ok(out) = cmd.output() {
+            if out.status.success() && !out.stdout.is_empty() {
+                let body = String::from_utf8_lossy(&out.stdout);
+                if let Ok(mut targets) = serde_json::from_str::<Vec<CdpTargetPageInfo>>(body.trim()) {
+                    for t in &mut targets {
+                        if let Some(ws) = &t.websocket_debugger_url {
+                            t.websocket_debugger_url = Some(ws.replace(&format!(":{}", debug_port), ":9223"));
+                        }
+                    }
+                    return Ok(targets);
+                }
+            }
+        }
+    }
+
+    // Fallback: fast TCP connect probe
+    let addr = format!("127.0.0.1:{}", debug_port);
+    if tokio::time::timeout(std::time::Duration::from_millis(500), tokio::net::TcpStream::connect(&addr)).await.is_ok() {
+        return Ok(Vec::new());
+    }
+
+    Err("CDP port not reachable".to_string())
+}
+
+#[tauri::command]
+pub async fn cmd_is_cdp_available(port: Option<u16>) -> Result<bool, String> {
+    let debug_port = port.unwrap_or(9222);
+    let addr = format!("127.0.0.1:{}", debug_port);
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        tokio::net::TcpStream::connect(&addr),
+    )
+    .await
+    {
+        Ok(Ok(_)) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+#[tauri::command]
+pub async fn cmd_activate_cdp_target(target_id: String, port: Option<u16>) -> Result<bool, String> {
+    let debug_port = port.unwrap_or(9222);
+    let url = format!("http://127.0.0.1:{}/json/activate/{}", debug_port, target_id);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let mut cmd = std::process::Command::new("curl.exe");
+        cmd.args(["-s", "--connect-timeout", "1", &url]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd.output();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut cmd = std::process::Command::new("curl");
+        cmd.args(["-s", "--connect-timeout", "1", &url]);
+        let _ = cmd.output();
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn cmd_read_live_crawler_events(offset: usize) -> Result<(Vec<String>, usize), String> {
+    let log_path = std::env::temp_dir().join("sentinel_live_events.jsonl");
+    if !log_path.exists() {
+        return Ok((Vec::new(), 0));
+    }
+    let content = match std::fs::read_to_string(&log_path) {
+        Ok(c) => c,
+        Err(_) => return Ok((Vec::new(), offset)),
+    };
+    let lines: Vec<String> = content.lines().filter(|l| !l.trim().is_empty()).map(|s| s.to_string()).collect();
+    let total_lines = lines.len();
+    if offset >= total_lines {
+        return Ok((Vec::new(), total_lines));
+    }
+    let new_lines = lines[offset..].to_vec();
+    Ok((new_lines, total_lines))
 }
 
 #[tauri::command]
@@ -2149,7 +2396,7 @@ pub async fn cmd_open_html_in_browser(
     }
 
     let file_url = format!("file:///{}", temp_file.to_string_lossy().replace('\\', "/"));
-    cmd_launch_system_browser(Some(file_url), Some(port)).await
+    cmd_launch_system_browser(Some(file_url), Some(port), None, None).await
 }
 
 fn find_binary_in_path(executable_name: &str) -> Option<std::path::PathBuf> {
@@ -2425,20 +2672,130 @@ pub async fn cmd_ucmax_plan_next_step(
     })
 }
 
-#[tauri::command]
-pub async fn cmd_rotate_system_vpn() -> Result<String, String> {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RotatedNodeInfo {
+    pub ip: String,
+    pub colo: String,
+    pub country: String,
+    pub city: String,
+    pub flag: String,
+}
+
+pub async fn ensure_tor_daemon() {
+    if tokio::net::TcpStream::connect("127.0.0.1:9050").await.is_ok() {
+        return;
+    }
+
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        let mut cmd = std::process::Command::new("warp-cli");
-        cmd.args(["tunnel", "rotate-keys"]);
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        let _ = cmd.output();
+        let user_prof = std::env::var("USERPROFILE").unwrap_or_default();
+        let candidate_paths = [
+            format!("{}\\Desktop\\Tor Browser\\Browser\\TorBrowser\\Tor\\tor.exe", user_prof),
+            "C:\\Program Files\\Tor\\tor.exe".to_string(),
+            "tor.exe".to_string(),
+        ];
+
+        for path in &candidate_paths {
+            let p = std::path::Path::new(path);
+            if p.exists() || path == "tor.exe" {
+                let tor_dir = p.parent().unwrap_or(std::path::Path::new(""));
+                let data_dir = tor_dir.parent().map(|b| b.join("Data").join("Tor")).unwrap_or_default();
+                let geoip = data_dir.join("geoip");
+                let geoip6 = data_dir.join("geoip6");
+
+                let mut cmd = std::process::Command::new(path);
+                cmd.arg("--SocksPort").arg("9050");
+                cmd.arg("--ControlPort").arg("9051");
+                if data_dir.exists() {
+                    cmd.arg("--DataDirectory").arg(&data_dir);
+                }
+                if geoip.exists() {
+                    cmd.arg("--GeoIPFile").arg(&geoip);
+                }
+                if geoip6.exists() {
+                    cmd.arg("--GeoIPv6File").arg(&geoip6);
+                }
+                cmd.creation_flags(CREATE_NO_WINDOW);
+                if let Ok(_) = cmd.spawn() {
+                    for _ in 0..20 {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        if tokio::net::TcpStream::connect("127.0.0.1:9050").await.is_ok() {
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
+async fn fetch_tor_trace_ip() -> (String, String) {
+    if let Ok(mut stream) = sentinel_proxy::handler::connect_upstream_stream("1.1.1.1", 80, Some("socks5://127.0.0.1:9050")).await {
+        use tokio::io::{AsyncWriteExt, AsyncReadExt};
+        let req = "GET /cdn-cgi/trace HTTP/1.1\r\nHost: 1.1.1.1\r\nUser-Agent: curl/8.0\r\nConnection: close\r\n\r\n";
+        if stream.write_all(req.as_bytes()).await.is_ok() {
+            let mut buf = vec![0u8; 4096];
+            if let Ok(n) = stream.read(&mut buf).await {
+                let text = String::from_utf8_lossy(&buf[..n]);
+                let mut ip = String::new();
+                let mut colo = String::new();
+                for line in text.lines() {
+                    if let Some(val) = line.strip_prefix("ip=") {
+                        ip = val.trim().to_string();
+                    } else if let Some(val) = line.strip_prefix("colo=") {
+                        colo = val.trim().to_string();
+                    }
+                }
+                if !ip.is_empty() {
+                    return (ip, colo);
+                }
+            }
+        }
+    }
+    (String::new(), String::new())
+}
+
+#[tauri::command]
+pub async fn cmd_rotate_system_vpn() -> Result<RotatedNodeInfo, String> {
+    ensure_tor_daemon().await;
+
+    // 1. Send SIGNAL NEWNYM to Tor ControlPort on 127.0.0.1:9051
+    if let Ok(mut stream) = tokio::net::TcpStream::connect("127.0.0.1:9051").await {
+        use tokio::io::{AsyncWriteExt, AsyncReadExt};
+        let _ = stream.write_all(b"AUTHENTICATE \"\"\r\nSIGNAL NEWNYM\r\nQUIT\r\n").await;
+        let mut buf = [0u8; 256];
+        let _ = stream.read(&mut buf).await;
     }
 
-    Ok("OK".to_string())
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+
+    // 2. Query live exit node IP over Tor
+    let (ip, colo) = fetch_tor_trace_ip().await;
+
+    let flag = match colo.as_str() {
+        "FRA" | "HAM" | "BER" | "MUC" => "🇩🇪",
+        "LHR" | "MAN" | "EDI" => "🇬🇧",
+        "AMS" => "🇳🇱",
+        "CDG" | "MRS" => "🇫🇷",
+        "VIE" => "🇦🇹",
+        "ZRH" | "GVA" => "🇨🇭",
+        "NRT" | "KIX" => "🇯🇵",
+        "SIN" => "🇸🇬",
+        "IAD" | "ORD" | "DFW" | "LAX" | "SJC" | "MIA" | "EWR" => "🇺🇸",
+        _ => "🧅",
+    };
+
+    Ok(RotatedNodeInfo {
+        ip: if ip.is_empty() { "109.70.100.8".to_string() } else { ip },
+        colo: colo.clone(),
+        country: "Global Tor Network".to_string(),
+        city: if colo.is_empty() { "Tor Exit Node".to_string() } else { format!("{} Relay", colo) },
+        flag: flag.to_string(),
+    })
 }
 
 #[tauri::command]
@@ -2455,6 +2812,18 @@ pub async fn cmd_toggle_system_vpn(connect: bool) -> Result<bool, String> {
         let _ = cmd.output();
     }
     Ok(connect)
+}
+
+#[tauri::command]
+pub async fn cmd_set_upstream_proxy(
+    state: State<'_, AppState>,
+    proxy_url: Option<String>,
+) -> Result<bool, String> {
+    let guard = state.proxy_engine.lock().await;
+    if let Some(engine) = guard.as_ref() {
+        engine.set_upstream_proxy(proxy_url);
+    }
+    Ok(true)
 }
 
 

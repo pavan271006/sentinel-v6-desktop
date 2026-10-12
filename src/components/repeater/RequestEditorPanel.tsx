@@ -1,11 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useRepeaterStore } from '../../stores/repeaterStore';
+import { useTrafficStore } from '../../stores/trafficStore';
+import { useToastStore } from '../../stores/toastStore';
+import { ipcClient } from '../../ipc/client';
 import { Button } from '../../design-system/Button';
 import { Input } from '../../design-system/Input';
 import { Select } from '../../design-system/Select';
 import { Tabs, TabItem } from '../../design-system/Tabs';
 import { HttpMethod, RequestEditorMode, RequestBodyType } from '../../types/repeater';
 import { generateUuid as uuidv4, findUsedVariables, getUtf8ByteLength, parseRawHttpRequest, serializeHttpRequest } from '../../utils/repeaterUtils';
+import { revitalizeHttpRequest } from '../../utils/universalRequestRevitalizer';
 import {
   Send,
   Square,
@@ -16,6 +20,7 @@ import {
   AlertCircle,
   FileCode,
   Sparkles,
+  RotateCw,
   Eye,
   Binary,
 } from 'lucide-react';
@@ -55,7 +60,11 @@ const STANDARD_HEADERS = [
   'X-CSRF-Token',
 ];
 
-export const RequestEditorPanel: React.FC = () => {
+export interface RequestEditorPanelProps {
+  tabId?: string;
+}
+
+export const RequestEditorPanel: React.FC<RequestEditorPanelProps> = ({ tabId }) => {
   const {
     tabs,
     activeTabId,
@@ -78,13 +87,15 @@ export const RequestEditorPanel: React.FC = () => {
     setSelectionData,
   } = useRepeaterStore();
 
-  const tab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  const currentTabId = tabId || activeTabId;
+  const tab = tabs.find((t) => t.id === currentTabId) || tabs[0];
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [hideBoringHeaders, setHideBoringHeaders] = useState(false);
-  const [wordWrap, setWordWrap] = useState(false);
+  const [wordWrap, setWordWrap] = useState(true);
   const [showNonPrintable, setShowNonPrintable] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [isRefreshingTokens, setIsRefreshingTokens] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -233,6 +244,161 @@ export const RequestEditorPanel: React.FC = () => {
     updateTabHeaders(tab.id, headers);
   };
 
+  // Universal Request & Token Revitalizer:
+  // Compatible with ALL websites & web frameworks (Laravel, Django, Rails, Spring, ASP.NET, Express, PHP, REST APIs).
+  // Eliminates stale cache headers, renews unconsumed anti-CSRF tokens, refreshes session cookies,
+  // making any request act like a brand-new, working browser request.
+  const handleRefreshTokens = async () => {
+    if (isRefreshingTokens) return;
+    setIsRefreshingTokens(true);
+
+    try {
+      // 1. Parse current request
+      const parsed = parseRawHttpRequest(tab.rawRequest);
+      const targetPath = parsed.path || '/';
+
+      // 2. Determine target host dynamically
+      let host = '';
+      if (tab.url) {
+        try {
+          host = new URL(tab.url).hostname;
+        } catch {
+          try {
+            host = new URL('http://' + tab.url).hostname;
+          } catch {}
+        }
+      }
+      if (!host) {
+        const hostHeader =
+          parsed.headers.find((h) => h.name.toLowerCase() === 'host')?.value ||
+          tab.headers.find((h) => h.name.toLowerCase() === 'host')?.value;
+        if (hostHeader) host = hostHeader.split(':')[0].trim();
+      }
+
+      // 3. Find candidate transactions from proxy history for this host
+      const allTxs = useTrafficStore.getState().transactions || [];
+      const relevantTxs = host
+        ? allTxs.filter((t) => t.host === host || (t.url && t.url.includes(host))).reverse()
+        : [...allTxs].reverse();
+      const candidateTxs = relevantTxs.length > 0 ? relevantTxs : [...allTxs].reverse();
+
+      // 4. Determine intelligent probe URL
+      // If Referer header exists and is from the same host, probe the referring page where forms originate
+      let probePath = targetPath;
+      const refererVal =
+        parsed.headers.find((h) => h.name.toLowerCase() === 'referer')?.value ||
+        tab.headers.find((h) => h.name.toLowerCase() === 'referer')?.value;
+      if (refererVal) {
+        try {
+          const refUrl = new URL(refererVal);
+          if (refUrl.hostname === host || !host) {
+            probePath = refUrl.pathname + refUrl.search;
+          }
+        } catch {}
+      }
+
+      // 5. Existing cookies from editor to pass to probe (including gateway cookies)
+      const existingCookieHdr =
+        parsed.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value ||
+        tab.headers.find((h) => h.name.toLowerCase() === 'cookie')?.value ||
+        '';
+
+      const probeCookiePairs: string[] = [];
+      if (existingCookieHdr) {
+        for (const part of existingCookieHdr.split(';')) {
+          const trimmed = part.trim();
+          if (trimmed) {
+            const lower = trimmed.toLowerCase();
+            if (
+              lower.startsWith('wssplashchk') ||
+              lower.startsWith('cf_') ||
+              lower.includes('splash') ||
+              lower.includes('alb') ||
+              lower.includes('incap')
+            ) {
+              probeCookiePairs.push(trimmed);
+            }
+          }
+        }
+      }
+
+      const probeCookieStr = probeCookiePairs.length > 0 ? `Cookie: ${probeCookiePairs.join('; ')}\r\n` : '';
+
+      const isHttps = tab.url.startsWith('https://') || !tab.url.startsWith('http://');
+      const scheme = isHttps ? 'https://' : 'http://';
+      const probeUrl = `${scheme}${host}${probePath.startsWith('/') ? probePath : '/' + probePath}`;
+
+      const probeReq = `GET ${probePath.startsWith('/') ? probePath : '/' + probePath} HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\nsec-ch-ua: "Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"\r\nsec-ch-ua-mobile: ?0\r\nsec-ch-ua-platform: "Windows"\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\nSec-Fetch-Site: same-origin\r\nSec-Fetch-Mode: navigate\r\nSec-Fetch-User: ?1\r\nSec-Fetch-Dest: document\r\nReferer: ${probeUrl}\r\nAccept-Encoding: gzip, deflate, br, zstd\r\nAccept-Language: en-US,en;q=0.9\r\n${probeCookieStr}\r\n`;
+
+      let probeRes: any = null;
+      try {
+        probeRes = await ipcClient.sendRepeaterRequest({
+          tabId: `probe-${Date.now()}`,
+          targetUrl: probeUrl,
+          rawRequest: probeReq,
+          envVars: {},
+          interpolate: false,
+        });
+      } catch (pErr) {
+        console.warn('Probe request error:', pErr);
+      }
+
+      // 6. Universal Revitalization across all platforms
+      const result = revitalizeHttpRequest({
+        rawRequest: tab.rawRequest,
+        tabUrl: tab.url,
+        probedHtml: probeRes?.body || '',
+        probedHeaders: probeRes?.headers || [],
+        probedRawResponse: probeRes?.rawResponse || '',
+        candidateTransactions: candidateTxs,
+      });
+
+      // 7. Atomically update tab in store
+      updateTabRawRequest(tab.id, result.updatedRawRequest);
+
+      // Build descriptive summary
+      const cookiesList = Object.keys(result.refreshedCookies);
+      const tokensList = Object.keys(result.refreshedTokens);
+      const parts: string[] = [];
+      if (cookiesList.length > 0) {
+        parts.push(`${cookiesList.length} cookies refreshed (${cookiesList.slice(0, 3).join(', ')}${cookiesList.length > 3 ? '...' : ''})`);
+      }
+      if (tokensList.length > 0) {
+        parts.push(`anti-CSRF tokens renewed (${tokensList.join(', ')})`);
+      }
+      parts.push('stale cache headers cleared');
+
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: result.source === 'live' ? 'Brand-New Request Generated (Live Server)' : 'Brand-New Request Generated',
+        description: parts.join('; ') + '.',
+        duration: 3500,
+      });
+    } catch (err: any) {
+      useToastStore.getState().addToast({
+        type: 'error',
+        title: 'Request Refresh Failed',
+        description: err?.message || 'Could not transform request',
+      });
+    } finally {
+      setIsRefreshingTokens(false);
+    }
+  };
+
+    const autoRefreshedTabs = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!tab) return;
+    const isLogin =
+      tab.url.toLowerCase().includes('/login') ||
+      tab.rawRequest.toLowerCase().includes('/login') ||
+      tab.body.includes('_token=');
+    if (isLogin && !autoRefreshedTabs.current.has(tab.id)) {
+      autoRefreshedTabs.current.add(tab.id);
+      handleRefreshTokens();
+    }
+  }, [tab?.id]);
+
   return (
     <div
       onContextMenu={(e) => {
@@ -300,11 +466,33 @@ export const RequestEditorPanel: React.FC = () => {
 
       {/* Sub-View Mode Selector Tabs & Toolbar */}
       <div className="flex items-center justify-between border-b border-border-subtle bg-bg-canvas/40 px-2 flex-shrink-0">
-        <Tabs
-          tabs={viewTabs}
-          activeTab={tab.requestViewMode}
-          onChange={(tabId) => setRequestViewMode(tab.id, tabId as RequestEditorMode)}
-        />
+        <div className="flex items-center gap-2">
+          <Tabs
+            tabs={viewTabs}
+            activeTab={tab.requestViewMode}
+            onChange={(tabId) => setRequestViewMode(tab.id, tabId as RequestEditorMode)}
+          />
+
+          <button
+            onClick={handleRefreshTokens}
+            disabled={isRefreshingTokens}
+            className={`group flex items-center justify-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded border transition-all duration-200 select-none min-w-[125px] ${
+              isRefreshingTokens
+                ? 'bg-[#18191c] border-[#f37021] text-white shadow-[0_0_10px_rgba(243,112,33,0.3)] cursor-wait'
+                : 'bg-[#1e2024] hover:bg-[#282a2e] text-[#d4d4d8] hover:text-white border-[#3e4249] hover:border-[#f37021]/60 active:scale-[0.98]'
+            }`}
+            title="Intelligently transform into a brand new request by eliminating stale sessions, expired CSRF tokens & cache headers"
+          >
+            <RotateCw
+              className={`w-3.5 h-3.5 shrink-0 text-[#f37021] transition-transform duration-300 ${
+                isRefreshingTokens ? 'animate-spin' : 'group-hover:rotate-180'
+              }`}
+            />
+            <span className="truncate">
+              {isRefreshingTokens ? 'Revitalizing...' : 'Refresh Tokens'}
+            </span>
+          </button>
+        </div>
 
         <div className="flex items-center gap-3 pr-1">
           {/* Auto Content-Length toggle */}

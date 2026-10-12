@@ -19,10 +19,12 @@ fn log_debug(msg: &str) {
     let line = format!("[{}] {}\n", now, msg);
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open("sentinel_desktop_debug.log") {
         let _ = f.write_all(line.as_bytes());
+        let _ = f.flush();
     }
     let temp_log = std::env::temp_dir().join("sentinel_desktop_debug.log");
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(temp_log) {
         let _ = f.write_all(line.as_bytes());
+        let _ = f.flush();
     }
 }
 
@@ -242,13 +244,38 @@ fn main() {
                 }
             });
 
+            // Asynchronously start CDP WebSocket origin-stripping relay on port 9223 -> 9222
+            tauri::async_runtime::spawn(commands::run_cdp_relay(9223, 9222));
+
+            // Asynchronously connect WARP tunnel in background so it never blocks setup
+            #[cfg(target_os = "windows")]
+            {
+                std::thread::spawn(|| {
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x08000000;
+                    let mut cmd = std::process::Command::new("warp-cli");
+                    cmd.arg("connect");
+                    cmd.creation_flags(CREATE_NO_WINDOW);
+                    let _ = cmd.output();
+                });
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
             log_debug(&format!("Window event on '{}': {:?}", window.label(), event));
             match event {
                 tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
-                    log_debug("Window close/destroy detected. Cleanly terminating process immediately.");
+                    log_debug("Window close/destroy detected. Disconnecting WARP and cleanly terminating process.");
+                    #[cfg(target_os = "windows")]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        const CREATE_NO_WINDOW: u32 = 0x08000000;
+                        let mut cmd = std::process::Command::new("warp-cli");
+                        cmd.arg("disconnect");
+                        cmd.creation_flags(CREATE_NO_WINDOW);
+                        let _ = cmd.output();
+                    }
                     std::process::exit(0);
                 }
                 _ => {}
@@ -283,12 +310,17 @@ fn main() {
             cmd_repeater_extract_variable,
             cmd_launch_system_browser,
             cmd_open_html_in_browser,
+            cmd_read_live_crawler_events,
+            cmd_get_cdp_targets,
+            cmd_is_cdp_available,
+            cmd_activate_cdp_target,
             cmd_ucmax_analyze_boolean,
             cmd_ucmax_plan_next_step,
             cmd_launch_wireshark,
             cmd_check_packet_capture_status,
             cmd_rotate_system_vpn,
             cmd_toggle_system_vpn,
+            cmd_set_upstream_proxy,
         ]);
 
     log_debug("Step 3.1: Calling builder.build()...");

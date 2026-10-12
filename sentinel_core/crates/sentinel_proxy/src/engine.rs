@@ -43,6 +43,7 @@ pub struct SentinelProxyEngine {
     server_task: ServerTaskHandle,
     is_running: Arc<AtomicBool>,
     root_ca: Arc<RwLock<Option<RootCA>>>,
+    pub upstream_proxy: Arc<RwLock<Option<String>>>,
 }
 
 impl Default for SentinelProxyEngine {
@@ -65,7 +66,13 @@ impl SentinelProxyEngine {
             server_task: Arc::new(RwLock::new(None)),
             is_running: Arc::new(AtomicBool::new(false)),
             root_ca: Arc::new(RwLock::new(None)),
+            upstream_proxy: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Dynamically sets the upstream egress proxy for all proxy connections.
+    pub fn set_upstream_proxy(&self, proxy: Option<String>) {
+        *self.upstream_proxy.write() = proxy;
     }
 
     /// Attaches an authoritative `ScopeEngine` for SEC-01 fail-closed scope checking.
@@ -151,6 +158,10 @@ impl ProxyEngine for SentinelProxyEngine {
             10_000,
         ));
 
+        if let Some(proxy) = config.upstream_proxy {
+            *self.upstream_proxy.write() = Some(proxy);
+        }
+
         // 4. Assemble HandlerState
         let state = HandlerState {
             scope_engine: self.scope_engine.clone(),
@@ -159,7 +170,7 @@ impl ProxyEngine for SentinelProxyEngine {
             tls_cache,
             recorder,
             parser: self.parser.clone(),
-            upstream_proxy: config.upstream_proxy.clone(),
+            upstream_proxy: self.upstream_proxy.clone(),
         };
 
         // 5. Create Cancellation Token & Server
