@@ -93,13 +93,12 @@ Security professionals, penetration testers, and bug bounty researchers have rel
 - Hashing and signature utilities: MD5, SHA-1, SHA-256, SHA-512, HMAC, Keccak, and CRC32.
 - Smart heuristic decoding to auto-detect multi-stage nested obfuscation.
 
-### 🕷️ Dual-Mode Hybrid Modern-Web Crawler
-- **Mode 1 (Machine Blitz)**: High-speed autonomous HTTP crawler capable of dissecting Next.js 14/15 App Router RSC Flight chunks (`_buildManifest.js`), Nuxt 3 `__NUXT_DATA__`, Remix route manifests, and compiled Flutter Web Dart string pools (`main.dart.js`).
-- **Mode 2 (Stealth Hybrid)**: Connects with authentic desktop Google Chrome / Edge / Brave routed through Sentinel's proxy (`127.0.0.1:8085`) to pass Cloudflare Turnstile, DataDome, and WASM challenges natively, auto-injecting clearance cookies (`cf_clearance`, `datadome`) and dynamic HMAC signatures (`X-Signature`).
-- **Ephemeral Nonce Replenishing**: Automatically pre-flights fresh single-use anti-CSRF nonces and dynamically mutates request bodies and headers on the fly.
-- **Bot Honeypot Trap Filter**: Evaluates inline CSS styles (`display:none`, `visibility:hidden`, `opacity:0`, `left:-9999px`) and trap classes to prevent crawler entrapment.
-- **Dynamic Request Signer**: Mines client-side HMAC keys and calculates real-time cryptographic signatures with synchronized timestamps per request.
-- **Multi-Persona Container Isolation**: Manages isolated session containers for automated RBAC, IDOR, and BOLA matrix validation.
+### 🕷️ Autonomous Stealth Crawler & Deep Discovery Engine
+- **Mode 1 (Machine Blitz & AST Mining)**: High-speed autonomous crawler powered by a **Two-Pass TypeScript AST Constant-Folding Engine**. Unlike regex-based tools (Katana, Hakrawler), Sentinel resolves dynamic endpoint concatenations across lexical scopes, extracts request body parameter keys from `fetch`/`axios` callsites, mines Next.js Server Actions (`$ACTION_ID_`), and synthesizes unloaded Webpack/Next.js lazy chunk manifests to surface hidden admin APIs before the UI even renders.
+- **Mode 2 (Biometric Stealth CDP Driver)**: Drives headed desktop Chromium instances using cubic Bézier trajectories, Fitts's law deceleration, and sub-pixel micro-tremor. Features Hermite S-curve puzzle slider drags (DataDome, GeeTest) and physiological micro-jitter press-and-hold gestures (PerimeterX / HUMAN Security).
+- **Zero-Footprint Runtime Cloaking**: Shields automation hooks with non-enumerable properties (`enumerable: false`) and `[native code]` prototype cloaking across `Worker`, `SharedWorker`, and `HTMLScriptElement`, eliminating detection by WAF client-side telemetry.
+- **BoringSSL TLS 1.3 & HTTP/2 Passthrough**: Dynamically routes target hosts via native Chrome TLS stacks to preserve valid JA4 fingerprints, GREASE, and ALPN `h2`/`h3` protocol negotiation.
+- **Multi-Persona Container Isolation**: Manages isolated session containers for automated cross-tenant RBAC, IDOR, and BOLA matrix validation.
 
 ### 🧩 Modular Plugin SDK (WASM & Rhai)
 - Montoya-inspired extensible architecture.

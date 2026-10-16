@@ -14,6 +14,7 @@
  */
 
 import { StealthCdpBrowserDriver } from './StealthCdpBrowserDriver';
+import { humanBiometricStealthEngine } from './HumanBiometricStealthEngine';
 
 export type CaptchaProvider =
   | 'Cloudflare Turnstile'
@@ -251,7 +252,8 @@ export class CaptchaSentinelEngine {
       'AWS WAF CAPTCHA',
       'Generic Security Challenge',
       'Kasada',
-      'PerimeterX HUMAN'
+      'PerimeterX HUMAN',
+      'DataDome',
     ];
     if (initial.provider && !solvableProviders.includes(initial.provider)) {
       return false;
@@ -420,11 +422,20 @@ export class CaptchaSentinelEngine {
         clickY = Math.round(targetCoords.y + (targetCoords.height / 2));
       }
 
-      report(`Dispatching authentic human mouse click to verification target at (${clickX}, ${clickY})...`);
-      try {
-        await driver.dispatchHumanClick({ x: clickX, y: clickY, delayMs: 120 });
-      } catch (err) {
-        report(`Click dispatch notice: ${err}`);
+      if (initial.provider === 'PerimeterX HUMAN') {
+        report(`Dispatching authentic human Press-and-Hold challenge interaction at (${clickX}, ${clickY})...`);
+        try {
+          await humanBiometricStealthEngine.pressAndHold({ x: clickX, y: clickY }, (m, p) => driver.send(m, p), 4200);
+        } catch (err) {
+          report(`Press-and-Hold notice: ${err}`);
+        }
+      } else {
+        report(`Dispatching authentic human mouse click to verification target at (${clickX}, ${clickY})...`);
+        try {
+          await driver.dispatchHumanClick({ x: clickX, y: clickY, delayMs: 120 });
+        } catch (err) {
+          report(`Click dispatch notice: ${err}`);
+        }
       }
     } else {
       report('Waiting for challenge computation / proof-of-work to complete...');

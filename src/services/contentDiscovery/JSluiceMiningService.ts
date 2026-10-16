@@ -9,6 +9,7 @@
  * - Leaked Secrets, API Keys, Tokens, and Internal Subdomains
  */
 
+import ts from 'typescript';
 import { ipcClient } from '../../ipc/client';
 import { SiteMapRequest } from '../../workspaces/ProjectScopeWorkspaceView';
 
@@ -217,6 +218,162 @@ export class JSluiceMiningService {
       }
     }
 
+    // 1b. TypeScript AST Deep Semantic Mining (Constant-Folding, Next.js Server Actions & Parameter Schema Extraction)
+    try {
+      const sourceFile = ts.createSourceFile(
+        sourceName.endsWith('.js') || sourceName.endsWith('.ts') ? sourceName : `${sourceName}.js`,
+        content,
+        ts.ScriptTarget.Latest,
+        false
+      );
+
+      const constants = new Map<string, string>();
+      const objectProperties = new Map<string, Record<string, string>>();
+
+      // Pass 1: Extract constants and object property mappings
+      const visitPass1 = (node: ts.Node) => {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+          const varName = node.name.text;
+          if (ts.isStringLiteral(node.initializer) || ts.isNoSubstitutionTemplateLiteral(node.initializer)) {
+            constants.set(varName, node.initializer.text);
+          } else if (ts.isObjectLiteralExpression(node.initializer)) {
+            const props: Record<string, string> = {};
+            for (const prop of node.initializer.properties) {
+              if (ts.isPropertyAssignment(prop) && prop.initializer) {
+                const propKey = prop.name.getText(sourceFile).replace(/['"]/g, '');
+                if (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer)) {
+                  props[propKey] = prop.initializer.text;
+                }
+              }
+            }
+            objectProperties.set(varName, props);
+          }
+        }
+        ts.forEachChild(node, visitPass1);
+      };
+      ts.forEachChild(sourceFile, visitPass1);
+
+      // Helper to evaluate an AST expression into a resolved path
+      const resolveExpressionPath = (expr: ts.Expression): string | null => {
+        if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+          return expr.text;
+        }
+        if (ts.isIdentifier(expr) && constants.has(expr.text)) {
+          return constants.get(expr.text)!;
+        }
+        if (ts.isPropertyAccessExpression(expr)) {
+          const objName = expr.expression.getText(sourceFile);
+          const propName = expr.name.text;
+          if (objectProperties.has(objName) && objectProperties.get(objName)![propName]) {
+            return objectProperties.get(objName)![propName];
+          }
+        }
+        if (ts.isTemplateExpression(expr)) {
+          let resolved = expr.head.text;
+          for (const span of expr.templateSpans) {
+            const innerVal = resolveExpressionPath(span.expression);
+            if (innerVal !== null) {
+              resolved += innerVal;
+            } else {
+              resolved += '{param}';
+            }
+            resolved += span.literal.text;
+          }
+          return resolved;
+        }
+        if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+          const left = resolveExpressionPath(expr.left);
+          const right = resolveExpressionPath(expr.right);
+          if (left !== null && right !== null) {
+            return left + right;
+          }
+        }
+        return null;
+      };
+
+      // Pass 2: Extract endpoints, Next.js Server Actions, and body schema keys
+      const visitPass2 = (node: ts.Node) => {
+        if (ts.isCallExpression(node)) {
+          const callText = node.expression.getText(sourceFile);
+
+          // Next.js Server Actions: createServerReference("40-char-sha1")
+          if (callText.includes('createServerReference') || callText.includes('$ACTION_ID_')) {
+            if (node.arguments.length > 0 && ts.isStringLiteral(node.arguments[0])) {
+              const actionHash = node.arguments[0].text;
+              if (actionHash && actionHash.length >= 20) {
+                const actionPath = `/_next/action/${actionHash}`;
+                discoveredEndpoints.push({
+                  url: `https://${host}${actionPath}`,
+                  path: actionPath,
+                  method: 'POST',
+                  params: ['Next-Action: ' + actionHash],
+                  sourceScript: sourceName,
+                  category: 'API',
+                  rawSnippet: `Next.js Server Action [${actionHash}]`,
+                });
+              }
+            }
+          }
+
+          // HTTP Client Calls (fetch, axios, $.ajax, $.get, $.post, request)
+          const isFetch = callText === 'fetch' || callText === 'window.fetch';
+          const isAxios = callText.startsWith('axios') || callText.includes('.get') || callText.includes('.post') || callText.includes('.put') || callText.includes('.delete') || callText.includes('.patch');
+          const isJQuery = callText.startsWith('$.') || callText.startsWith('jQuery.');
+
+          if ((isFetch || isAxios || isJQuery) && node.arguments.length > 0) {
+            const pathCandidate = resolveExpressionPath(node.arguments[0]);
+            if (pathCandidate && (pathCandidate.startsWith('/') || pathCandidate.startsWith('http://') || pathCandidate.startsWith('https://'))) {
+              const normalized = this.normalizeEndpoint(pathCandidate, host);
+              if (normalized && !seenPaths.has(normalized.cleanPath)) {
+                seenPaths.add(normalized.cleanPath);
+
+                let method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET';
+                if (callText.includes('post') || callText.includes('Post')) method = 'POST';
+                else if (callText.includes('put') || callText.includes('Put')) method = 'PUT';
+                else if (callText.includes('delete') || callText.includes('Delete')) method = 'DELETE';
+                else if (callText.includes('patch') || callText.includes('Patch')) method = 'PATCH';
+
+                // Extract body parameters from options object / body argument
+                const discoveredParams = this.extractParamsFromPath(normalized.cleanPath);
+                for (let i = 1; i < node.arguments.length; i++) {
+                  const arg = node.arguments[i];
+                  if (ts.isObjectLiteralExpression(arg)) {
+                    for (const prop of arg.properties) {
+                      if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) {
+                        const key = prop.name.getText(sourceFile).replace(/['"]/g, '');
+                        if (key.toLowerCase() === 'method' && ts.isPropertyAssignment(prop) && ts.isStringLiteral(prop.initializer)) {
+                          const mUpper = prop.initializer.text.toUpperCase();
+                          if (['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(mUpper)) {
+                            method = mUpper as any;
+                          }
+                        } else if (!['headers', 'mode', 'credentials', 'cache'].includes(key.toLowerCase())) {
+                          if (!discoveredParams.includes(key)) {
+                            discoveredParams.push(key);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                discoveredEndpoints.push({
+                  url: normalized.url,
+                  path: normalized.cleanPath,
+                  method,
+                  params: discoveredParams,
+                  sourceScript: sourceName,
+                  category: normalized.cleanPath.includes('graphql') ? 'GraphQL' : 'API',
+                  rawSnippet: node.getText(sourceFile).slice(0, 120),
+                });
+              }
+            }
+          }
+        }
+        ts.forEachChild(node, visitPass2);
+      };
+      ts.forEachChild(sourceFile, visitPass2);
+    } catch {}
+
     // 2. Extract High-Confidence Secrets
     for (const sig of SECRET_SIGNATURES) {
       sig.regex.lastIndex = 0;
@@ -375,6 +532,43 @@ export class JSluiceMiningService {
     }
 
     return Array.from(discoveredMap.values());
+  }
+
+  /**
+   * Synthesizes all lazy Webpack/Vite/Next.js chunk URLs from client runtime chunk maps,
+   * enabling deep automated discovery of admin, staff, and unvisited feature bundles.
+   */
+  public synthesizeUnloadedChunkUrls(mainScriptContent: string, baseUrl: string): string[] {
+    const chunkUrls: string[] = [];
+    if (!mainScriptContent) return chunkUrls;
+
+    try {
+      // 1. Webpack chunk map: { 101: "a8f9b", 102: "c7d2e" }
+      const mapMatch = mainScriptContent.match(/\{(?:\s*['"]?[0-9a-zA-Z_\-]+['"]?\s*:\s*['"][0-9a-f]{8,32}['"]\s*,?)+\}/);
+      if (mapMatch) {
+        const objStr = mapMatch[0];
+        const entryRegex = /['"]?([0-9a-zA-Z_\-]+)['"]?\s*:\s*['"]([0-9a-f]{8,32})['"]/g;
+        let m: RegExpExecArray | null;
+        while ((m = entryRegex.exec(objStr)) !== null) {
+          const chunkId = m[1];
+          const hash = m[2];
+          const path = `/static/js/${chunkId}.${hash}.chunk.js`;
+          try {
+            chunkUrls.push(new URL(path, baseUrl).href);
+          } catch {}
+        }
+      }
+
+      // 2. Next.js __BUILD_MANIFEST chunk arrays
+      const nextChunkMatches = mainScriptContent.matchAll(/['"]static\/chunks\/([a-zA-Z0-9_\-\.\/]+\.js)['"]/g);
+      for (const cm of nextChunkMatches) {
+        try {
+          chunkUrls.push(new URL(`/_next/static/chunks/${cm[1]}`, baseUrl).href);
+        } catch {}
+      }
+    } catch {}
+
+    return Array.from(new Set(chunkUrls));
   }
 }
 

@@ -143,7 +143,8 @@ export class HumanBiometricStealthEngine {
   public async moveMouseTo(
     target: Point,
     sendCdpCommand: (method: string, params: any) => Promise<any>,
-    targetWidth: number = 30
+    targetWidth: number = 30,
+    isDragging: boolean = false
   ): Promise<void> {
     const trajectory = this.generateHumanTrajectory(this.currentCursor, target, targetWidth);
 
@@ -155,6 +156,10 @@ export class HumanBiometricStealthEngine {
         type: 'mouseMoved',
         x: pt.x,
         y: pt.y,
+        timestamp: Date.now() / 1000,
+        button: isDragging ? 'left' : 'none',
+        buttons: isDragging ? 1 : 0,
+        pointerType: 'mouse',
       });
 
       // Human frame delay between 8ms and 18ms (averaging 60Hz display refresh)
@@ -172,19 +177,23 @@ export class HumanBiometricStealthEngine {
     targetWidth: number = 35
   ): Promise<void> {
     // 1. Move to target along authentic Bézier path
-    await this.moveMouseTo(target, sendCdpCommand, targetWidth);
+    await this.moveMouseTo(target, sendCdpCommand, targetWidth, false);
 
     // 2. Pre-click settling delay (human reaction pause)
     const preClickDelay = Math.max(25, Math.min(75, this.gaussianRandom(45, 12)));
     await new Promise((r) => setTimeout(r, preClickDelay));
 
-    // 3. Mouse Press (mousedown)
+    // 3. Mouse Press (mousedown) with strict monotonic timestamp and force
     await sendCdpCommand('Input.dispatchMouseEvent', {
       type: 'mousePressed',
       x: this.currentCursor.x,
       y: this.currentCursor.y,
       button: 'left',
+      buttons: 1,
       clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0.5,
     });
 
     // 4. Contact Dwell Time (Gaussian distribution centered at 85ms)
@@ -197,7 +206,156 @@ export class HumanBiometricStealthEngine {
       x: this.currentCursor.x,
       y: this.currentCursor.y,
       button: 'left',
+      buttons: 0,
       clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0,
+    });
+  }
+
+  /**
+   * Dispatches an authentic human puzzle slider drag (DataDome, Arkose, GeeTest)
+   * with Hermite S-curve velocity profiling, vertical micro-wobble, overshoot, and snap back.
+   */
+  public async dragAlongTrajectory(
+    start: Point,
+    target: Point,
+    sendCdpCommand: (method: string, params: any) => Promise<any>
+  ): Promise<void> {
+    // Approach start point
+    await this.moveMouseTo(start, sendCdpCommand, 20, false);
+    await new Promise((r) => setTimeout(r, 60 + Math.random() * 40));
+
+    // Mouse Press
+    await sendCdpCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: start.x,
+      y: start.y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0.5,
+    });
+    this.currentCursor = { ...start };
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 40));
+
+    const distanceX = target.x - start.x;
+    const distanceY = target.y - start.y;
+    const steps = Math.min(50, Math.max(24, Math.round(Math.hypot(distanceX, distanceY) / 7)));
+
+    // Drag with Hermite S-curve and physiological micro-wobble
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const easedT = t * t * (3 - 2 * t);
+      const curX = Math.round(start.x + distanceX * easedT);
+      const wobble = Math.sin(t * Math.PI * 3) * 1.5 + (Math.random() - 0.5) * 0.8;
+      const curY = Math.round(start.y + distanceY * easedT + wobble);
+
+      this.currentCursor = { x: curX, y: curY };
+      await sendCdpCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: curX,
+        y: curY,
+        button: 'left',
+        buttons: 1,
+        timestamp: Date.now() / 1000,
+        pointerType: 'mouse',
+      });
+      await new Promise((r) => setTimeout(r, 12 + Math.random() * 10));
+    }
+
+    // Human micro-overshoot and correction (+3px / -3px)
+    await sendCdpCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: target.x + 3,
+      y: target.y,
+      button: 'left',
+      buttons: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+    });
+    await new Promise((r) => setTimeout(r, 45));
+
+    await sendCdpCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: target.x,
+      y: target.y,
+      button: 'left',
+      buttons: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+    });
+    await new Promise((r) => setTimeout(r, 90 + Math.random() * 40));
+
+    // Release
+    await sendCdpCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: target.x,
+      y: target.y,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0,
+    });
+    this.currentCursor = { ...target };
+  }
+
+  /**
+   * Solves PerimeterX / HUMAN Security "Press and Hold" challenges
+   * by maintaining active mouse-down state with physiological micro-jitter for durationMs.
+   */
+  public async pressAndHold(
+    target: Point,
+    sendCdpCommand: (method: string, params: any) => Promise<any>,
+    durationMs: number = 4200
+  ): Promise<void> {
+    await this.moveMouseTo(target, sendCdpCommand, 30, false);
+    await new Promise((r) => setTimeout(r, 50));
+
+    await sendCdpCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: target.x,
+      y: target.y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0.6,
+    });
+
+    const start = Date.now();
+    while (Date.now() - start < durationMs) {
+      await new Promise((r) => setTimeout(r, 70 + Math.random() * 30));
+      // Subtle human micro-drift (0.5px) during prolonged pressure
+      const jitterX = target.x + (Math.random() - 0.5) * 1.2;
+      const jitterY = target.y + (Math.random() - 0.5) * 1.2;
+      await sendCdpCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(jitterX),
+        y: Math.round(jitterY),
+        button: 'left',
+        buttons: 1,
+        timestamp: Date.now() / 1000,
+        pointerType: 'mouse',
+      });
+    }
+
+    await sendCdpCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: target.x,
+      y: target.y,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0,
     });
   }
 

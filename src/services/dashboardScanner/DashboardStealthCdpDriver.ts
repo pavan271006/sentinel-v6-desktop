@@ -378,10 +378,22 @@ export class DashboardStealthCdpDriver {
    * Intelligently dismisses SweetAlert, Bootstrap modals, cookie banners, and overlays.
    */
   public async dismissBlockingModalsAndOverlays(): Promise<void> {
-    try {
-      await this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-      await this.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-    } catch {}
+    const hasModal = await this.evaluate<boolean>(`
+      (function() {
+        const sel = '.swal2-container, .modal-backdrop, .sweet-overlay, .blockUI, [role="dialog"], [aria-modal="true"]';
+        const el = document.querySelector(sel);
+        if (!el) return false;
+        const s = window.getComputedStyle(el);
+        return s && s.display !== 'none' && s.visibility !== 'hidden';
+      })()
+    `).catch(() => false);
+
+    if (hasModal) {
+      try {
+        await this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+        await this.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+      } catch {}
+    }
 
     try {
       await this.evaluate(`
@@ -407,7 +419,7 @@ export class DashboardStealthCdpDriver {
 
   /**
    * Cloned from Target: Dispatches authentic human Bezier mouse movements
-   * and natural click physics.
+   * and natural click physics with strict monotonic timestamps.
    */
   public async dispatchHumanClick(options: { x: number; y: number; delayMs?: number }): Promise<void> {
     const { x, y, delayMs = 80 } = options;
@@ -422,6 +434,10 @@ export class DashboardStealthCdpDriver {
         type: 'mouseMoved',
         x: Math.round(x),
         y: Math.round(y),
+        timestamp: Date.now() / 1000,
+        button: 'none',
+        buttons: 0,
+        pointerType: 'mouse',
       });
     }
 
@@ -432,6 +448,9 @@ export class DashboardStealthCdpDriver {
       button: 'left',
       buttons: 1,
       clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0.5,
     });
 
     await new Promise((r) => setTimeout(r, Math.max(30, delayMs)));
@@ -443,6 +462,9 @@ export class DashboardStealthCdpDriver {
       button: 'left',
       buttons: 0,
       clickCount: 1,
+      timestamp: Date.now() / 1000,
+      pointerType: 'mouse',
+      force: 0,
     });
   }
 
@@ -460,7 +482,7 @@ export class DashboardStealthCdpDriver {
           if (r.width <= 0 || r.height <= 0) return null;
           return {
             x: Math.round(r.left + r.width / 2),
-            y: Math.round(r.top + r.height / 2)
+            y: Math.round(r.top + r.height / 2),
           };
         })()
       `);
@@ -471,34 +493,40 @@ export class DashboardStealthCdpDriver {
 
   /**
    * Biometric element clicker: Handles modal cleanups, scrolls to element,
-   * dispatches CDP biometric mouse events, and triggers native element click.
+   * dispatches CDP biometric mouse events.
    */
   public async clickElement(selector: string): Promise<boolean> {
     if (!this.connected) return false;
     await this.dismissBlockingModalsAndOverlays();
 
     const coords = await this.scrollAndGetElementCoordinates(selector);
+    let cdpClicked = false;
     if (coords && coords.x > 0 && coords.y > 0) {
       try {
         await this.dispatchHumanClick({ x: coords.x, y: coords.y, delayMs: 60 });
+        cdpClicked = true;
       } catch {}
     }
 
-    try {
-      return await this.evaluate<boolean>(`
-        (function() {
-          const el = document.querySelector(${JSON.stringify(selector)});
-          if (!el) return false;
-          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-          el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-          try { el.click(); } catch(e) {}
-          return true;
-        })()
-      `);
-    } catch {
-      return false;
+    // Only fall back to synthetic DOM click if hardware CDP click could not reach element
+    if (!cdpClicked) {
+      try {
+        return await this.evaluate<boolean>(`
+          (function() {
+            const el = document.querySelector(${JSON.stringify(selector)});
+            if (!el) return false;
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+            try { el.click(); } catch(e) {}
+            return true;
+          })()
+        `);
+      } catch {
+        return false;
+      }
     }
+    return true;
   }
 
   /**

@@ -13,7 +13,7 @@ use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
-use tracing::warn;
+
 
 use sentinel_common::domain::meta::TlsData;
 use sentinel_common::events::CriticalEvent;
@@ -59,6 +59,18 @@ const TLS_PASSTHROUGH_DOMAINS: &[&str] = &[
 
 /// Returns `true` if `host` matches any TLS passthrough domain (exact or suffix).
 fn is_tls_passthrough_host(host: &str) -> bool {
+    if std::env::var("SENTINEL_PASSTHROUGH_ALL").map(|v| v == "1" || v == "true").unwrap_or(false) {
+        return true;
+    }
+    if let Ok(extra) = std::env::var("SENTINEL_EXTRA_PASSTHROUGH") {
+        let h_lower = host.to_lowercase();
+        for domain in extra.split(',') {
+            let d = domain.trim().to_lowercase();
+            if !d.is_empty() && (h_lower == d || h_lower.ends_with(&format!(".{}", d))) {
+                return true;
+            }
+        }
+    }
     let lower = host.to_lowercase();
     for pattern in TLS_PASSTHROUGH_DOMAINS {
         if pattern.starts_with("*.") {

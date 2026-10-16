@@ -50,12 +50,34 @@ export class ClientRuntimeOmniscienceService {
   public static getInjectionScript(): string {
     return `
       (function() {
-        if (window.__SENTINEL_OBSERVER_INJECTED__) return;
-        window.__SENTINEL_OBSERVER_INJECTED__ = true;
+        function defineHiddenProperty(obj, prop, val) {
+          try {
+            Object.defineProperty(obj, prop, {
+              value: val,
+              writable: true,
+              enumerable: false,
+              configurable: true
+            });
+          } catch(e) {
+            obj[prop] = val;
+          }
+        }
 
-        window.__SENTINEL_MUTATION_SCRIPTS__ = window.__SENTINEL_MUTATION_SCRIPTS__ || new Set();
-        window.__SENTINEL_MUTATION_CHUNKS__ = window.__SENTINEL_MUTATION_CHUNKS__ || new Set();
-        window.__SENTINEL_DISCOVERED_WORKERS__ = window.__SENTINEL_DISCOVERED_WORKERS__ || [];
+        function cloakFunction(fn, name, origFn) {
+          try {
+            Object.defineProperty(fn, 'name', { value: name, configurable: true });
+            const nativeStr = origFn ? Function.prototype.toString.call(origFn) : ('function ' + name + '() { [native code] }');
+            fn.toString = function() { return nativeStr; };
+            fn.toString.toString = function() { return 'function toString() { [native code] }'; };
+          } catch(e) {}
+          return fn;
+        }
+
+        if (window.__SENTINEL_OBSERVER_INJECTED__) return;
+        defineHiddenProperty(window, '__SENTINEL_OBSERVER_INJECTED__', true);
+        defineHiddenProperty(window, '__SENTINEL_MUTATION_SCRIPTS__', window.__SENTINEL_MUTATION_SCRIPTS__ || new Set());
+        defineHiddenProperty(window, '__SENTINEL_MUTATION_CHUNKS__', window.__SENTINEL_MUTATION_CHUNKS__ || new Set());
+        defineHiddenProperty(window, '__SENTINEL_DISCOVERED_WORKERS__', window.__SENTINEL_DISCOVERED_WORKERS__ || []);
 
         const base = document.baseURI || window.location.href;
 
@@ -71,7 +93,7 @@ export class ClientRuntimeOmniscienceService {
 
         // 1. Passive DOM mutation tracker for Adaptive DOM Settle & dynamic script additions
         try {
-          window.__SENTINEL_LAST_MUTATION_TS__ = Date.now();
+          defineHiddenProperty(window, '__SENTINEL_LAST_MUTATION_TS__', Date.now());
           const observer = new MutationObserver(function(mutations) {
             window.__SENTINEL_LAST_MUTATION_TS__ = Date.now();
 
@@ -117,11 +139,13 @@ export class ClientRuntimeOmniscienceService {
           const desc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
           if (desc && desc.set) {
             const origSet = desc.set;
+            const newSet = function(val) {
+              recordScriptUrl(val);
+              return origSet.call(this, val);
+            };
+            cloakFunction(newSet, 'set src', origSet);
             Object.defineProperty(HTMLScriptElement.prototype, 'src', {
-              set: function(val) {
-                recordScriptUrl(val);
-                return origSet.call(this, val);
-              },
+              set: newSet,
               get: desc.get,
               configurable: true,
               enumerable: true
@@ -145,6 +169,7 @@ export class ClientRuntimeOmniscienceService {
               } catch(e) {}
               return origPush.apply(this, arguments);
             };
+            cloakFunction(arr.push, 'push', origPush);
           }
 
           for (const key of Object.keys(window)) {
@@ -156,29 +181,33 @@ export class ClientRuntimeOmniscienceService {
           }
         } catch(e) {}
 
-        // 4. Hook Worker and SharedWorker constructors
+        // 4. Hook Worker and SharedWorker constructors with native function cloaking
         try {
           if (typeof window.Worker === 'function') {
             const OrigWorker = window.Worker;
-            window.Worker = function(scriptURL, options) {
+            const HookedWorker = function(scriptURL, options) {
               try {
                 const resolved = new URL(scriptURL, base).href;
                 window.__SENTINEL_DISCOVERED_WORKERS__.push({ url: resolved, type: 'web_worker' });
               } catch(e) {}
               return new OrigWorker(scriptURL, options);
             };
-            window.Worker.prototype = OrigWorker.prototype;
+            HookedWorker.prototype = OrigWorker.prototype;
+            cloakFunction(HookedWorker, 'Worker', OrigWorker);
+            window.Worker = HookedWorker;
           }
           if (typeof window.SharedWorker === 'function') {
             const OrigSharedWorker = window.SharedWorker;
-            window.SharedWorker = function(scriptURL, options) {
+            const HookedSharedWorker = function(scriptURL, options) {
               try {
                 const resolved = new URL(scriptURL, base).href;
                 window.__SENTINEL_DISCOVERED_WORKERS__.push({ url: resolved, type: 'shared_worker' });
               } catch(e) {}
               return new OrigSharedWorker(scriptURL, options);
             };
-            window.SharedWorker.prototype = OrigSharedWorker.prototype;
+            HookedSharedWorker.prototype = OrigSharedWorker.prototype;
+            cloakFunction(HookedSharedWorker, 'SharedWorker', OrigSharedWorker);
+            window.SharedWorker = HookedSharedWorker;
           }
         } catch(e) {}
       })();

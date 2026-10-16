@@ -523,10 +523,22 @@ export class StealthCdpBrowserDriver {
    * blocking full-screen backdrops that intercept CDP mouse clicks
    */
   public async dismissBlockingModalsAndOverlays(): Promise<void> {
-    try {
-      await this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-      await this.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-    } catch {}
+    const hasModal = await this.evaluate<boolean>(`
+      (function() {
+        const sel = '.swal2-container, .modal-backdrop, .sweet-overlay, .swal-overlay, .modal.show, [role="dialog"], [aria-modal="true"], div._2hriZF, div._3bX7W5';
+        const el = document.querySelector(sel);
+        if (!el) return false;
+        const s = window.getComputedStyle(el);
+        return s && s.display !== 'none' && s.visibility !== 'hidden';
+      })()
+    `).catch(() => false);
+
+    if (hasModal) {
+      try {
+        await this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+        await this.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+      } catch {}
+    }
 
     try {
       await this.evaluate(`
@@ -1036,15 +1048,19 @@ export class StealthCdpBrowserDriver {
     const clickY = coords ? coords.y : loc.fallbackY;
 
     // 3. Dispatch authentic human CDP mouse click
+    let cdpClicked = false;
     if (clickX !== undefined && clickY !== undefined && clickX > 0 && clickY > 0) {
       try {
         await this.dispatchHumanClick({ x: clickX, y: clickY, delayMs: loc.delayMs !== undefined ? loc.delayMs : 80 });
+        cdpClicked = true;
       } catch {}
     }
 
-    // 4. Dual-layer activation: Ensure target receives mouse events & click()
-    try {
-      await this.evaluate(`
+    // 4. Fallback activation: If element had no valid viewport coordinates, fall back to DOM click.
+    // If CDP hardware click already fired authentic trusted events, we skip synthetic dispatch to prevent detection!
+    if (!cdpClicked) {
+      try {
+        await this.evaluate(`
         (function() {
           const sel = ${JSON.stringify(loc.selector || '*')};
           const text = ${JSON.stringify(loc.textMatch || '')}.trim().toLowerCase();
@@ -1100,12 +1116,6 @@ export class StealthCdpBrowserDriver {
           }
 
           if (target) {
-            // Visual outline pulse for authentic user feedback in their browser
-            const prevOutline = target.style.outline;
-            target.style.outline = '2px solid #8b5cf6';
-            setTimeout(() => { try { target.style.outline = prevOutline; } catch(e){} }, 450);
-
-            // Dispatch full MouseEvent sequence
             target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
             target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
             target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
@@ -1113,10 +1123,9 @@ export class StealthCdpBrowserDriver {
           }
         })()
       `);
-      return true;
-    } catch {
-      return false;
+      } catch {}
     }
+    return true;
   }
 
   /**
@@ -1500,13 +1509,14 @@ export class StealthCdpBrowserDriver {
   public async dispatchHumanClick(options: CdpClickOptions): Promise<void> {
     const { x, y, delayMs = 80 } = options;
 
-    if (delayMs <= 80) {
-      // High-speed mode: direct mouse position and rapid hardware click
+    if (delayMs === 0) {
+      // Instant/Zero-delay mode: direct mouse position and rapid hardware click
       try {
         await this.send('Input.dispatchMouseEvent', {
           type: 'mouseMoved',
           x: Math.round(x),
           y: Math.round(y),
+          timestamp: Date.now() / 1000,
         });
         await this.send('Input.dispatchMouseEvent', {
           type: 'mousePressed',
@@ -1514,14 +1524,16 @@ export class StealthCdpBrowserDriver {
           y: Math.round(y),
           button: 'left',
           clickCount: 1,
+          timestamp: Date.now() / 1000,
         });
-        await new Promise((r) => setTimeout(r, Math.min(25, delayMs)));
+        await new Promise((r) => setTimeout(r, 10));
         await this.send('Input.dispatchMouseEvent', {
           type: 'mouseReleased',
           x: Math.round(x),
           y: Math.round(y),
           button: 'left',
           clickCount: 1,
+          timestamp: Date.now() / 1000,
         });
         return;
       } catch {}
