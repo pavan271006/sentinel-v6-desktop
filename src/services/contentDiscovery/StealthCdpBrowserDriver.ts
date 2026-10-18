@@ -493,26 +493,77 @@ export class StealthCdpBrowserDriver {
     const startTime = Date.now();
     await this.send('Page.navigate', { url });
 
-    // Adaptive readyState detection: poll rapidly (20ms) so fast pages resolve in milliseconds!
+    // Adaptive readyState detection + Cloudflare / WAF anti-bot challenge auto-handling
+    let challengeWaitStarted: number | null = null;
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const state = await this.evaluate<{ readyState: string; linkCount: number; hasBody: boolean }>(`
+        const state = await this.evaluate<{
+          readyState: string;
+          linkCount: number;
+          hasBody: boolean;
+          isChallenge: boolean;
+          hasCheckbox: boolean;
+        }>(`
           (function() {
+            const title = (document.title || '').toLowerCase();
+            const bodyText = (document.body?.innerText || '').toLowerCase();
+            const hasChallengeTitle =
+              title.includes('just a moment') ||
+              title.includes('one moment') ||
+              title.includes('attention required') ||
+              title.includes('security check') ||
+              title.includes('cloudflare');
+            const hasChallengeElements = Boolean(
+              document.querySelector(
+                '#challenge-running, #challenge-form, #cf-turnstile, iframe[src*="challenge-platform"], .cf-browser-verification, #cf-stage, .ray-id, #cf-please-wait, form[action*="wsidchk"], #wsidchk'
+              )
+            );
+            const isChallenge =
+              hasChallengeTitle ||
+              hasChallengeElements ||
+              bodyText.includes('checking your browser') ||
+              bodyText.includes('enable javascript and cookies');
+
+            const cb = document.querySelector('input[type="checkbox"], #challenge-stage input, .ctp-checkbox-label, #cf-turnstile');
             return {
               readyState: document.readyState,
               linkCount: document.querySelectorAll('a, button, input, form').length,
-              hasBody: Boolean(document.body && (document.body.innerText.trim().length > 0 || document.body.childElementCount > 0))
+              hasBody: Boolean(document.body && (document.body.innerText.trim().length > 0 || document.body.childElementCount > 0)),
+              isChallenge,
+              hasCheckbox: Boolean(cb)
             };
           })()
         `);
-        // If document is already complete, or interactive with content/links, proceed immediately!
-        if (state && (state.readyState === 'complete' || (state.readyState === 'interactive' && (state.linkCount > 0 || state.hasBody)))) {
-          break;
+
+        if (state) {
+          if (state.isChallenge) {
+            if (!challengeWaitStarted) challengeWaitStarted = Date.now();
+
+            // Attempt auto-clicking checkbox if available
+            if (state.hasCheckbox) {
+              await this.evaluate(`
+                (function() {
+                  const cb = document.querySelector('input[type="checkbox"], #challenge-stage input, .ctp-checkbox-label');
+                  if (cb) (cb as HTMLElement).click();
+                })()
+              `).catch(() => {});
+            }
+
+            // Wait up to 5000ms for challenge auto-submit or redirect
+            if (Date.now() - challengeWaitStarted > 5000) {
+              break;
+            }
+          } else {
+            // Normal page or challenge redirect completed!
+            if (state.readyState === 'complete' || (state.readyState === 'interactive' && (state.linkCount > 0 || state.hasBody))) {
+              break;
+            }
+          }
         }
       } catch {
-        // Context might be reloading during navigation, keep polling rapidly
+        // Context might be reloading during navigation or challenge redirect, keep polling rapidly
       }
-      await new Promise((r) => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 40));
     }
 
     return Date.now() - startTime;
