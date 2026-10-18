@@ -572,7 +572,7 @@ export class InfrastructureOriginService {
         });
         if (res?.statusCode) {
           cand.statusCode = res.statusCode;
-          const srv = res.headers?.['server'] || res.headers?.['Server'];
+          const srv = res.headers?.find((h) => h.name.toLowerCase() === 'server')?.value;
           if (srv) cand.backendServerHeader = srv;
           cand.verifiedBypass = true;
           cand.confidence = 'HIGH';
