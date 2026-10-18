@@ -1188,7 +1188,7 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
               )}
 
               {/* Tab 2: Pillar 1 - Infrastructure & Origin */}
-              {activeTab === 'pillar1' && kb && (
+              {activePillarSubTab === 'pillar1' && (
                 <div className="space-y-4">
                   {/* Origin Analysis Table */}
                   <div className="bg-[#1e1f22] p-3 rounded border border-[#2b2d30]">
@@ -1329,7 +1329,7 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
               )}
 
               {/* Tab 3: Pillar 2 - Static Client Dredging */}
-              {activeTab === 'pillar2' && kb && (
+              {activePillarSubTab === 'pillar2' && (
                 <div className="space-y-4">
                   {/* AST Extracted Endpoints */}
                   <div className="bg-[#1e1f22] p-3 rounded border border-[#2b2d30]">
@@ -1413,7 +1413,7 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
               )}
 
               {/* Tab 4: Pillar 3 - Dynamic Stealth Crawling */}
-              {activeTab === 'pillar3' && kb && (
+              {activePillarSubTab === 'pillar3' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className="bg-[#1e1f22] p-3 rounded border border-[#2b2d30]">
@@ -1475,7 +1475,7 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
               )}
 
               {/* Tab 5: Pillar 4 - Historical Archives */}
-              {activeTab === 'pillar4' && kb && (
+              {activePillarSubTab === 'pillar4' && (
                 <div className="space-y-4">
                   {/* Historical Source Counts */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1640,9 +1640,11 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
                   </div>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Tab 6: AI Agent Tools & Autonomous Pentest Runner */}
-              {activeTab === 'agent_tools' && (
+          {/* Tab 6: AI Agent Tools & Autonomous Pentest Runner */}
+          {activeTab === 'agent_tools' && (
                 <div className="space-y-4">
                   {/* Autonomous Pre-Assessment Runner Panel */}
                   <div className="bg-[#1e1f22] p-4 rounded-lg border border-purple-500/40 shadow-lg space-y-3">
