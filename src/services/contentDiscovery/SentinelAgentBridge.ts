@@ -696,8 +696,32 @@ export class SentinelAgentBridge {
               });
             }
           }
+
+          // Extract all scripts directly from live authenticated DOM (bypassing WAF challenges)
+          const domScriptUrls = await stealthCdpBrowserDriver.evaluate<string[]>(`
+            (function() {
+              return Array.from(document.querySelectorAll('script[src]'))
+                .map(s => (s as HTMLScriptElement).src)
+                .filter(Boolean);
+            })()
+          `).catch(() => []);
+          for (const s of domScriptUrls) {
+            discoveredScriptUrls.add(s);
+          }
         }
       } catch {}
+    }
+
+    // Extract inline scripts from DOM for constant folding
+    let inlineScriptsFromDom: string[] = [];
+    if (cdpConnected) {
+      inlineScriptsFromDom = await stealthCdpBrowserDriver.evaluate<string[]>(`
+        (function() {
+          return Array.from(document.querySelectorAll('script:not([src])'))
+            .map(s => s.textContent || '')
+            .filter(t => t.trim().length > 10);
+        })()
+      `).catch(() => []);
     }
 
     // Run standard normal/hidden_endpoints pipeline to populate remaining DOM & API routes
@@ -716,8 +740,8 @@ export class SentinelAgentBridge {
     options?.onProgress?.('Pillar 2/4: Static Client-Side AST & SourceMap Dredging', `Analyzing ${discoveredScriptUrls.size} scripts for source maps, AST routes, and secrets...`);
     const pillar2 = await this.runStaticClientDredging(
       cleanHost,
-      Array.from(discoveredScriptUrls).slice(0, 25),
-      [],
+      Array.from(discoveredScriptUrls).slice(0, 35),
+      inlineScriptsFromDom,
       recordSiteMapItem
     );
 
