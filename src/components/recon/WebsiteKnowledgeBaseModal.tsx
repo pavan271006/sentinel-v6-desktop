@@ -49,7 +49,8 @@ interface WebsiteKnowledgeBaseModalProps {
   targetHost?: string;
 }
 
-type TabType = 'overview' | 'pillar1' | 'pillar2' | 'pillar3' | 'pillar4' | 'agent_tools';
+type TabType = 'master_dossier' | 'overview' | 'pillar1' | 'pillar2' | 'pillar3' | 'pillar4' | 'agent_tools' | 'pillars_breakdown';
+type CategoryFilter = 'all' | 'origin' | 'subdomain' | 'action' | 'endpoint' | 'secret' | 'bucket' | 'doc' | 'archive' | 'debug';
 
 export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps> = ({
   isOpen,
@@ -59,7 +60,9 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
   const { latestKnowledgeBase, setLatestKnowledgeBase } = useReconStore();
   const { addToast } = useToastStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('master_dossier');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [activePillarSubTab, setActivePillarSubTab] = useState<'overview' | 'pillar1' | 'pillar2' | 'pillar3' | 'pillar4'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRunningCapture, setIsRunningCapture] = useState(false);
   const [captureProgress, setCaptureProgress] = useState<string | null>(null);
@@ -223,6 +226,225 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
 
   const q = searchQuery.toLowerCase().trim();
 
+  const masterItems = React.useMemo(() => {
+    if (!kb) return [];
+    const items: Array<{
+      id: string;
+      category: CategoryFilter;
+      categoryLabel: string;
+      title: string;
+      detail: string;
+      source: string;
+      risk: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'INFO';
+      badgeColor: string;
+      copyValue: string;
+    }> = [];
+
+    // 1. Origin Candidate IPs
+    kb.pillar1_infrastructure?.originAnalysis?.originCandidateIps?.forEach((cand, idx) => {
+      items.push({
+        id: `origin-${idx}`,
+        category: 'origin',
+        categoryLabel: '🚨 ORIGIN BYPASS',
+        title: `${cand.ip} ${cand.backendServerHeader ? `(${cand.backendServerHeader} backend)` : ''}`,
+        detail: `${cand.source}${cand.statusCode ? ` [HTTP ${cand.statusCode}]` : ''}${cand.verifiedBypass ? ' — VERIFIED DIRECT BYPASS' : ''}`,
+        source: cand.source,
+        risk: cand.confidence === 'HIGH' ? 'CRITICAL' : 'HIGH',
+        badgeColor: 'bg-rose-950/80 text-rose-300 border-rose-800',
+        copyValue: cand.ip,
+      });
+    });
+
+    // 1b. Subdomain Takeover Candidates
+    kb.pillar1_infrastructure?.subdomains?.forEach((sub, idx) => {
+      if (sub.potentialTakeoverProvider) {
+        items.push({
+          id: `takeover-${idx}`,
+          category: 'origin',
+          categoryLabel: '🎯 TAKEOVER',
+          title: `${sub.hostname} -> ${sub.cnameTarget || sub.potentialTakeoverProvider}`,
+          detail: `Dangling CNAME points to ${sub.potentialTakeoverProvider} • Takeover Vulnerable`,
+          source: 'Subdomain Takeover Auditor',
+          risk: 'HIGH',
+          badgeColor: 'bg-amber-950/80 text-amber-300 border-amber-800',
+          copyValue: sub.hostname,
+        });
+      }
+    });
+
+    // 2. Next.js Server Actions
+    kb.pillar2_staticClientDredging?.nextServerActions?.forEach((act, idx) => {
+      items.push({
+        id: `act-${idx}`,
+        category: 'action',
+        categoryLabel: '⚡ SERVER ACTION',
+        title: `${act.method || 'POST'} ${act.path}`,
+        detail: `Next.js Server Action bound to server function • ${act.sourceScript || 'inline'}`,
+        source: 'JSluice AST Constant-Folding',
+        risk: 'HIGH',
+        badgeColor: 'bg-amber-950/80 text-amber-300 border-amber-800',
+        copyValue: act.path,
+      });
+    });
+
+    // 3. High-Entropy Hardcoded Secrets
+    kb.pillar2_staticClientDredging?.discoveredSecrets?.forEach((sec, idx) => {
+      items.push({
+        id: `sec-${idx}`,
+        category: 'secret',
+        categoryLabel: '🔑 HARDCODED SECRET',
+        title: `${sec.type}: ${sec.value}`,
+        detail: `Entropy H(X)=${sec.entropy.toFixed(2)} • In ${sec.sourceScript || 'client bundle'}`,
+        source: 'JSluice Token Miner',
+        risk: sec.entropy > 4.5 ? 'CRITICAL' : 'HIGH',
+        badgeColor: 'bg-rose-950/80 text-rose-300 border-rose-800',
+        copyValue: sec.value,
+      });
+    });
+
+    // 4. Subdomains & Takeover Suspects
+    kb.pillar1_infrastructure?.subdomains?.forEach((sub, idx) => {
+      const isTakeover = Boolean(sub.potentialTakeoverProvider);
+      items.push({
+        id: `sub-${idx}`,
+        category: 'subdomain',
+        categoryLabel: isTakeover ? '🚨 SUBDOMAIN TAKEOVER' : '🌐 SUBDOMAIN',
+        title: sub.hostname,
+        detail: `${sub.resolvedIps?.length > 0 ? 'IPs: ' + sub.resolvedIps.join(', ') : ''} ${sub.cnameTarget ? '-> CNAME ' + sub.cnameTarget : ''} ${isTakeover ? `⚠️ TAKEOVER: ${sub.potentialTakeoverProvider}` : ''}`,
+        source: `${sub.source} • ${sub.category} • ${sub.isBehindCdn ? 'Behind CDN' : 'Direct Origin IP'}`,
+        risk: isTakeover ? 'CRITICAL' : sub.isBehindCdn ? 'INFO' : 'HIGH',
+        badgeColor: isTakeover ? 'bg-rose-950/80 text-rose-300 border-rose-800' : 'bg-cyan-950/80 text-cyan-300 border-cyan-800',
+        copyValue: sub.hostname,
+      });
+    });
+
+    // 5. Exposed Debug & Actuators
+    kb.pillar4_historicalArchives?.exposedDebugFindings?.forEach((dbg, idx) => {
+      items.push({
+        id: `dbg-${idx}`,
+        category: 'debug',
+        categoryLabel: '⚠️ DEBUG / ACTUATOR',
+        title: `${dbg.title} (${dbg.url})`,
+        detail: `${dbg.description} • Strategy: ${dbg.exploitStrategy}`,
+        source: 'Debug & Config Scanner',
+        risk: dbg.severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+        badgeColor: 'bg-rose-950/80 text-rose-300 border-rose-800',
+        copyValue: dbg.url,
+      });
+    });
+
+    // 6. AST Extracted Endpoints
+    kb.pillar2_staticClientDredging?.astExtractedEndpoints?.forEach((ep, idx) => {
+      if (ep.path?.startsWith('/_next/action/')) return;
+      items.push({
+        id: `ast-${idx}`,
+        category: 'endpoint',
+        categoryLabel: '🔌 REST ROUTE',
+        title: `${ep.method || 'GET'} ${ep.path}`,
+        detail: `Extracted from AST in ${ep.sourceScript || 'client bundle'}`,
+        source: 'JSluice AST Constant-Folding',
+        risk: 'MEDIUM',
+        badgeColor: 'bg-emerald-950/80 text-emerald-300 border-emerald-800',
+        copyValue: ep.path,
+      });
+    });
+
+    // 7. Cloud Storage Buckets
+    kb.pillar1_infrastructure?.cloudBuckets?.forEach((b, idx) => {
+      items.push({
+        id: `bucket-${idx}`,
+        category: 'bucket',
+        categoryLabel: '🪣 CLOUD BUCKET',
+        title: `${b.bucketName} (${b.provider.toUpperCase()})`,
+        detail: `Status: ${b.accessStatus} • ${b.endpointUrl}`,
+        source: b.source,
+        risk: b.accessStatus.includes('PUBLIC') ? 'CRITICAL' : 'MEDIUM',
+        badgeColor: b.accessStatus.includes('PUBLIC') ? 'bg-rose-950/80 text-rose-300 border-rose-800' : 'bg-sky-950/80 text-sky-300 border-sky-800',
+        copyValue: b.endpointUrl,
+      });
+    });
+
+    // 8. API Specifications & Swagger/OpenAPI
+    kb.pillar4_historicalArchives?.apiDocs?.forEach((doc, idx) => {
+      items.push({
+        id: `doc-${idx}`,
+        category: 'doc',
+        categoryLabel: '📄 API SPEC',
+        title: `${doc.title || doc.url} (${doc.type.toUpperCase()})`,
+        detail: `${doc.endpoints?.length || 0} routes parsed from specification • ${doc.url}`,
+        source: 'API Spec Harvester',
+        risk: 'INFO',
+        badgeColor: 'bg-indigo-950/80 text-indigo-300 border-indigo-800',
+        copyValue: doc.url,
+      });
+    });
+
+    // 9. GraphQL Introspection
+    kb.pillar4_historicalArchives?.graphqlIntrospection?.forEach((gql, idx) => {
+      items.push({
+        id: `gql-${idx}`,
+        category: 'endpoint',
+        categoryLabel: '⚡ GRAPHQL',
+        title: gql.endpointUrl,
+        detail: gql.isIntrospectionEnabled
+          ? `INTROSPECTION ENABLED • ${gql.typesCount} types, ${gql.sampleQueries?.length || 0} queries`
+          : 'Closed / Introspection Disabled',
+        source: 'GraphQL Schema Introspection',
+        risk: gql.isIntrospectionEnabled ? 'HIGH' : 'INFO',
+        badgeColor: gql.isIntrospectionEnabled ? 'bg-pink-950/80 text-pink-300 border-pink-800' : 'bg-[#252830] text-[#9da5b4] border-[#3e4249]',
+        copyValue: gql.endpointUrl,
+      });
+    });
+
+    // 10. Legacy API Version Extrapolations
+    kb.pillar4_historicalArchives?.legacyApiExtrapolations?.forEach((leg, idx) => {
+      items.push({
+        id: `leg-${idx}`,
+        category: 'archive',
+        categoryLabel: '🕰️ LEGACY API',
+        title: leg,
+        detail: 'Extrapolated from Wayback Machine / Common Crawl archive patterns',
+        source: 'GAU Historical Extrapolation',
+        risk: 'MEDIUM',
+        badgeColor: 'bg-purple-950/80 text-purple-300 border-purple-800',
+        copyValue: leg,
+      });
+    });
+
+    // 11. All Discovered Requests (DOM & Site Map Routes)
+    kb.allDiscoveredRequests?.slice(0, 100).forEach((req, idx) => {
+      if (items.some((m) => m.copyValue === req.path || m.copyValue === req.url)) return;
+      items.push({
+        id: `req-${idx}`,
+        category: 'endpoint',
+        categoryLabel: '🌐 SITE ROUTE',
+        title: `${req.method || 'GET'} ${req.path}`,
+        detail: `HTTP ${req.status || 200} • MIME: ${req.mime || 'text/html'} ${req.notes ? '• ' + req.notes : ''}`,
+        source: (req as any).source || 'Stealth Dynamic Browser / Spider',
+        risk: 'INFO',
+        badgeColor: 'bg-[#252830] text-[#9da5b4] border-[#3e4249]',
+        copyValue: req.url || req.path,
+      });
+    });
+
+    return items;
+  }, [kb]);
+
+  const filteredMasterItems = React.useMemo(() => {
+    return masterItems.filter((item) => {
+      if (categoryFilter !== 'all' && item.category !== categoryFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.title.toLowerCase().includes(q) ||
+        item.detail.toLowerCase().includes(q) ||
+        item.source.toLowerCase().includes(q) ||
+        item.categoryLabel.toLowerCase().includes(q)
+      );
+    });
+  }, [masterItems, categoryFilter, q]);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -338,7 +560,7 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
               disabled={isRunningCapture}
               className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
             >
-              {isRunningCapture ? 'Running Capture...' : 'Capture Full Knowledge Base'}
+              {isRunningCapture ? 'Running Master Scan...' : '⚡ Run Unified Master Scan'}
             </Button>
           </div>
         </div>
@@ -355,33 +577,20 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
         <div className="bg-[#1e1f22] border-b border-[#2b2d30] px-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-1 overflow-x-auto">
             {[
-              { id: 'overview', label: '📊 Overview & Stats', count: kb?.allDiscoveredRequests.length },
               {
-                id: 'pillar1',
-                label: '🌐 1. Infrastructure & Origin',
-                count: kb?.pillar1_infrastructure.subdomains.length,
-              },
-              {
-                id: 'pillar2',
-                label: '⚡ 2. Static Client Dredging',
-                count: kb?.pillar2_staticClientDredging.astExtractedEndpoints.length,
-              },
-              {
-                id: 'pillar3',
-                label: '🥷 3. Dynamic Stealth Crawling',
-                count: kb?.pillar3_dynamicBrowserCrawl.crawledEndpointsCount,
-              },
-              {
-                id: 'pillar4',
-                label: '🕰️ 4. Historical Archives',
-                count:
-                  (kb?.pillar4_historicalArchives.waybackCount || 0) +
-                  (kb?.pillar4_historicalArchives.commonCrawlCount || 0),
+                id: 'master_dossier',
+                label: '⚡ Master Attack Surface Dossier',
+                count: masterItems.length,
               },
               {
                 id: 'agent_tools',
-                label: '🤖 AI Agent Tools (9)',
+                label: '🤖 Autonomous AI Pentest Agent',
                 count: agentTools.length,
+              },
+              {
+                id: 'pillars_breakdown',
+                label: '🔬 Deep 4-Pillar Breakdown',
+                count: undefined,
               },
             ].map((tab) => (
               <button
@@ -434,13 +643,397 @@ export const WebsiteKnowledgeBaseModal: React.FC<WebsiteKnowledgeBaseModalProps>
                 onClick={handleRunCapture}
                 className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
               >
-                Start Pre-Assessment Capture Now
+                ⚡ Execute Unified Master Scan Now
               </Button>
             </div>
           ) : (
             <>
-              {/* Tab 1: Overview */}
-              {activeTab === 'overview' && kb && (
+              {/* Primary Unified View: Master Attack Surface Dossier */}
+              {activeTab === 'master_dossier' && kb && (
+                <div className="space-y-4">
+                  {/* Origin De-Cloaking Alert Banner if origin candidate found */}
+                  {kb.pillar1_infrastructure?.originAnalysis?.originCandidateIps?.length > 0 && (
+                    <div className="bg-rose-950/40 border border-rose-500/50 rounded-lg p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+                        <div>
+                          <span className="font-bold text-rose-300 font-mono text-xs flex items-center gap-1.5">
+                            🚨 Direct Origin IP De-Cloaked (WAF / Cloudflare Bypass Available)
+                          </span>
+                          <span className="text-[11px] text-[#dfdfdf] font-mono block">
+                            Direct Backend Candidate:{' '}
+                            <strong className="text-white">
+                              {kb.pillar1_infrastructure.originAnalysis.originCandidateIps[0].ip}
+                            </strong>{' '}
+                            {kb.pillar1_infrastructure.originAnalysis.originCandidateIps[0].backendServerHeader && (
+                              <span>({kb.pillar1_infrastructure.originAnalysis.originCandidateIps[0].backendServerHeader} Backend)</span>
+                            )}{' '}
+                            via {kb.pillar1_infrastructure.originAnalysis.originCandidateIps[0].source}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        leftIcon={<Copy className="w-3 h-3 text-rose-400" />}
+                        onClick={() =>
+                          handleCopyText(
+                            kb.pillar1_infrastructure.originAnalysis.originCandidateIps[0].ip,
+                            'origin_ip_top',
+                            'Origin IP'
+                          )
+                        }
+                      >
+                        Copy Origin IP
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* High-Density 8-Metric Telemetry Ribbon */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'origin' ? 'all' : 'origin')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'origin'
+                          ? 'bg-rose-950/60 border-rose-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-rose-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">🚨 Origin IPs</span>
+                      <span className="text-lg font-bold font-mono text-rose-400">
+                        {kb.pillar1_infrastructure?.originAnalysis?.originCandidateIps?.length || 0}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">Direct Bypasses</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'subdomain' ? 'all' : 'subdomain')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'subdomain'
+                          ? 'bg-cyan-950/60 border-cyan-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-cyan-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">🌐 Subdomains</span>
+                      <span className="text-lg font-bold font-mono text-cyan-400">
+                        {kb.pillar1_infrastructure?.subdomains?.length || 0}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">Hostsearch + DoH</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'action' ? 'all' : 'action')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'action'
+                          ? 'bg-amber-950/60 border-amber-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-amber-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">⚡ Server Actions</span>
+                      <span className="text-lg font-bold font-mono text-amber-400">
+                        {kb.pillar2_staticClientDredging?.nextServerActions?.length || 0}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">Next.js RPC</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'endpoint' ? 'all' : 'endpoint')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'endpoint'
+                          ? 'bg-emerald-950/60 border-emerald-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-emerald-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">🔌 REST Routes</span>
+                      <span className="text-lg font-bold font-mono text-emerald-400">
+                        {kb.pillar2_staticClientDredging?.astExtractedEndpoints?.length || 0}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">AST Folded</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'secret' ? 'all' : 'secret')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'secret'
+                          ? 'bg-rose-950/60 border-rose-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-rose-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">🔑 Secrets</span>
+                      <span className="text-lg font-bold font-mono text-rose-300">
+                        {kb.pillar2_staticClientDredging?.discoveredSecrets?.length || 0}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">Tokens / Keys</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'bucket' ? 'all' : 'bucket')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'bucket'
+                          ? 'bg-sky-950/60 border-sky-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-sky-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">🪣 Buckets</span>
+                      <span className="text-lg font-bold font-mono text-sky-400">
+                        {kb.pillar1_infrastructure?.cloudBuckets?.length || 0}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">S3 / GCP / R2</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'doc' ? 'all' : 'doc')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'doc'
+                          ? 'bg-indigo-950/60 border-indigo-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-indigo-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">📄 Specs / Maps</span>
+                      <span className="text-lg font-bold font-mono text-indigo-400">
+                        {(kb.pillar2_staticClientDredging?.unpackedSourceMaps?.length || 0) +
+                          (kb.pillar4_historicalArchives?.apiDocs?.length || 0)}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">Swagger / .map</span>
+                    </div>
+
+                    <div
+                      onClick={() => setCategoryFilter(categoryFilter === 'archive' ? 'all' : 'archive')}
+                      className={`p-2.5 rounded border cursor-pointer transition-all ${
+                        categoryFilter === 'archive'
+                          ? 'bg-purple-950/60 border-purple-500 shadow-md'
+                          : 'bg-[#1e1f22] border-[#2b2d30] hover:border-purple-500/50'
+                      }`}
+                    >
+                      <span className="text-[9px] text-[#9da5b4] uppercase font-mono block">🕰️ Archives</span>
+                      <span className="text-lg font-bold font-mono text-purple-400">
+                        {(kb.pillar4_historicalArchives?.waybackCount || 0) +
+                          (kb.pillar4_historicalArchives?.commonCrawlCount || 0)}
+                      </span>
+                      <span className="text-[9px] text-[#6f737a] block truncate">Wayback / CC</span>
+                    </div>
+                  </div>
+
+                  {/* Filter Pills Strip */}
+                  <div className="flex items-center gap-1.5 flex-wrap bg-[#1a1b1e] p-2 rounded border border-[#2b2d30]">
+                    <span className="text-[10px] text-[#8c9099] font-mono mr-1">Filter Attack Surface:</span>
+                    {[
+                      { id: 'all', label: 'All Findings', count: masterItems.length },
+                      { id: 'origin', label: '🚨 Origin Bypasses', count: masterItems.filter((i) => i.category === 'origin').length },
+                      { id: 'subdomain', label: '🌐 Subdomains', count: masterItems.filter((i) => i.category === 'subdomain').length },
+                      { id: 'action', label: '⚡ Server Actions', count: masterItems.filter((i) => i.category === 'action').length },
+                      { id: 'endpoint', label: '🔌 REST Routes', count: masterItems.filter((i) => i.category === 'endpoint').length },
+                      { id: 'secret', label: '🔑 Secrets', count: masterItems.filter((i) => i.category === 'secret').length },
+                      { id: 'bucket', label: '🪣 Buckets', count: masterItems.filter((i) => i.category === 'bucket').length },
+                      { id: 'doc', label: '📄 API Specs', count: masterItems.filter((i) => i.category === 'doc').length },
+                      { id: 'archive', label: '🕰️ Archives', count: masterItems.filter((i) => i.category === 'archive').length },
+                    ].map((pill) => (
+                      <button
+                        key={pill.id}
+                        onClick={() => setCategoryFilter(pill.id as CategoryFilter)}
+                        className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold transition-all flex items-center gap-1 ${
+                          categoryFilter === pill.id
+                            ? 'bg-amber-500 text-black shadow-sm font-bold'
+                            : 'bg-[#141517] text-[#9da5b4] hover:text-white border border-[#3e4249]'
+                        }`}
+                      >
+                        <span>{pill.label}</span>
+                        <span className="text-[9px] opacity-80">({pill.count})</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Unified Master Dossier Table */}
+                  <div className="bg-[#1e1f22] rounded-lg border border-[#2b2d30] overflow-hidden shadow-md">
+                    <div className="px-4 py-2.5 bg-[#141517] border-b border-[#2b2d30] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-amber-400" />
+                        <span className="font-bold text-white font-mono text-xs">
+                          Master Attack Surface Feed ({filteredMasterItems.length} findings)
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-[#8c9099] font-mono">
+                        Showing all de-cloaked assets, constant-folded routes, and client secrets
+                      </span>
+                    </div>
+
+                    <div className="max-h-[380px] overflow-y-auto">
+                      {filteredMasterItems.length === 0 ? (
+                        <div className="p-8 text-center text-[#8c9099] font-mono text-xs">
+                          No attack surface assets matched the active filter or query &quot;{searchQuery}&quot;.
+                        </div>
+                      ) : (
+                        <table className="w-full text-left font-mono text-xs divide-y divide-[#2b2d30]">
+                          <thead className="bg-[#141517] text-[#9da5b4] text-[10px] sticky top-0 z-10 border-b border-[#2b2d30]">
+                            <tr>
+                              <th className="p-2.5 w-44">Category / Type</th>
+                              <th className="p-2.5">Asset / Route / Value</th>
+                              <th className="p-2.5">Rationale & Details</th>
+                              <th className="p-2.5 w-48">Source / Engine</th>
+                              <th className="p-2.5 w-20">Risk</th>
+                              <th className="p-2.5 w-16 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#2b2d30]/60">
+                            {filteredMasterItems.map((item, idx) => (
+                              <tr key={item.id || idx} className="hover:bg-[#252830] transition-colors">
+                                <td className="p-2.5">
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border whitespace-nowrap ${item.badgeColor}`}>
+                                    {item.categoryLabel}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 font-bold text-white max-w-xs truncate">
+                                  {item.title}
+                                </td>
+                                <td className="p-2.5 text-[#dfdfdf] text-[11px] max-w-sm truncate">
+                                  {item.detail}
+                                </td>
+                                <td className="p-2.5 text-[#8c9099] text-[10px] truncate">
+                                  {item.source}
+                                </td>
+                                <td className="p-2.5">
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                      item.risk === 'CRITICAL'
+                                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                                        : item.risk === 'HIGH'
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                        : item.risk === 'MEDIUM'
+                                        ? 'bg-yellow-500/10 text-yellow-300 border border-yellow-500/30'
+                                        : 'bg-[#252830] text-[#9da5b4]'
+                                    }`}
+                                  >
+                                    {item.risk}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-right">
+                                  <button
+                                    onClick={() => handleCopyText(item.copyValue, `master_${idx}`, item.title)}
+                                    className="p-1 rounded hover:bg-[#141517] text-[#8c9099] hover:text-white transition-colors"
+                                    title="Copy to clipboard"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Deep De-Cloaking & Recon Intelligence Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                    {/* Origin & Favicon Shodan Dorks */}
+                    <div className="bg-[#1e1f22] p-3.5 rounded-lg border border-[#2b2d30] space-y-2">
+                      <div className="flex items-center justify-between border-b border-[#2b2d30] pb-2">
+                        <span className="font-bold text-white flex items-center gap-1.5 font-mono text-xs">
+                          <Server className="w-4 h-4 text-rose-400" />
+                          Origin De-Cloaking & Favicon mmh3 Queries
+                        </span>
+                        {kb.pillar1_infrastructure?.originAnalysis?.faviconHashMmh3 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-[#141517] text-amber-300 font-mono border border-[#3e4249]">
+                            mmh3: {kb.pillar1_infrastructure.originAnalysis.faviconHashMmh3}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 font-mono text-xs">
+                        {kb.pillar1_infrastructure?.originAnalysis?.shodanQueries?.slice(0, 3).map((qStr, idx) => (
+                          <div key={idx} className="p-2 rounded bg-[#141517] border border-[#2b2d30] flex items-center justify-between">
+                            <div className="truncate mr-2">
+                              <span className="text-[9px] text-sky-400 font-bold block uppercase">Shodan Origin Query</span>
+                              <code className="text-[11px] text-sky-200 truncate block">{qStr}</code>
+                            </div>
+                            <button
+                              onClick={() => handleCopyText(qStr, `shodan_${idx}`, 'Shodan Query')}
+                              className="text-sky-300 hover:text-white"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Unpacked Source Maps & Client Schemas */}
+                    <div className="bg-[#1e1f22] p-3.5 rounded-lg border border-[#2b2d30] space-y-2">
+                      <div className="flex items-center justify-between border-b border-[#2b2d30] pb-2">
+                        <span className="font-bold text-white flex items-center gap-1.5 font-mono text-xs">
+                          <FileCode className="w-4 h-4 text-purple-400" />
+                          Unpacked Source Maps & Zod Schemas
+                        </span>
+                        <span className="text-[10px] text-[#9da5b4] font-mono">
+                          {kb.pillar2_staticClientDredging?.unpackedSourceMaps?.length || 0} Maps /{' '}
+                          {kb.pillar2_staticClientDredging?.extractedRequestSchemas?.length || 0} Schemas
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 font-mono text-xs max-h-48 overflow-y-auto">
+                        {kb.pillar2_staticClientDredging?.unpackedSourceMaps?.length === 0 &&
+                        kb.pillar2_staticClientDredging?.extractedRequestSchemas?.length === 0 ? (
+                          <p className="text-xs text-[#8c9099] italic">No unpacked .map files or Zod schemas found.</p>
+                        ) : (
+                          <>
+                            {kb.pillar2_staticClientDredging?.unpackedSourceMaps?.map((sm, idx) => (
+                              <div key={idx} className="p-2 rounded bg-[#141517] border border-[#2b2d30] flex items-center justify-between">
+                                <div className="truncate mr-2">
+                                  <span className="text-purple-300 font-bold block truncate">{sm.sourceMapUrl}</span>
+                                  <span className="text-[10px] text-[#8c9099]">
+                                    Recovered {sm.sourceFilesCount} original source files
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => handleCopyText(sm.sourceMapUrl, `sm_${idx}`, 'Source Map URL')}
+                                  className="text-purple-300 hover:text-white"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+
+                            {kb.pillar2_staticClientDredging?.extractedRequestSchemas?.map((sch, idx) => (
+                              <div key={`sch-${idx}`} className="p-2 rounded bg-[#141517] border border-[#2b2d30]">
+                                <span className="text-sky-300 font-bold block">{sch.name}</span>
+                                <span className="text-[10px] text-[#9da5b4]">Fields: {sch.fields.join(', ')}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Deep 4-Pillar Breakdown Tab */}
+              {activeTab === 'pillars_breakdown' && kb && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-1 bg-[#1e1f22] p-1 rounded border border-[#2b2d30] overflow-x-auto">
+                    {[
+                      { id: 'overview', label: '📊 Overview & Stats', count: kb.allDiscoveredRequests.length },
+                      { id: 'pillar1', label: '🌐 1. Infrastructure & Origin', count: kb.pillar1_infrastructure.subdomains.length },
+                      { id: 'pillar2', label: '⚡ 2. Static Client Dredging', count: kb.pillar2_staticClientDredging.astExtractedEndpoints.length },
+                      { id: 'pillar3', label: '🥷 3. Dynamic Stealth Crawling', count: kb.pillar3_dynamicBrowserCrawl.crawledEndpointsCount },
+                      { id: 'pillar4', label: '🕰️ 4. Historical Archives', count: (kb.pillar4_historicalArchives.waybackCount || 0) + (kb.pillar4_historicalArchives.commonCrawlCount || 0) },
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        onClick={() => setActivePillarSubTab(st.id as any)}
+                        className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition-all flex items-center gap-1.5 ${
+                          activePillarSubTab === st.id
+                            ? 'bg-amber-500 text-black font-bold shadow-sm'
+                            : 'text-[#9da5b4] hover:text-white hover:bg-[#252830]'
+                        }`}
+                      >
+                        <span>{st.label}</span>
+                        <span className="text-[10px] opacity-80">({st.count})</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {activePillarSubTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Metric Cards Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
