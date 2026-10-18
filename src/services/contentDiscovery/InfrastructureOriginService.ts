@@ -49,6 +49,9 @@ export interface OriginAnalysisResult {
     ip: string;
     source: string;
     confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+    backendServerHeader?: string;
+    verifiedBypass?: boolean;
+    statusCode?: number;
   }>;
   faviconHashMmh3: number | null;
   faviconUrl?: string;
@@ -528,12 +531,24 @@ export class InfrastructureOriginService {
     }
 
     if (subdomains) {
+      const targetPrefix = cleanHost.split('.')[0]?.toLowerCase();
       for (const sub of subdomains) {
         if (!sub.isBehindCdn && sub.resolvedIps.length > 0) {
           for (const ip of sub.resolvedIps) {
             if (!seenCandidateIps.has(ip)) {
               seenCandidateIps.add(ip);
-              const isHighPriority = /^(?:direct|origin|api|dev|staging|vpn|mail)\./i.test(sub.hostname);
+              const isDirectAffinity =
+                Boolean(targetPrefix) &&
+                targetPrefix !== 'www' &&
+                (sub.hostname.includes(`.${targetPrefix}.`) ||
+                  sub.hostname.includes(`-${targetPrefix}.`) ||
+                  sub.hostname.startsWith(`${targetPrefix}.`) ||
+                  sub.hostname.includes(targetPrefix));
+              const isCommonOriginPattern =
+                /^(?:direct|origin|origin-www|api|dev|staging|uat|test|admin|portal|mail|cpanel|webmail|internal|vpn)\./i.test(
+                  sub.hostname
+                );
+              const isHighPriority = isDirectAffinity || isCommonOriginPattern;
               originCandidateIps.push({
                 ip,
                 source: `Non-CDN Subdomain Resolution (${sub.hostname})`,
@@ -543,6 +558,26 @@ export class InfrastructureOriginService {
           }
         }
       }
+    }
+
+    // 3b. Active Origin Probe & Server Banner Verification for Candidate IPs
+    for (const cand of originCandidateIps.slice(0, 5)) {
+      const cleanIp = cand.ip.split('/')[0];
+      try {
+        const rawReq = `GET / HTTP/1.1\r\nHost: ${cleanHost}\r\nUser-Agent: Mozilla/5.0 Sentinel/6.0 Origin-Verifier\r\nConnection: close\r\n\r\n`;
+        const res = await ipcClient.sendRepeaterRequest({
+          tabId: `origin-probe-${cleanIp}-${Date.now()}`,
+          targetUrl: `http://${cleanIp}/`,
+          rawRequest: rawReq,
+        });
+        if (res?.statusCode) {
+          cand.statusCode = res.statusCode;
+          const srv = res.headers?.['server'] || res.headers?.['Server'];
+          if (srv) cand.backendServerHeader = srv;
+          cand.verifiedBypass = true;
+          cand.confidence = 'HIGH';
+        }
+      } catch {}
     }
 
     // 4. Compute Favicon MurmurHash3 (`mmh3`)
