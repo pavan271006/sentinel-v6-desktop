@@ -64,3 +64,5 @@ scripts/test_iframe_render.js
 # Internal agents & test reports
 .agents/
 coverage/
+recon_reports/*.md
+!recon_reports/.gitkeep

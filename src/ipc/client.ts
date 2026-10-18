@@ -195,6 +195,24 @@ export class SentinelIpcClient {
         }
       case 'cmd_activate_cdp_target':
         return true as unknown as T;
+      case 'cmd_sentinel_agent_tool_call': {
+        const { sentinelAgentBridge } = await import('../services/contentDiscovery/SentinelAgentBridge');
+        return (await sentinelAgentBridge.executeTool(
+          (args?.toolName as string) || '',
+          (args?.toolArgs as Record<string, any>) || {}
+        )) as unknown as T;
+      }
+      case 'cmd_sentinel_get_knowledge_base': {
+        const { sentinelAgentBridge } = await import('../services/contentDiscovery/SentinelAgentBridge');
+        return (sentinelAgentBridge.getCachedKnowledgeBase((args?.targetHost as string) || '')) as unknown as T;
+      }
+      case 'cmd_sentinel_run_autonomous_assessment': {
+        const { autonomousPentestAgent } = await import('../services/ai/AutonomousPentestAgent');
+        return (await autonomousPentestAgent.runAssessment({
+          targetUrl: (args?.targetUrl as string) || '',
+          objective: (args?.objective as string) || undefined,
+        })) as unknown as T;
+      }
       default:
         throw new Error(`Unhandled IPC command in fallback: ${command}`);
     }
@@ -404,6 +422,19 @@ export class SentinelIpcClient {
 
   public async setUpstreamProxy(proxyUrl?: string | null): Promise<boolean> {
     return this.invoke<boolean>('cmd_set_upstream_proxy', { proxyUrl: proxyUrl || null });
+  }
+
+  // Sentinel Autonomous Agent & Knowledge Base Methods
+  public async callAgentTool(toolName: string, toolArgs: Record<string, any>): Promise<any> {
+    return this.invoke<any>('cmd_sentinel_agent_tool_call', { toolName, toolArgs });
+  }
+
+  public async getAgentKnowledgeBase(targetHost: string): Promise<any> {
+    return this.invoke<any>('cmd_sentinel_get_knowledge_base', { targetHost });
+  }
+
+  public async runAutonomousAssessment(targetUrl: string, objective?: string): Promise<any> {
+    return this.invoke<any>('cmd_sentinel_run_autonomous_assessment', { targetUrl, objective });
   }
 }
 

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useToastStore } from '../stores/toastStore';
 import { useRepeaterStore } from '../stores/repeaterStore';
+import { useReconStore } from '../stores/reconStore';
 import { Button } from '../design-system/Button';
 import {
   FolderSearch,
@@ -13,6 +14,8 @@ import {
   Lock,
   Layers,
   Terminal,
+  Sparkles,
+  ArrowDownToLine,
 } from 'lucide-react';
 import {
   ContentDiscoveryEngine,
@@ -25,6 +28,8 @@ import {
   WORDLIST_BACKUPS,
   WORDLIST_API,
 } from '../services/contentDiscovery/ContentDiscoveryEngine';
+import { sentinelAgentBridge } from '../services/contentDiscovery/SentinelAgentBridge';
+import { WebsiteKnowledgeBaseModal } from '../components/recon/WebsiteKnowledgeBaseModal';
 
 export const DiscoverWorkspaceView: React.FC = () => {
   const { addToast } = useToastStore();
@@ -49,8 +54,62 @@ export const DiscoverWorkspaceView: React.FC = () => {
 
   const [selectedEndpoint, setSelectedEndpoint] = useState<DiscoveredEndpoint | null>(discoveredPaths[2]);
   const [filterType, setFilterType] = useState<PathCategory | 'All'>('All');
+  const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
+  const { latestKnowledgeBase } = useReconStore();
 
   const engineRef = useRef<ContentDiscoveryEngine | null>(null);
+
+  const handleImportFromKnowledgeBase = () => {
+    const host = targetUrl.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].trim().toLowerCase();
+    const kb =
+      (latestKnowledgeBase?.target.host === host ? latestKnowledgeBase : undefined) ||
+      sentinelAgentBridge.getCachedKnowledgeBase(host) ||
+      latestKnowledgeBase;
+
+    if (!kb || kb.allDiscoveredRequests.length === 0) {
+      addToast({
+        type: 'info',
+        title: 'Knowledge Base Empty',
+        description: `No cached endpoints found for ${host || 'target'}. Opening Knowledge Base to capture recon.`,
+      });
+      setIsKnowledgeBaseModalOpen(true);
+      return;
+    }
+
+    const newItems: DiscoveredEndpoint[] = kb.allDiscoveredRequests.map((r, idx) => ({
+      id: Date.now() + idx,
+      path: r.path,
+      url: r.url,
+      status: r.status || 200,
+      length: r.length || 0,
+      type:
+        r.path.includes('/api/') || r.path.includes('swagger')
+          ? 'API'
+          : r.path.includes('.env') || r.path.includes('config')
+          ? 'Config'
+          : r.path.endsWith('.zip') || r.path.endsWith('.bak')
+          ? 'Backup'
+          : 'File',
+      timeMs: 15,
+    }));
+
+    setDiscoveredPaths((prev) => {
+      const existing = new Set(prev.map((p) => p.path));
+      const merged = [...prev];
+      for (const item of newItems) {
+        if (!existing.has(item.path)) {
+          merged.push(item);
+        }
+      }
+      return merged;
+    });
+
+    addToast({
+      type: 'success',
+      title: 'Imported from Knowledge Base',
+      description: `Loaded ${newItems.length} discovered endpoints from 4-Pillar Reconnaissance Engine`,
+    });
+  };
 
   const getWordlist = (): string[] => {
     let baseList: string[] = [];
@@ -203,6 +262,26 @@ export const DiscoverWorkspaceView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="xs"
+            leftIcon={<ArrowDownToLine className="w-3 h-3 text-emerald-400" />}
+            onClick={handleImportFromKnowledgeBase}
+            title="Import all endpoints discovered across 4-Pillar Reconnaissance into Discovery Table"
+          >
+            Import from KB
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="xs"
+            leftIcon={<Sparkles className="w-3 h-3 text-amber-400" />}
+            onClick={() => setIsKnowledgeBaseModalOpen(true)}
+            title="Inspect 4-Pillar Website Knowledge Base (Origin De-cloaking, Favicon mmh3, CT subdomains, Cloud buckets, Next.js Server Actions, Client Schemas, and AI Agent tools)"
+          >
+            🧠 Knowledge Base
+          </Button>
+
           {isDiscovering ? (
             <Button
               variant="danger"
@@ -480,6 +559,13 @@ export const DiscoverWorkspaceView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* 🧠 Sovereign Website Knowledge Base Modal */}
+      <WebsiteKnowledgeBaseModal
+        isOpen={isKnowledgeBaseModalOpen}
+        onClose={() => setIsKnowledgeBaseModalOpen(false)}
+        targetHost={targetUrl}
+      />
     </div>
   );
 };

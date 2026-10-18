@@ -212,7 +212,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         duration: 35,
         timestamp: Date.now(),
         inScope: true,
-      });
+      } as any);
 
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'cf-clearance-tx');
       expect(tx?.status).toBe(200);
@@ -279,7 +279,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         inScope: true,
       };
 
-      store.addTransaction(discovered);
+      store.addTransaction(discovered as any);
       expect(useTrafficStore.getState().transactions.length).toBe(initialCount + 1);
 
       const progress = {
@@ -382,7 +382,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         inScope: true,
       };
 
-      useTrafficStore.getState().addTransaction(wsFrame);
+      useTrafficStore.getState().addTransaction(wsFrame as any);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'ws-frame-1');
       expect(tx?.status).toBe(101);
       expect(tx?.method).toBe('WS');
@@ -504,7 +504,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         duration: 40,
         timestamp: Date.now(),
         inScope: true,
-      });
+      } as any);
 
       expect(useTrafficStore.getState().transactions.some(t => t.id === 'form-sub-tx')).toBe(true);
     });
@@ -546,7 +546,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         });
       }
 
-      useTrafficStore.getState().ingestBatch(txs);
+      useTrafficStore.getState().ingestBatch(txs as any);
       const inScopeCount = useTrafficStore.getState().transactions.filter(t => t.inScope).length;
       expect(inScopeCount).toBeGreaterThanOrEqual(50);
     });
@@ -629,7 +629,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         duration: 75,
         timestamp: Date.now(),
         inScope: true,
-      });
+      } as any);
 
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'upload-tx');
       expect(tx?.status).toBe(201);
@@ -696,7 +696,7 @@ describe('Tier 3: Pairwise Cross-Feature Interactions E2E Suite (30 Cross-Subsys
         inScope: true,
       };
 
-      useTrafficStore.getState().addTransaction(storeItem);
+      useTrafficStore.getState().addTransaction(storeItem as any);
       expect(useTrafficStore.getState().transactions.some(t => t.id === 'pipeline-tx-1')).toBe(true);
     });
   });

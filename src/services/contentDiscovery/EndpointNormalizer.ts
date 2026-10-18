@@ -39,6 +39,12 @@ export interface TemplateClusteringMetrics {
   lastSampledAt?: number;
 }
 
+export interface ClusterGroup {
+  template: string;
+  sampleCount: number;
+  endpoints: NormalizedEndpoint[];
+}
+
 export interface SegmentClassification {
   isDynamic: boolean;
   placeholder: string;
@@ -618,6 +624,26 @@ export class EndpointNormalizer {
    */
   public getTemplateMetrics(): TemplateClusteringMetrics[] {
     return Array.from(this.templateCounts.values());
+  }
+
+  /**
+   * Groups a list of normalized endpoints into discrete REST structural cluster groups.
+   */
+  public clusterEndpoints(endpoints: NormalizedEndpoint[]): ClusterGroup[] {
+    const groups = new Map<string, ClusterGroup>();
+    for (const ep of endpoints) {
+      const template = ep.routeTemplate || this.generateRouteTemplate(ep.canonicalUrl);
+      let g = groups.get(template);
+      if (!g) {
+        g = { template, sampleCount: 0, endpoints: [] };
+        groups.set(template, g);
+      }
+      g.sampleCount++;
+      if (g.endpoints.length < 25) {
+        g.endpoints.push(ep);
+      }
+    }
+    return Array.from(groups.values());
   }
 }
 

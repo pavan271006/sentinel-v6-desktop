@@ -34,6 +34,7 @@ export interface CaptchaDetectionResult {
   provider?: CaptchaProvider;
   details?: string;
   selectorMatched?: string;
+  isChallengeScreen?: boolean;
 }
 
 export class CaptchaSentinelEngine {

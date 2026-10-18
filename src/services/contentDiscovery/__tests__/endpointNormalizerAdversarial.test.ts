@@ -173,7 +173,7 @@ describe('Adversarial Stress Testing: EndpointNormalizer', () => {
       console.log('3.2 Legitimate 10-digit ID param (?id=1712345678):', {
         canonicalUrl: res!.canonicalUrl,
         queryParams: res!.queryParams,
-        idPreserved: 'id' in res!.queryParams
+        idPreserved: res!.queryParams ? 'id' in res!.queryParams : false
       });
     });
 

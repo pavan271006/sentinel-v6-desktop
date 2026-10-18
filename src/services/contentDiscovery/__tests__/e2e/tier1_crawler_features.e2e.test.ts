@@ -16,6 +16,7 @@ import { KatanaCrawlerService } from '../../KatanaCrawlerService';
 import { JSluiceMiningService } from '../../JSluiceMiningService';
 import { UnifiedReconOrchestrator } from '../../UnifiedReconOrchestrator';
 import { useTrafficStore } from '../../../../stores/trafficStore';
+import { TrafficSummary } from '../../../../types/traffic';
 import { decodeAndDecompressResponseBody } from '../../../../utils/decompressionUtils';
 import { jaccardTokenSimilarity, normalizedStringSimilarity } from '../../AdaptiveElementLocator';
 
@@ -975,7 +976,7 @@ describe('Tier 1: Feature Coverage E2E Suite (28 Features, >=5 tests per feature
         duration: 15,
         timestamp: Date.now(),
         inScope: true,
-      });
+      } as unknown as TrafficSummary);
       expect(useTrafficStore.getState().transactions.length).toBe(initialCount + 1);
     });
 
@@ -1012,9 +1013,9 @@ describe('Tier 1: Feature Coverage E2E Suite (28 Features, >=5 tests per feature
         duration: 45,
         timestamp: t0,
         inScope: true,
-      });
+      } as unknown as TrafficSummary);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'stream-tx-1');
-      expect(tx?.timestamp).toBeGreaterThanOrEqual(t0);
+      expect((tx?.timestamp as unknown as number)).toBeGreaterThanOrEqual(t0);
     });
 
     it('24.2: streams HTTP response status codes accurately', () => {
@@ -1028,7 +1029,7 @@ describe('Tier 1: Feature Coverage E2E Suite (28 Features, >=5 tests per feature
         duration: 32,
         timestamp: Date.now(),
         inScope: true,
-      });
+      } as unknown as TrafficSummary);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'stream-tx-2');
       expect(tx?.status).toBe(403);
     });
@@ -1046,7 +1047,7 @@ describe('Tier 1: Feature Coverage E2E Suite (28 Features, >=5 tests per feature
           duration: 10,
           timestamp: base + i,
           inScope: true,
-        });
+        } as unknown as TrafficSummary);
       }
       const burstItems = useTrafficStore.getState().transactions.filter(t => t.host === 'burst.target.com');
       expect(burstItems.length).toBe(50);
@@ -1068,7 +1069,7 @@ describe('Tier 1: Feature Coverage E2E Suite (28 Features, >=5 tests per feature
         duration: 8,
         timestamp: Date.now(),
         inScope: true,
-      });
+      } as unknown as TrafficSummary);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'header-tx-1');
       expect(tx?.host).toBe('headers.local');
     });

@@ -379,7 +379,72 @@ export class ClientRuntimeOmniscienceService {
             }
           } catch(e) {}
 
-          return items.slice(0, 100);
+          // 7. IndexedDB Databases & Object Store Dredging (Apollo, Firebase, Redux-Persist, localForage)
+          try {
+            if (window.indexedDB && typeof window.indexedDB.databases === 'function') {
+              const dbs = await window.indexedDB.databases();
+              for (const dbInfo of dbs.slice(0, 6)) {
+                if (!dbInfo || !dbInfo.name) continue;
+                await new Promise((resolve) => {
+                  try {
+                    const openReq = window.indexedDB.open(dbInfo.name);
+                    openReq.onsuccess = function() {
+                      const db = openReq.result;
+                      const storeNames = Array.from(db.objectStoreNames || []).slice(0, 5);
+                      if (storeNames.length === 0) { db.close(); resolve(null); return; }
+                      try {
+                        const tx = db.transaction(storeNames, 'readonly');
+                        let pending = storeNames.length;
+                        for (const sName of storeNames) {
+                          const getAllReq = tx.objectStore(sName).getAll(null, 25);
+                          getAllReq.onsuccess = function() {
+                            try {
+                              const serialized = JSON.stringify(getAllReq.result || []);
+                              const matches = serialized.matchAll(/['"](\/(?:api|v[0-9]+|graphql|[a-zA-Z0-9_\\-]+)\/[a-zA-Z0-9_\\-\\.\\/\\?=&%#]*)['"]/g);
+                              for (const m of matches) addRoute(m[1], 'IndexedDB:' + dbInfo.name, 'IndexedDB Store: ' + sName);
+                            } catch(e) {}
+                            if (--pending <= 0) { db.close(); resolve(null); }
+                          };
+                          getAllReq.onerror = function() {
+                            if (--pending <= 0) { db.close(); resolve(null); }
+                          };
+                        }
+                      } catch(e) { db.close(); resolve(null); }
+                    };
+                    openReq.onerror = function() { resolve(null); };
+                  } catch(e) { resolve(null); }
+                });
+              }
+            }
+          } catch(e) {}
+
+          // 8. Global State Trees (__INITIAL_STATE__, __PRELOADED_STATE__, __APOLLO_STATE__, ENV/CONFIG)
+          try {
+            const globalKeys = ['__INITIAL_STATE__', '__PRELOADED_STATE__', '__APOLLO_STATE__', '__RELAY_STORE__', 'ENV', '__ENV__', 'APP_CONFIG', '__APP_CONFIG__'];
+            for (const gk of globalKeys) {
+              if (window[gk]) {
+                const dumped = JSON.stringify(window[gk]);
+                if (dumped && dumped.length < 250000) {
+                  const matches = dumped.matchAll(/['"](\/(?:api|v[0-9]+|graphql|admin|internal|[a-zA-Z0-9_\\-]+)\/[a-zA-Z0-9_\\-\\.\\/\\?=&%#]*)['"]/g);
+                  for (const m of matches) addRoute(m[1], 'GlobalState:' + gk, 'Window Global State (' + gk + ')');
+                }
+              }
+            }
+          } catch(e) {}
+
+          // 9. Performance Resource Timing API (captures early XHR/Fetch/Script requests fired prior to CDP attachment)
+          try {
+            if (window.performance && typeof window.performance.getEntriesByType === 'function') {
+              const resources = window.performance.getEntriesByType('resource');
+              for (const res of resources) {
+                if (res && res.name && (res.initiatorType === 'xmlhttprequest' || res.initiatorType === 'fetch' || res.initiatorType === 'script' || res.initiatorType === 'beacon')) {
+                  addRoute(res.name, 'PerformanceResource:' + res.initiatorType, 'Early Resource (' + res.initiatorType + ')');
+                }
+              }
+            }
+          } catch(e) {}
+
+          return items.slice(0, 150);
         })()
       `);
       return results || [];

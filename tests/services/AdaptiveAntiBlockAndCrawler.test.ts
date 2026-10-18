@@ -106,7 +106,7 @@ describe('Adaptive Anti-Block & Dynamic Pacing Engine', () => {
       // Mock CDP actions
       vi.spyOn(stealthCdpBrowserDriver, 'dispatchHumanClick').mockResolvedValue();
       vi.spyOn(stealthCdpBrowserDriver, 'dispatchSmoothScroll').mockResolvedValue();
-      vi.spyOn(stealthCdpBrowserDriver, 'navigate').mockResolvedValue(true);
+      vi.spyOn(stealthCdpBrowserDriver, 'navigate').mockResolvedValue(200);
       vi.spyOn(stealthCdpBrowserDriver, 'waitForDomSettle').mockResolvedValue();
       vi.spyOn(stateFlowGraphCrawler as any, 'waitForInterstitialToResolve').mockResolvedValue(undefined);
 

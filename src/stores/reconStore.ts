@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { SiteMapRequest } from '../workspaces/ProjectScopeWorkspaceView';
 import type { UnifiedReconProgress, ReconEngineType } from '../services/contentDiscovery/UnifiedReconOrchestrator';
+import type { WebsiteKnowledgeBase } from '../services/contentDiscovery/SentinelAgentBridge';
 
 export type StealthSpeedType = 'turbo' | 'fast' | 'normal' | 'human' | 'deep';
 
@@ -12,6 +13,7 @@ export interface ReconStoreState {
   reconProgress: UnifiedReconProgress | null;
   stealthSpeed: StealthSpeedType;
   crawlerDiscoveredItems: SiteMapRequest[];
+  latestKnowledgeBase: WebsiteKnowledgeBase | null;
 
   setIsCrawling: (isCrawling: boolean) => void;
   setCrawlerTarget: (target: string) => void;
@@ -21,6 +23,7 @@ export interface ReconStoreState {
   setStealthSpeed: (speed: StealthSpeedType) => void;
   setCrawlerDiscoveredItems: (items: SiteMapRequest[] | ((prev: SiteMapRequest[]) => SiteMapRequest[])) => void;
   addCrawlerDiscoveredItem: (item: SiteMapRequest) => void;
+  setLatestKnowledgeBase: (kb: WebsiteKnowledgeBase | null) => void;
   clearDiscoveredItems: () => void;
 }
 
@@ -32,6 +35,7 @@ export const useReconStore = create<ReconStoreState>((set) => ({
   reconProgress: null,
   stealthSpeed: 'fast',
   crawlerDiscoveredItems: [],
+  latestKnowledgeBase: null,
 
   setIsCrawling: (isCrawling) => set({ isCrawling }),
   setCrawlerTarget: (crawlerTarget) => set({ crawlerTarget }),
@@ -57,5 +61,6 @@ export const useReconStore = create<ReconStoreState>((set) => ({
         discoveredEndpointsCount: state.crawlerDiscoveredItems.length + 1,
       };
     }),
-  clearDiscoveredItems: () => set({ crawlerDiscoveredItems: [], discoveredEndpointsCount: 0 }),
+  setLatestKnowledgeBase: (latestKnowledgeBase) => set({ latestKnowledgeBase }),
+  clearDiscoveredItems: () => set({ crawlerDiscoveredItems: [], discoveredEndpointsCount: 0, latestKnowledgeBase: null }),
 }));

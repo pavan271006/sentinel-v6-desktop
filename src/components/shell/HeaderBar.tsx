@@ -10,14 +10,17 @@ import {
   Globe,
   ChevronRight,
   RotateCw,
+  Sparkles,
 } from 'lucide-react';
 import { useVpnRotatorStore } from '../../stores/vpnRotatorStore';
 import { useToastStore } from '../../stores/toastStore';
+import { useReconStore } from '../../stores/reconStore';
 import { ipcClient } from '../../ipc/client';
 import { Tooltip } from '../../design-system/Tooltip';
 import { Dropdown, DropdownItem } from '../../design-system/Dropdown';
 import { ProjectModal } from '../project/ProjectModal';
 import { EgressControlModal } from './EgressControlModal';
+import { WebsiteKnowledgeBaseModal } from '../recon/WebsiteKnowledgeBaseModal';
 
 export interface BurpTabItem {
   id: WorkspaceId;
@@ -65,8 +68,10 @@ export const HeaderBar: React.FC = () => {
   const { trafficCount, criticalFindingCount } = useEventBusStore();
   const { openModal: openProjectModal, commitWalCheckpoint } = useProjectStore();
   const { addToast } = useToastStore();
+  const { latestKnowledgeBase } = useReconStore();
   const { isActive: isVpnActive, currentNode: vpnNode, isRotating, rotateVpn, initEgressIp, toggleProxy } = useVpnRotatorStore();
   const [isEgressModalOpen, setIsEgressModalOpen] = React.useState(false);
+  const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = React.useState(false);
 
   useEffect(() => {
     initEgressIp();
@@ -187,8 +192,20 @@ export const HeaderBar: React.FC = () => {
           </span>
         </div>
 
-        {/* Far Right: Settings */}
+        {/* Far Right: Knowledge Base & Settings */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsKnowledgeBaseOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/40 transition-all text-[11px] font-mono font-bold cursor-pointer shadow-sm group"
+            title="Inspect 4-Pillar Attack Surface Knowledge Base, Origin De-cloaking, and AI Pentest Agent"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
+            <span>🧠 Knowledge Base</span>
+            {latestKnowledgeBase && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+            )}
+          </button>
+
           <Tooltip content="Open Settings">
             <button onClick={() => setActiveWorkspace('settings')} className="p-1 hover:text-white text-[#6f737a] hover:bg-[#2b2d30] rounded transition-colors">
               <Settings className="w-3.5 h-3.5" />
@@ -254,6 +271,9 @@ export const HeaderBar: React.FC = () => {
 
       {/* Global Egress Routing & Anti-Ban Modal */}
       <EgressControlModal isOpen={isEgressModalOpen} onClose={() => setIsEgressModalOpen(false)} />
+
+      {/* Sovereign Ω Attack Surface & Website Knowledge Base Modal */}
+      <WebsiteKnowledgeBaseModal isOpen={isKnowledgeBaseOpen} onClose={() => setIsKnowledgeBaseOpen(false)} />
     </>
   );
 };

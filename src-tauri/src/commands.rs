@@ -2054,7 +2054,7 @@ pub async fn cmd_launch_system_browser(
     target_url: Option<String>,
     proxy_port: Option<u16>,
     proxy_server: Option<String>,
-    workers: Option<u32>,
+    _workers: Option<u32>,
 ) -> Result<String, String> {
     let mut url = target_url.unwrap_or_else(|| "https://www.google.com".to_string());
     if !url.starts_with("http://") && !url.starts_with("https://") {

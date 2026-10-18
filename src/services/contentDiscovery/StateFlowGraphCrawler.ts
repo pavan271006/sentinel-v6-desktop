@@ -25,13 +25,21 @@ import { captchaSentinelEngine } from './CaptchaSentinelEngine';
 import { adaptivePacingEngine } from './AdaptivePacingEngine';
 import { CrawlPatternRandomizer } from './CrawlPatternRandomizer';
 import { pathTemplateClusterer } from './PathTemplateClusterer';
-import { sourceMapRouteMiner } from './SourceMapRouteMiner';
+import { sourceMapRouteMiner, SourceMapDiscoveryResult } from './SourceMapRouteMiner';
 import { sessionLivenessWatchdog } from './SessionLivenessWatchdog';
 import { TargetSiteCrawler } from '../sqlScanner/crawler/TargetSiteCrawler';
 import { decodeAndDecompressResponseBody } from '../../utils/decompressionUtils';
 import { isWafChallenge } from './WafAndWildcardDetector';
 import { multiSourceEndpointMiner } from './MultiSourceEndpointMiner';
 import { endpointNormalizer } from './EndpointNormalizer';
+import { infrastructureOriginService, InfrastructureReconReport } from './InfrastructureOriginService';
+import { gauArchiveService, GauDiscoveredUrl } from './GauArchiveService';
+import { sentinelAgentBridge, WebsiteKnowledgeBase } from './SentinelAgentBridge';
+import { jsluiceMiningService, JSluiceDiscoveredEndpoint, JSluiceDiscoveredSecret } from './JSluiceMiningService';
+import { robotsTxtDiscoveryService, RobotsTxtResult } from './RobotsTxtDiscoveryService';
+import { idorAndHiddenEndpointHunter, IdorFinding } from './IdorAndHiddenEndpointHunter';
+import { GraphQLEngine } from '../graphql/GraphQLEngine';
+import { useReconStore } from '../../stores/reconStore';
 
 export interface InteractiveElementDescriptor extends ElementInspectionData {
   selector: string;
@@ -112,6 +120,18 @@ export class StateFlowGraphCrawler {
   private visitedDomHashes = new Set<string>();
   private clickedSignatures = new Set<string>();
   private discoveredItemsMap = new Map<string, SiteMapRequest>();
+
+  // 4-Pillar Attack Surface Knowledge Base Accumulators
+  private collectedSourceMaps: SourceMapDiscoveryResult[] = [];
+  private collectedLazyChunks = new Set<string>();
+  private collectedServerActions: Array<{ path: string; method: string; source: string }> = [];
+  private collectedRequestSchemas: Array<{ name: string; fields: string[]; sourceFile: string }> = [];
+  private collectedSecrets: JSluiceDiscoveredSecret[] = [];
+  private collectedAstEndpoints: JSluiceDiscoveredEndpoint[] = [];
+  private collectedRouterRoutes: Array<{ url: string; source: string }> = [];
+  private collectedOfflineStorage: Array<{ url: string; source: string; title?: string }> = [];
+  private collectedDomForms: Array<{ actionUrl: string; method: string; inputs: string[] }> = [];
+  private minedInlineScriptHashes = new Set<string>();
 
   public abort(): void {
     this.isAborted = true;
@@ -931,6 +951,274 @@ export class StateFlowGraphCrawler {
 
       this.discoveredItemsMap.set(key, item);
       if (onItemDiscovered) onItemDiscovered(item);
+
+      // Passively mine headers, JSON HATEOAS links, OpenAPI/OIDC specs, and JS bundles from live response
+      const fullUrl = u.toString();
+      this.mineResponseBodyAndHeadersForSurface(
+        fullUrl,
+        cleanPath,
+        targetHost,
+        headers || {},
+        body || '',
+        resolvedMime,
+        onItemDiscovered
+      );
+    } catch {}
+  }
+
+  /**
+   * Ingests a SourceMapDiscoveryResult into the crawler's 4-Pillar Knowledge Base accumulators
+   */
+  public ingestSourceMapResult(
+    res: SourceMapDiscoveryResult | null,
+    targetHost: string,
+    currentUrl: string,
+    onItemDiscovered?: (item: SiteMapRequest) => void
+  ): void {
+    if (!res) return;
+
+    if (!this.collectedSourceMaps.some((m) => m.scriptUrl === res.scriptUrl)) {
+      this.collectedSourceMaps.push(res);
+    }
+
+    for (const r of res.extractedRoutes || []) {
+      this.registerDiscoveredUrl(
+        r.url,
+        targetHost,
+        currentUrl,
+        res.sourceMapUrl ? 'SourceMap-Route' : 'Bundle-AST-Route',
+        `${r.method} ${r.url}`,
+        onItemDiscovered,
+        r.method || 'GET',
+        undefined,
+        r.params ? r.params.map((p) => ({ name: p, value: '1' })) : undefined
+      );
+      if (!this.collectedAstEndpoints.some((e) => e.path === r.url && e.method === r.method)) {
+        this.collectedAstEndpoints.push({
+          url: r.url,
+          path: r.url,
+          method: (r.method || 'GET') as any,
+          params: r.params || [],
+          sourceScript: r.sourceFile || res.scriptUrl,
+          category: r.url.includes('graphql') ? 'GraphQL' : r.url.startsWith('/api') ? 'API' : 'Route',
+        });
+      }
+    }
+
+    for (const sa of res.nextServerActions || []) {
+      if (!this.collectedServerActions.some((a) => a.path === sa.url)) {
+        this.collectedServerActions.push({
+          path: sa.url,
+          method: sa.method || 'POST',
+          source: sa.sourceFile || res.scriptUrl,
+        });
+      }
+    }
+
+    for (const sc of res.extractedSchemas || []) {
+      if (!this.collectedRequestSchemas.some((s) => s.name === sc.name && s.sourceFile === sc.sourceFile)) {
+        this.collectedRequestSchemas.push(sc);
+      }
+    }
+
+    for (const sec of res.extractedSecrets || []) {
+      if (!this.collectedSecrets.some((s) => s.value === sec.value)) {
+        this.collectedSecrets.push({
+          type: sec.type,
+          value: sec.value,
+          sourceScript: sec.sourceFile || res.scriptUrl,
+          snippet: `Extracted from ${sec.sourceFile || res.scriptUrl}`,
+        });
+      }
+    }
+
+    for (const chunkUrl of res.synthesizedLazyChunks || []) {
+      if (!this.collectedLazyChunks.has(chunkUrl)) {
+        this.collectedLazyChunks.add(chunkUrl);
+        this.registerDiscoveredUrl(chunkUrl, targetHost, currentUrl, 'Synthesized-LazyChunk', chunkUrl, onItemDiscovered);
+      }
+    }
+  }
+
+  /**
+   * Parses inline or network-captured JS script content for AST endpoints, Server Actions, schemas, secrets, and lazy chunks
+   */
+  public ingestScriptContentIntelligence(
+    scriptIdentifier: string,
+    scriptContent: string,
+    targetHost: string,
+    currentUrl: string,
+    onItemDiscovered?: (item: SiteMapRequest) => void
+  ): void {
+    if (!scriptContent || scriptContent.length < 25) return;
+    const contentHash = `${scriptIdentifier}:${scriptContent.length}:${scriptContent.slice(0, 64)}`;
+    if (this.minedInlineScriptHashes.has(contentHash)) return;
+    this.minedInlineScriptHashes.add(contentHash);
+
+    try {
+      const cleanHost = targetHost.toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+      const jsluiceRes = jsluiceMiningService.parseScriptContent(scriptContent, scriptIdentifier, cleanHost);
+      const schemas = sourceMapRouteMiner.extractSchemasFromSource(scriptContent, scriptIdentifier);
+      const lazyChunks = jsluiceMiningService.synthesizeUnloadedChunkUrls(scriptContent, `https://${cleanHost}`);
+
+      for (const ep of jsluiceRes.endpoints) {
+        const cleanPath = ep.path.startsWith('/') ? ep.path : '/' + ep.path;
+        this.registerDiscoveredUrl(
+          cleanPath,
+          targetHost,
+          currentUrl,
+          'Inline-AST-Route',
+          `${ep.method} ${cleanPath}`,
+          onItemDiscovered,
+          ep.method || 'GET',
+          undefined,
+          ep.params.map((p) => ({ name: p, value: '1' }))
+        );
+        if (!this.collectedAstEndpoints.some((e) => e.path === cleanPath && e.method === ep.method)) {
+          this.collectedAstEndpoints.push(ep);
+        }
+        if (cleanPath.startsWith('/_next/action/')) {
+          if (!this.collectedServerActions.some((a) => a.path === cleanPath)) {
+            this.collectedServerActions.push({
+              path: cleanPath,
+              method: ep.method || 'POST',
+              source: scriptIdentifier,
+            });
+          }
+        }
+      }
+
+      for (const sec of jsluiceRes.secrets) {
+        if (!this.collectedSecrets.some((s) => s.value === sec.value)) {
+          this.collectedSecrets.push(sec);
+        }
+      }
+
+      for (const sc of schemas) {
+        if (!this.collectedRequestSchemas.some((s) => s.name === sc.name && s.sourceFile === sc.sourceFile)) {
+          this.collectedRequestSchemas.push(sc);
+        }
+      }
+
+      for (const chunkUrl of lazyChunks) {
+        if (!this.collectedLazyChunks.has(chunkUrl)) {
+          this.collectedLazyChunks.add(chunkUrl);
+          this.registerDiscoveredUrl(chunkUrl, targetHost, currentUrl, 'Synthesized-LazyChunk', chunkUrl, onItemDiscovered);
+        }
+      }
+    } catch {}
+  }
+
+  /**
+   * Passively mines HTTP response headers (Link, CSP, Location, SourceMap) and JSON/Spec response bodies
+   * for hidden API routes, HATEOAS links, OpenAPI/OIDC definitions, and unloaded bundle chunks.
+   */
+  public mineResponseBodyAndHeadersForSurface(
+    fullUrl: string,
+    cleanPath: string,
+    targetHost: string,
+    headers: Record<string, string>,
+    body: string,
+    resolvedMime: string,
+    onItemDiscovered?: (item: SiteMapRequest) => void
+  ): void {
+    try {
+      // 1. Response Header Mining (Link, Location, Rewrite, CSP report-uri & connect-src)
+      for (const [rawKey, rawVal] of Object.entries(headers || {})) {
+        if (!rawVal || typeof rawVal !== 'string') continue;
+        const hKey = rawKey.toLowerCase();
+
+        if (hKey === 'link') {
+          const linkMatches = rawVal.matchAll(/<([^>]+)>/g);
+          for (const m of linkMatches) {
+            if (m[1]) {
+              this.registerDiscoveredUrl(m[1], targetHost, fullUrl, 'Header-Link', `Link: ${m[1]}`, onItemDiscovered);
+            }
+          }
+        } else if (hKey === 'location' || hKey === 'x-original-url' || hKey === 'x-rewrite-url' || hKey === 'content-location') {
+          this.registerDiscoveredUrl(rawVal.trim(), targetHost, fullUrl, `Header-${rawKey}`, `${rawKey}: ${rawVal.trim()}`, onItemDiscovered);
+        } else if (hKey === 'content-security-policy' || hKey === 'content-security-policy-report-only') {
+          const reportUriMatch = /report-uri\s+([^\s;]+)/i.exec(rawVal);
+          if (reportUriMatch && reportUriMatch[1]) {
+            this.registerDiscoveredUrl(reportUriMatch[1], targetHost, fullUrl, 'Header-CSP-ReportUri', reportUriMatch[1], onItemDiscovered, 'POST');
+          }
+          const urlMatches = rawVal.matchAll(/https?:\/\/[a-zA-Z0-9.\-_:/]+/g);
+          for (const um of urlMatches) {
+            if (um[0] && this.isSameTargetHost(um[0], targetHost)) {
+              this.registerDiscoveredUrl(um[0], targetHost, fullUrl, 'Header-CSP-Origin', um[0], onItemDiscovered);
+            }
+          }
+        }
+      }
+
+      if (!body || body.length < 2) return;
+
+      // 2. Live JavaScript Bundle Content Intelligence
+      if (resolvedMime === 'script' || cleanPath.endsWith('.js') || cleanPath.endsWith('.mjs')) {
+        this.ingestScriptContentIntelligence(fullUrl, body, targetHost, fullUrl, onItemDiscovered);
+        return;
+      }
+
+      // 3. OpenAPI / Swagger / OIDC / Universal Links / SPA Build Manifest Unpacking
+      const trimmed = body.trim();
+      const isJsonLike = resolvedMime === 'JSON' || trimmed.startsWith('{') || trimmed.startsWith('[');
+      if (isJsonLike) {
+        const lowerPath = cleanPath.toLowerCase();
+        const isSpecCandidate =
+          lowerPath.includes('swagger') ||
+          lowerPath.includes('openapi') ||
+          lowerPath.includes('api-docs') ||
+          lowerPath.includes('well-known') ||
+          lowerPath.includes('manifest') ||
+          lowerPath.includes('ngsw') ||
+          lowerPath.includes('assetlinks') ||
+          lowerPath.includes('apple-app-site-association') ||
+          trimmed.includes('"openapi"') ||
+          trimmed.includes('"swagger"') ||
+          trimmed.includes('"authorization_endpoint"') ||
+          trimmed.includes('"applinks"');
+
+        if (isSpecCandidate) {
+          const specRes = sourceMapRouteMiner.parseApiSpecificationOrManifest(cleanPath, trimmed, targetHost, (specItem) => {
+            const specKey = `${specItem.method}:${specItem.host}${specItem.path}`;
+            if (!this.discoveredItemsMap.has(specKey)) {
+              this.discoveredItemsMap.set(specKey, specItem);
+              if (onItemDiscovered) onItemDiscovered(specItem);
+            }
+          });
+          for (const sc of specRes.extractedSchemas) {
+            if (!this.collectedRequestSchemas.some((s) => s.name === sc.name && s.sourceFile === sc.sourceFile)) {
+              this.collectedRequestSchemas.push(sc);
+            }
+          }
+          for (const chunkUrl of specRes.discoveredChunkUrls) {
+            if (!this.collectedLazyChunks.has(chunkUrl)) {
+              this.collectedLazyChunks.add(chunkUrl);
+              this.registerDiscoveredUrl(chunkUrl, targetHost, fullUrl, 'Manifest-Chunk', chunkUrl, onItemDiscovered);
+            }
+          }
+        }
+
+        // 4. General JSON API Response HATEOAS & Embedded Route Extraction
+        let extractedCount = 0;
+        const hateoasRegex = /"(?:url|href|uri|endpoint|path|next|prev|self|callback_url|redirect_uri|action|webhook|next_page_url)"\s*:\s*"((?:https?:\/\/[^"'\s]+|\/[a-zA-Z0-9_\-./?=&%]+))"/gi;
+        let hMatch: RegExpExecArray | null;
+        while ((hMatch = hateoasRegex.exec(trimmed)) !== null && extractedCount < 35) {
+          if (hMatch[1] && hMatch[1].length > 1) {
+            this.registerDiscoveredUrl(hMatch[1], targetHost, fullUrl, 'JSON-HATEOAS', `JSON Link: ${hMatch[1]}`, onItemDiscovered);
+            extractedCount++;
+          }
+        }
+
+        const apiPathRegex = /"(\/(?:api|v[1-9]|graphql|gql|rest|internal|admin|oauth|auth|webhooks?|rpc|trpc)\/[a-zA-Z0-9_\-./?=&%]*)"/g;
+        let aMatch: RegExpExecArray | null;
+        while ((aMatch = apiPathRegex.exec(trimmed)) !== null && extractedCount < 50) {
+          if (aMatch[1] && aMatch[1].length > 2) {
+            this.registerDiscoveredUrl(aMatch[1], targetHost, fullUrl, 'JSON-Body-Route', `JSON API: ${aMatch[1]}`, onItemDiscovered);
+            extractedCount++;
+          }
+        }
+      }
     } catch {}
   }
 
@@ -1105,7 +1393,10 @@ export class StateFlowGraphCrawler {
   public canonicalizeUrl(rawUrl: string): string {
     if (!rawUrl || typeof rawUrl !== 'string') return '';
     try {
-      const u = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
+      const isRelative = rawUrl.startsWith('/') && !rawUrl.startsWith('//');
+      const u = isRelative
+        ? new URL(rawUrl, 'https://sentinel-placeholder.local')
+        : new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
       u.hash = '';
 
       const stripPrefixes = ['utm_', 'pf_rd_', 'pd_rd_', 'otracker'];
@@ -1131,6 +1422,9 @@ export class StateFlowGraphCrawler {
         u.pathname = u.pathname.slice(0, -1);
       }
 
+      if (isRelative) {
+        return u.pathname + u.search;
+      }
       return u.toString();
     } catch {
       return rawUrl.split('#')[0];
@@ -1867,12 +2161,17 @@ export class StateFlowGraphCrawler {
         livePageTitle = pageInfo.title;
         this.updateOrRegisterVisitedPage(initialRequestedUrl, pageInfo.liveUrl, pageInfo.title, pageInfo.html, ctx);
 
-        // MultiSource Endpoint & Attack-Surface Mining on live DOM HTML
+        // MultiSource Endpoint & Attack-Surface Mining (Shadow DOM, Iframes, Runtime Hooks, Routers, Workers & HTML)
         try {
-          const minedEndpoints = multiSourceEndpointMiner.extractFromHtml(pageInfo.html, cleanUrl);
+          const minedEndpoints = await multiSourceEndpointMiner.extractEndpoints({
+            targetHost: ctx.targetHost,
+            driver: stealthCdpBrowserDriver,
+            currentUrl: cleanUrl,
+            html: pageInfo.html,
+          });
           for (const ep of minedEndpoints) {
             const norm = endpointNormalizer.normalize(ep.url, cleanUrl);
-            if (this.isSameTargetHost(norm.origin, ctx.targetHost) || norm.isInternal) {
+            if (norm && (this.isSameTargetHost(norm.origin, ctx.targetHost) || norm.isInternal)) {
               this.registerDiscoveredUrl(
                 norm.canonicalUrl,
                 ctx.targetHost,
@@ -1884,10 +2183,16 @@ export class StateFlowGraphCrawler {
                 undefined,
                 ep.parameters ? Object.entries(ep.parameters).map(([k, v]) => ({ name: k, value: v })) : undefined
               );
+              if (ep.source === 'router_route') {
+                const fw = (ep.metadata && typeof ep.metadata.framework === 'string') ? ep.metadata.framework : 'SPA-Router';
+                if (!this.collectedRouterRoutes.some((r) => r.url === norm.canonicalUrl)) {
+                  this.collectedRouterRoutes.push({ url: norm.canonicalUrl, source: fw });
+                }
+              }
             }
           }
         } catch (minerErr) {
-          console.warn('MultiSourceEndpointMiner live HTML mining error:', minerErr);
+          console.warn('MultiSourceEndpointMiner live mining error:', minerErr);
         }
       }
     } catch (domErr) {
@@ -1955,7 +2260,7 @@ export class StateFlowGraphCrawler {
       }
     } catch {}
 
-    // Dredge Next.js, Nuxt, Remix manifests and client storage routes
+    // Dredge Next.js, Nuxt, Remix manifests, client storage routes, and router tables
     try {
       const dredged = await clientRuntimeOmniscienceService.dredgeOfflineStorage();
       for (const d of dredged) {
@@ -1967,6 +2272,24 @@ export class StateFlowGraphCrawler {
           d.title || d.url,
           ctx.onItemDiscovered
         );
+        if (!this.collectedOfflineStorage.some((item) => item.url === d.url)) {
+          this.collectedOfflineStorage.push(d);
+        }
+      }
+
+      const routerRoutes = await clientRuntimeOmniscienceService.introspectClientRouters();
+      for (const rr of routerRoutes) {
+        this.registerDiscoveredUrl(
+          rr.url,
+          ctx.targetHost,
+          cleanUrl,
+          `Router-${rr.source}`,
+          rr.title || rr.url,
+          ctx.onItemDiscovered
+        );
+        if (!this.collectedRouterRoutes.some((r) => r.url === rr.url)) {
+          this.collectedRouterRoutes.push({ url: rr.url, source: rr.source });
+        }
       }
     } catch {}
 
@@ -2063,9 +2386,16 @@ export class StateFlowGraphCrawler {
       }
     }
 
-    // Register all discovered forms, links, scripts, and comments
+    // Register all discovered forms, links, scripts, inline script ASTs, and comments
     for (const f of extraction.forms) {
       this.registerDiscoveredUrl(f.actionUrl, ctx.targetHost, cleanUrl, `Form-${f.method}`, `Form: ${f.actionUrl}`, ctx.onItemDiscovered, f.method, undefined, f.inputs);
+      if (!this.collectedDomForms.some((df) => df.actionUrl === f.actionUrl && df.method === f.method)) {
+        this.collectedDomForms.push({
+          actionUrl: f.actionUrl,
+          method: f.method,
+          inputs: f.inputs.map((i) => i.name).filter(Boolean),
+        });
+      }
     }
     for (const l of extraction.links) {
       this.registerDiscoveredUrl(l.url, ctx.targetHost, cleanUrl, 'DOM-Link', l.text || l.url, ctx.onItemDiscovered);
@@ -2073,14 +2403,54 @@ export class StateFlowGraphCrawler {
     for (const s of extraction.scripts) {
       this.registerDiscoveredUrl(s, ctx.targetHost, cleanUrl, 'Script-Bundle', s, ctx.onItemDiscovered);
     }
-    // Proactively mine client source maps and embedded webpack chunks
+
+    // Proactively mine up to 25 loaded client bundles + source maps + synthesized lazy chunks per state
     try {
-      for (const s of extraction.scripts.slice(0, 5)) {
-        await sourceMapRouteMiner.probeAndMineScript(s, ctx.targetHost, (item) => {
-          this.registerDiscoveredUrl(item.url, ctx.targetHost, cleanUrl, 'SourceMap-Route', item.title || item.url, ctx.onItemDiscovered);
+      for (const s of extraction.scripts.slice(0, 25)) {
+        const smRes = await sourceMapRouteMiner.probeAndMineScript(s, ctx.targetHost, (item) => {
+          this.registerDiscoveredUrl(
+            item.url,
+            ctx.targetHost,
+            cleanUrl,
+            'SourceMap-Route',
+            item.title || item.url,
+            ctx.onItemDiscovered,
+            item.method || 'GET'
+          );
         });
+        if (smRes) {
+          this.ingestSourceMapResult(smRes, ctx.targetHost, cleanUrl, ctx.onItemDiscovered);
+          // Proactively fetch and AST-mine unloaded lazy chunks synthesized from the runtime manifest
+          for (const lazyUrl of (smRes.synthesizedLazyChunks || []).slice(0, 8)) {
+            const lazyRes = await sourceMapRouteMiner.probeAndMineScript(lazyUrl, ctx.targetHost, (item) => {
+              this.registerDiscoveredUrl(
+                item.url,
+                ctx.targetHost,
+                cleanUrl,
+                'LazyChunk-Route',
+                item.title || item.url,
+                ctx.onItemDiscovered,
+                item.method || 'GET'
+              );
+            });
+            if (lazyRes) {
+              this.ingestSourceMapResult(lazyRes, ctx.targetHost, cleanUrl, ctx.onItemDiscovered);
+            }
+          }
+        }
       }
     } catch {}
+
+    // Parse inline <script> bodies via TypeScript AST constant folding & Zod/Interface schema miner
+    try {
+      for (let i = 0; i < (extraction.inlineScriptBodies || []).length; i++) {
+        const inlineBody = extraction.inlineScriptBodies[i];
+        if (inlineBody && inlineBody.length > 25) {
+          this.ingestScriptContentIntelligence(`${cleanUrl}#inline-${i}`, inlineBody, ctx.targetHost, cleanUrl, ctx.onItemDiscovered);
+        }
+      }
+    } catch {}
+
     for (const r of extraction.inlineRoutes) {
       this.registerDiscoveredUrl(r.url, ctx.targetHost, cleanUrl, r.source, r.title || r.url, ctx.onItemDiscovered);
     }
@@ -2534,6 +2904,202 @@ Rules:
   }
 
   /**
+   * Probes high-value API specifications (OpenAPI/Swagger), .well-known configs (OIDC, Universal Links, AssetLinks),
+   * SPA build manifests (manifest.json, asset-manifest.json, ngsw.json), and GraphQL introspection endpoints
+   * directly inside the authenticated Chrome browser context.
+   */
+  public async runAuthenticatedApiAndWellKnownSweep(
+    targetHost: string,
+    onItemDiscovered?: (item: SiteMapRequest) => void,
+    onProgress?: (msg: string) => void
+  ): Promise<void> {
+    const cleanHost = targetHost.toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+    const specPaths = [
+      '/.well-known/openid-configuration',
+      '/.well-known/oauth-authorization-server',
+      '/.well-known/apple-app-site-association',
+      '/.well-known/assetlinks.json',
+      '/.well-known/security.txt',
+      '/swagger.json',
+      '/openapi.json',
+      '/v2/api-docs',
+      '/v3/api-docs',
+      '/api-docs',
+      '/manifest.json',
+      '/asset-manifest.json',
+      '/ngsw.json',
+      '/graphql',
+      '/api/graphql',
+    ];
+
+    for (const ep of specPaths) {
+      if (this.isAborted) break;
+      const fullUrl = `https://${cleanHost}${ep}`;
+      try {
+        const res = await stealthCdpBrowserDriver.fetchInBrowserDetails(fullUrl);
+        if (!res || res.status <= 0 || res.status === 404) continue;
+        if (TargetSiteCrawler.isNotFoundResponse(res.status, res.body)) continue;
+        if (TargetSiteCrawler.isChallengeOrWafResponse(res.status, res.body)) continue;
+
+        const mimeType = res.headers?.['content-type'] || (ep.endsWith('.json') ? 'application/json' : 'text/plain');
+        if (res.status >= 200 && res.status < 300 && res.body && res.body.trim().length > 5) {
+          if (onProgress) onProgress(`[API & Manifest Sweep] Discovered ${ep} (${res.status} OK)`);
+          this.registerQualityResponseItem(
+            fullUrl,
+            targetHost,
+            'GET',
+            res.status,
+            res.statusText || 'OK',
+            res.headers || {},
+            res.body,
+            mimeType,
+            undefined,
+            onItemDiscovered
+          );
+        }
+
+        // If GraphQL endpoint responds, execute GraphQL schema introspection & Clairvoyance field recovery
+        if ((ep === '/graphql' || ep === '/api/graphql') && (res.status === 200 || res.status === 400 || res.status === 405)) {
+          try {
+            const gql = new GraphQLEngine(fullUrl, {});
+            const schema = await gql.introspectSchema().catch(() => gql.recoverSchemaViaFieldSuggestions());
+            if (schema && (schema.queries.length > 0 || schema.mutations.length > 0)) {
+              for (const q of schema.queries) {
+                const qPath = `${ep}?query=${encodeURIComponent(`{ ${q.name} }`)}`;
+                this.registerDiscoveredUrl(qPath, targetHost, fullUrl, 'GraphQL-Introspection', `[GraphQL Query] ${q.name}`, onItemDiscovered, 'POST');
+              }
+              for (const m of schema.mutations) {
+                const mPath = `${ep}?mutation=${encodeURIComponent(`mutation { ${m.name} }`)}`;
+                this.registerDiscoveredUrl(mPath, targetHost, fullUrl, 'GraphQL-Introspection', `[GraphQL Mutation] ${m.name}`, onItemDiscovered, 'POST');
+              }
+              if (schema.queries.length > 0 || schema.mutations.length > 0) {
+                this.collectedRequestSchemas.push({
+                  name: 'GraphQLSchema',
+                  fields: [...schema.queries.map((q) => `query:${q.name}`), ...schema.mutations.map((m) => `mutation:${m.name}`)],
+                  sourceFile: ep,
+                });
+              }
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+  }
+
+  /**
+   * Compiles the complete 4-Pillar WebsiteKnowledgeBase from all intelligence gathered during the Stealth Crawl,
+   * clusters the attack surface, audits IDOR candidates, and caches it for AI agents and the UI.
+   */
+  public async compileAndCacheStealthKnowledgeBase(
+    targetHost: string,
+    rootUrl: string,
+    infraReport?: InfrastructureReconReport | null,
+    gauUrls: GauDiscoveredUrl[] = [],
+    robotsResult?: RobotsTxtResult | null
+  ): Promise<WebsiteKnowledgeBase> {
+    const cleanHost = targetHost.toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+    const allRequests = Array.from(this.discoveredItemsMap.values());
+
+    // Normalize and cluster all discovered endpoints
+    const normalizedForClustering = allRequests
+      .map((r) => {
+        const full = r.url.startsWith('http') ? r.url : `https://${cleanHost}${r.path.startsWith('/') ? r.path : '/' + r.path}`;
+        const norm = endpointNormalizer.normalize(full, `https://${cleanHost}`, r.method);
+        if (!norm) return null;
+        return {
+          endpoint: norm,
+          statusCode: r.status || 200,
+          responseLength: r.length || 0,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    const clusteredAttackSurface = endpointNormalizer.clusterEndpoints(normalizedForClustering.map((x) => x.endpoint));
+
+    // Audit top parameterized/numeric endpoints for IDOR candidates
+    const idorCandidates: IdorFinding[] = [];
+    for (const item of allRequests.filter((r) => r.params || /\/\d+/.test(r.path)).slice(0, 12)) {
+      try {
+        const finding = await idorAndHiddenEndpointHunter.auditEndpointForIdor(item, cleanHost, []);
+        if (finding) idorCandidates.push(finding);
+      } catch {}
+    }
+
+    const fallbackInfra: InfrastructureReconReport = (infraReport as any) || ({
+      targetDomain: cleanHost,
+      timestamp: Date.now(),
+      dnsRecords: [],
+      emailSecurity: {
+        spfNetblocks: [],
+        spfIncludes: [],
+        dmarcReportingUris: [],
+        dkimSelectorsFound: [],
+        detectedSaaSVendors: [],
+      },
+      ctSubdomains: [],
+      takeoverAlerts: [],
+      originAnalysis: {
+        primaryIps: [],
+        originCandidates: [],
+      },
+      cloudBuckets: [],
+      protocolSurface: {
+        http3Supported: false,
+        openAltPorts: [],
+        detectedProtocols: ['HTTPS'],
+      },
+    }) as any;
+
+    const kb: WebsiteKnowledgeBase = {
+      target: {
+        host: cleanHost,
+        rootUrl: rootUrl || `https://${cleanHost}/`,
+        capturedAt: Date.now(),
+        detectedCdnOrWaf: null,
+        detectedSaasEcosystem: [],
+      },
+      pillar1_infrastructure: fallbackInfra,
+      pillar2_staticClientDredging: {
+        unpackedSourceMaps: [...this.collectedSourceMaps],
+        synthesizedLazyChunks: Array.from(this.collectedLazyChunks),
+        astExtractedEndpoints: [...this.collectedAstEndpoints] as any,
+        nextServerActions: [...this.collectedServerActions] as any,
+        extractedRequestSchemas: [...this.collectedRequestSchemas],
+        discoveredSecrets: this.collectedSecrets.map((s) => ({ ...s, entropy: (s as any).entropy || 4.0 })) as any,
+      },
+      pillar3_dynamicBrowserCrawl: {
+        cdpConnected: stealthCdpBrowserDriver.connected,
+        routerRoutes: [...this.collectedRouterRoutes],
+        offlineStorageAndIndexedDb: [...this.collectedOfflineStorage],
+        domForms: this.collectedDomForms.map((f) => ({ actionUrl: f.actionUrl, method: f.method, parameters: (f as any).parameters || {} })),
+        crawledEndpointsCount: allRequests.length,
+      },
+      pillar4_historicalArchives: {
+        waybackCount: gauUrls.filter((u) => u.source === 'wayback').length,
+        commonCrawlCount: gauUrls.filter((u) => u.source === 'commoncrawl').length,
+        alienVaultCount: gauUrls.filter((u) => u.source === 'alienvault').length,
+        urlScanCount: gauUrls.filter((u) => u.source === 'urlscan').length,
+        legacyApiExtrapolations: gauUrls.filter((u) => u.source === 'legacy_extrapolation').map((u) => u.path),
+        robotsDisallowedPaths: robotsResult?.disallowedPaths || [],
+        archivedJsBundles: gauUrls.filter((u) => u.path.endsWith('.js') || u.path.endsWith('.map')).map((u) => u.url),
+        apiDocs: [],
+        graphqlIntrospection: [],
+        exposedDebugFindings: [],
+      },
+      clusteredAttackSurface,
+      idorCandidates,
+      allDiscoveredRequests: allRequests,
+    };
+
+    try {
+      sentinelAgentBridge.setCachedKnowledgeBase(cleanHost, kb);
+      useReconStore.getState().setLatestKnowledgeBase(kb);
+    } catch {}
+
+    return kb;
+  }
+
+  /**
    * Main Crawling Routine with Universal Recursive DFS Exploration
    */
   public async runStealthCrawl(config: StealthCrawlerConfig): Promise<SiteMapRequest[]> {
@@ -2541,6 +3107,18 @@ Rules:
     this.visitedDomHashes.clear();
     this.clickedSignatures.clear();
     this.discoveredItemsMap.clear();
+
+    // Reset 4-Pillar Knowledge Base accumulators
+    this.collectedSourceMaps = [];
+    this.collectedLazyChunks.clear();
+    this.collectedServerActions = [];
+    this.collectedRequestSchemas = [];
+    this.collectedSecrets = [];
+    this.collectedAstEndpoints = [];
+    this.collectedRouterRoutes = [];
+    this.collectedOfflineStorage = [];
+    this.collectedDomForms = [];
+    this.minedInlineScriptHashes.clear();
 
     const {
       targetHost,
@@ -2720,6 +3298,11 @@ Rules:
     // SOVEREIGN STEALTH EXPLORATION: Pure Human-Like Interactive Navigation
     // =========================================================================
     const homeUrl = targetUrl || `https://${targetHost}/`;
+    const dynamicSeedUrls: string[] = [...seedUrls];
+    let infraPromise: Promise<InfrastructureReconReport | null> = Promise.resolve(null);
+    let gauPromise: Promise<any[]> = Promise.resolve([]);
+    let robotsPromise: Promise<RobotsTxtResult | null> = Promise.resolve(null);
+
     reportProgress(`[Stealth Mode] Engaging live Chromium browser on ${homeUrl}...`);
 
     try {
@@ -2729,6 +3312,9 @@ Rules:
         reportProgress(`Navigating browser to ${homeUrl}...`);
         await stealthCdpBrowserDriver.navigate(homeUrl);
       }
+
+      // Inject client runtime omniscience instrumentation immediately
+      await clientRuntimeOmniscienceService.injectInstrumentation();
 
       await this.waitForInterstitialToResolve(20000, reportProgress, targetHost);
       await stealthCdpBrowserDriver.dismissBlockingModalsAndOverlays();
@@ -2760,6 +3346,64 @@ Rules:
           undefined,
           onItemDiscovered
         );
+      }
+
+      // 3. Concurrent Pre-Reconnaissance: Run Infrastructure De-Cloaking, Historical Archives, Robots/Sitemap & Authenticated API/Well-Known Sweep
+      try {
+        infraPromise = infrastructureOriginService
+          .runFullInfrastructureRecon(targetHost, homeHtml ? [homeHtml] : [], (item) => {
+            this.registerDiscoveredUrl(item.url, targetHost, item.path, 'InfraRecon', item.title || item.path, onItemDiscovered);
+          })
+          .catch((err) => {
+            console.warn('Background Infra Recon in Stealth Crawler notice:', err);
+            return null;
+          });
+
+        gauPromise = gauArchiveService
+          .runGauMining({
+            targetDomain: targetHost,
+            limit: 150,
+            onItemDiscovered: (item) => {
+              this.registerDiscoveredUrl(item.url, targetHost, item.path, 'GauArchive', item.title || item.path, onItemDiscovered);
+              if (DestructiveActionKernel.isSafeUrl(item.path) && !dynamicSeedUrls.includes(item.path)) {
+                dynamicSeedUrls.push(item.url.startsWith('http') ? item.url : `https://${targetHost}${item.path}`);
+              }
+            },
+          })
+          .catch((err) => {
+            console.warn('Background GAU mining in Stealth Crawler notice:', err);
+            return [];
+          });
+
+        robotsPromise = robotsTxtDiscoveryService
+          .fetchAndParseRobotsTxt(homeUrl)
+          .then((res) => {
+            robotsTxtDiscoveryService.generateSiteMapEntries(targetHost, res, (item: SiteMapRequest) => {
+              this.registerDiscoveredUrl(item.url, targetHost, item.path, 'Robots-Sitemap', item.title || item.path, onItemDiscovered);
+              if (DestructiveActionKernel.isSafeUrl(item.path) && !dynamicSeedUrls.includes(item.path)) {
+                dynamicSeedUrls.push(item.url.startsWith('http') ? item.url : `https://${targetHost}${item.path}`);
+              }
+            });
+            return res;
+          })
+          .catch(() => null);
+
+        // Authenticated in-browser sweep of OpenAPI/Swagger, .well-known OIDC/Universal Links, manifests, and GraphQL
+        await this.runAuthenticatedApiAndWellKnownSweep(targetHost, onItemDiscovered, reportProgress);
+
+        // Dredge IndexedDB, global state trees (__INITIAL_STATE__, __APOLLO_STATE__), and resource timings
+        const dredgedStorage = await clientRuntimeOmniscienceService.dredgeOfflineStorage();
+        for (const item of dredgedStorage) {
+          this.registerDiscoveredUrl(item.url, targetHost, postNavLive, `Omniscience-${item.source}`, item.title || item.url, onItemDiscovered);
+          if (!this.collectedOfflineStorage.some((d) => d.url === item.url)) {
+            this.collectedOfflineStorage.push(item);
+          }
+          if (DestructiveActionKernel.isSafeUrl(item.url) && !dynamicSeedUrls.includes(item.url)) {
+            dynamicSeedUrls.push(item.url.startsWith('http') ? item.url : `https://${targetHost}${item.url}`);
+          }
+        }
+      } catch (reconErr) {
+        console.warn('Pre-reconnaissance execution notice:', reconErr);
       }
 
       // If master sidebar exists, traverse it
@@ -2802,8 +3446,8 @@ Rules:
     reportProgress(`[Stealth Explorer] Starting deep interactive exploration on ${rootCrawlUrl}...`);
     await this.exploreStateDfs(rootCrawlUrl, 0, dfsContext);
 
-    // Follow any explicit seeds
-    for (const seed of seedUrls) {
+    // Follow any explicit or dynamically harvested seeds (from GAU / Offline Storage / Robots)
+    for (const seed of dynamicSeedUrls) {
       if (this.isAborted || dfsContext.stateCounter.count >= dfsContext.maxStates) break;
       const cleanSeed = seed.split('#')[0];
       if (!dfsContext.visitedPageUrls.has(cleanSeed) && DestructiveActionKernel.isSafeUrl(cleanSeed)) {
@@ -2833,6 +3477,25 @@ Rules:
     cleanupLoadingFailedListener();
     cleanupWsCreatedListener();
     cleanupWsFrameListener();
+
+    // Await concurrent background recon pillars and compile + cache the full 4-Pillar WebsiteKnowledgeBase
+    try {
+      const [infraReport, gauUrls, robotsResult] = await Promise.all([
+        infraPromise,
+        gauPromise,
+        robotsPromise,
+      ]);
+      await this.compileAndCacheStealthKnowledgeBase(
+        targetHost,
+        homeUrl,
+        infraReport,
+        gauUrls,
+        robotsResult
+      );
+    } catch (kbErr) {
+      console.warn('Failed to compile Stealth Knowledge Base:', kbErr);
+    }
+
     reportProgress(`Stealth crawl completed. Explored ${dfsContext.stateCounter.count} states, mapped ${this.discoveredItemsMap.size} surfaces.`);
     return Array.from(this.discoveredItemsMap.values());
   }

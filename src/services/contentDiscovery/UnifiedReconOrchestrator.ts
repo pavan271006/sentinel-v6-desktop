@@ -26,8 +26,15 @@ import { SiteMapRequest } from '../../workspaces/ProjectScopeWorkspaceView';
 import { idorAndHiddenEndpointHunter } from './IdorAndHiddenEndpointHunter';
 import { WORDLIST_ADMIN, WORDLIST_SENSITIVE_FILES, WORDLIST_BACKUPS } from './ContentDiscoveryEngine';
 import { TargetSiteCrawler } from '../sqlScanner/crawler/TargetSiteCrawler';
-import { robotsTxtDiscoveryService } from './RobotsTxtDiscoveryService';
+import { robotsTxtDiscoveryService, RobotsTxtResult } from './RobotsTxtDiscoveryService';
 import { GraphQLEngine } from '../graphql/GraphQLEngine';
+import { infrastructureOriginService, InfrastructureReconReport } from './InfrastructureOriginService';
+import { GauDiscoveredUrl } from './GauArchiveService';
+import { JSluiceDiscoveredEndpoint } from './JSluiceMiningService';
+import { endpointNormalizer } from './EndpointNormalizer';
+import { sentinelAgentBridge, WebsiteKnowledgeBase } from './SentinelAgentBridge';
+import { sourceMapRouteMiner } from './SourceMapRouteMiner';
+import { useReconStore } from '../../stores/reconStore';
 
 export type ReconEngineType = 'normal' | 'stealth' | 'hidden_endpoints';
 
@@ -168,9 +175,11 @@ export class UnifiedReconOrchestrator {
         await stealthCdpBrowserDriver.connect(targetUrl, targetHost);
       } catch {}
 
-      // Stage 1: API Entrypoints & Specifications
+      // Stage 1: API Entrypoints, Debuggers, Actuators & Specifications
       const apiEntrypoints = [
         '/.well-known/openid-configuration',
+        '/.well-known/oauth-authorization-server',
+        '/.well-known/apple-app-site-association',
         '/.well-known/assetlinks.json',
         '/.well-known/security.txt',
         '/swagger.json',
@@ -180,14 +189,25 @@ export class UnifiedReconOrchestrator {
         '/v3/api-docs',
         '/api-docs',
         '/swagger-ui.html',
+        '/redoc',
         '/docs',
         '/api/v1',
         '/api/v2',
         '/graphql',
+        '/api/graphql',
         '/graphiql',
+        '/playground',
+        '/voyager',
         '/altair',
         '/actuator',
-        '/actuator/health'
+        '/actuator/health',
+        '/actuator/env',
+        '/actuator/mappings',
+        '/actuator/beans',
+        '/actuator/configprops',
+        '/telescope',
+        '/_profiler',
+        '/rails/info/routes'
       ];
 
       for (const ep of apiEntrypoints) {
@@ -219,11 +239,20 @@ export class UnifiedReconOrchestrator {
             };
             pushItem(item, 'ffuf');
 
-            // If GraphQL endpoint was discovered, automatically run schema introspection
+            // Unpack OpenAPI/Swagger/OIDC/Universal Links specifications into individual API endpoints
+            if (resp.body && resp.body.trim().startsWith('{')) {
+              try {
+                sourceMapRouteMiner.parseApiSpecificationOrManifest(ep, resp.body, targetHost, (specItem) => {
+                  pushItem(specItem, 'ffuf');
+                });
+              } catch {}
+            }
+
+            // If GraphQL endpoint was discovered, automatically run schema introspection (with Clairvoyance fallback)
             if (ep === '/graphql' || ep.includes('graphql')) {
               try {
                 const gql = new GraphQLEngine(epUrl, authHeaders || {});
-                const schema = await gql.fetchIntrospection();
+                const schema = await gql.introspectSchema().catch(() => gql.recoverSchemaViaFieldSuggestions());
                 if (schema && (schema.queries.length > 0 || schema.mutations.length > 0)) {
                   updateStatus('GraphQL Schema Extracted', `Introspected ${schema.queries.length} queries & ${schema.mutations.length} mutations on ${ep}`);
                   for (const q of schema.queries) {
@@ -395,11 +424,21 @@ export class UnifiedReconOrchestrator {
     // MODE 2: ⚡ TITAN NORMAL MODE (Unified 5-Engine HTTP Pipeline)
     // ═════════════════════════════════════════════════════════════════
 
+    let robotsResult: RobotsTxtResult = {
+      sitemaps: [],
+      sitemapUrls: [],
+      disallowedPaths: [],
+      allowedPaths: [],
+    };
+    let infraReport: InfrastructureReconReport | null = null;
+    let gauItems: SiteMapRequest[] = [];
+    let jsluiceItems: SiteMapRequest[] = [];
+
     // Stage 0: Robots.txt & Comprehensive XML Sitemap Index Dredging
     if (!this.isAborted) {
       updateStatus('Robots.txt & Sitemap Mining', 'Dredging disallowed admin paths and recursive XML sitemaps...');
       try {
-        const robotsResult = await robotsTxtDiscoveryService.fetchAndParseRobotsTxt(targetUrl);
+        robotsResult = await robotsTxtDiscoveryService.fetchAndParseRobotsTxt(targetUrl);
         const sitemapEntries = robotsTxtDiscoveryService.generateSiteMapEntries(targetHost, robotsResult, (item) => pushItem(item, 'katana'));
         for (const smItem of sitemapEntries) {
           pushItem(smItem, 'katana');
@@ -413,11 +452,21 @@ export class UnifiedReconOrchestrator {
       }
     }
 
+    // Stage 0b: Infrastructure & Origin De-Cloaking (DNS, SPF/DMARC, CT Subdomains, Favicon mmh3, Cloud Buckets)
+    if (!this.isAborted) {
+      updateStatus('0b/4: Infrastructure & Origin De-Cloaking', 'Analyzing DNS/SPF/DMARC, CT subdomains, Favicon mmh3, and Cloud Buckets...');
+      try {
+        infraReport = await infrastructureOriginService.runFullInfrastructureRecon(targetHost, [], (item) => pushItem(item, 'katana'));
+      } catch (err) {
+        console.warn('Infrastructure & Origin De-Cloaking error:', err);
+      }
+    }
+
     // Stage 1: GAU Archive Harvesting (Wayback, AlienVault, URLScan)
     if (!this.isAborted) {
       updateStatus('1/4: GAU Historical Mining', 'Harvesting Wayback, AlienVault OTX, URLScan...');
       try {
-        const gauItems = await gauArchiveService.runGauMining({
+        gauItems = await gauArchiveService.runGauMining({
           targetDomain: targetHost,
           limit: 300,
           onProgress: (cnt, src) => updateStatus('1/4: GAU Historical Mining', `Fetched ${cnt} historical URLs from ${src}`),
@@ -479,7 +528,7 @@ export class UnifiedReconOrchestrator {
     if (!this.isAborted) {
       updateStatus('3/4: JSluice AST Route Mining', `Mining ${scriptUrlsFound.length} script bundles for hidden API routes...`);
       try {
-        const jsluiceItems = await jsluiceMiningService.runJSluiceMining({
+        jsluiceItems = await jsluiceMiningService.runJSluiceMining({
           targetHost,
           scriptUrls: scriptUrlsFound.length > 0 ? scriptUrlsFound : [`https://${targetHost}/main.js`, `https://${targetHost}/app.js`],
           onProgress: (cnt, cur) => updateStatus('3/4: JSluice AST Route Mining', `Analyzing AST in ${cur} (${cnt} routes found)`),
@@ -569,6 +618,77 @@ export class UnifiedReconOrchestrator {
           35
         );
       } catch {}
+    }
+
+    // Compile and cache Sovereign WebsiteKnowledgeBase for AI Agent Hub & Intel Views
+    try {
+      const rawEndpointUrls = Array.from(discoveredMap.values()).map((i) =>
+        i.url?.startsWith('http') ? i.url : `https://${i.host}${i.path}`
+      );
+      const normalizedList = rawEndpointUrls.map((u) => endpointNormalizer.normalizeEndpoint(u, targetUrl));
+      const clusteredAttackSurface = endpointNormalizer.clusterEndpoints(normalizedList);
+
+      const kb: WebsiteKnowledgeBase = {
+        target: {
+          host: targetHost,
+          rootUrl: targetUrl || `https://${targetHost}/`,
+          capturedAt: Date.now(),
+          detectedCdnOrWaf: infraReport?.originAnalysis?.detectedCdnOrWaf || null,
+          detectedSaasEcosystem: infraReport?.emailSecurity?.detectedSaasVendors || [],
+        },
+        pillar1_infrastructure: infraReport || {
+          targetDomain: targetHost,
+          timestamp: Date.now(),
+          dnsRecords: [],
+          emailSecurity: { spfNetblocks: [], spfIncludes: [], dmarcReportingUris: [], dkimSelectorsFound: [], detectedSaasVendors: [] },
+          subdomains: [],
+          originAnalysis: { targetHost, detectedCdnOrWaf: null, primaryIps: [], originCandidateIps: [], faviconHashMmh3: null, shodanQueries: [], censysQueries: [], fofaQueries: [], leakedBackendHeaders: {} },
+          cloudBuckets: [],
+          openWebPorts: [],
+        },
+        pillar2_staticClientDredging: {
+          unpackedSourceMaps: [],
+          astExtractedEndpoints: jsluiceItems.map((item) => ({
+            url: item.url,
+            path: item.path,
+            method: (item.method as any) || 'GET',
+            params: [],
+            sourceScript: 'unified_crawler',
+            category: 'API' as const,
+          })),
+          nextServerActions: [],
+          synthesizedLazyChunks: [],
+          extractedRequestSchemas: [],
+          discoveredSecrets: [],
+        },
+        pillar3_dynamicBrowserCrawl: {
+          cdpConnected: stealthCdpBrowserDriver.connected,
+          routerRoutes: [],
+          offlineStorageAndIndexedDb: [],
+          domForms: [],
+          crawledEndpointsCount: discoveredMap.size,
+        },
+        pillar4_historicalArchives: {
+          waybackCount: gauItems.filter((i) => i.notes?.includes('Wayback')).length,
+          commonCrawlCount: gauItems.filter((i) => i.notes?.includes('Common Crawl')).length,
+          alienVaultCount: gauItems.filter((i) => i.notes?.includes('AlienVault')).length,
+          urlScanCount: gauItems.filter((i) => i.notes?.includes('URLScan')).length,
+          legacyApiExtrapolations: gauItems.filter((i) => i.notes?.includes('Legacy API Extrapolator')).map((i) => i.path),
+          robotsDisallowedPaths: robotsResult.disallowedPaths,
+          archivedJsBundles: gauItems.filter((i) => i.path.endsWith('.js') || i.path.endsWith('.map')).map((i) => i.path),
+          apiDocs: [],
+          graphqlIntrospection: [],
+          exposedDebugFindings: [],
+        },
+        clusteredAttackSurface,
+        idorCandidates: [],
+        allDiscoveredRequests: Array.from(discoveredMap.values()),
+      };
+
+      sentinelAgentBridge.setCachedKnowledgeBase(targetHost, kb);
+      useReconStore.getState().setLatestKnowledgeBase(kb);
+    } catch (kbErr) {
+      console.warn('Failed to compile WebsiteKnowledgeBase in UnifiedReconOrchestrator:', kbErr);
     }
 
     updateStatus('Normal Recon Completed', `Finished. Discovered ${discoveredMap.size} unique endpoints.`);

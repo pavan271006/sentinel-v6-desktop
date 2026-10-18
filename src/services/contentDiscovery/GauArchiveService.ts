@@ -17,8 +17,11 @@ export interface GauDiscoveredUrl {
   host: string;
   path: string;
   params: boolean;
-  source: 'wayback' | 'alienvault' | 'urlscan';
+  source: 'wayback' | 'commoncrawl' | 'alienvault' | 'urlscan' | 'legacy_extrapolation';
   timestamp?: string;
+  statusCode?: number;
+  mimeType?: string;
+  waybackSnapshotUrl?: string;
 }
 
 export interface GauMiningConfig {
@@ -211,7 +214,103 @@ export class GauArchiveService {
   }
 
   /**
-   * Main Execution: Queries all archive engines concurrently and streams discovered endpoints
+   * 4. Query Common Crawl CDX Index API (NDJSON)
+   */
+  public async fetchCommonCrawlUrls(domain: string, includeSubdomains: boolean = true, limit: number = 250): Promise<GauDiscoveredUrl[]> {
+    const urlPattern = includeSubdomains ? `*.${domain}/*` : `${domain}/*`;
+    const indexEndpoints = [
+      'https://index.commoncrawl.org/CC-MAIN-2024-51-index',
+      'https://index.commoncrawl.org/CC-MAIN-2024-38-index',
+    ];
+
+    const results: GauDiscoveredUrl[] = [];
+    for (const indexBase of indexEndpoints) {
+      if (this.isAborted || results.length >= limit) break;
+      const queryPath = `${new URL(indexBase).pathname}?url=${encodeURIComponent(urlPattern)}&output=json&limit=${limit}`;
+      const apiUrl = `https://index.commoncrawl.org${queryPath}`;
+
+      try {
+        const rawReq = `GET ${queryPath} HTTP/1.1\r\nHost: index.commoncrawl.org\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0 GAU-Miner\r\nAccept: application/json\r\nConnection: close\r\n\r\n`;
+        const res = await ipcClient.sendRepeaterRequest({
+          tabId: `gau-commoncrawl-${Date.now()}`,
+          targetUrl: apiUrl,
+          rawRequest: rawReq,
+        });
+
+        const body = res?.body || res?.rawResponse?.split(/\r?\n\r?\n/)[1] || '';
+        if (!body) continue;
+
+        const lines = body.split(/\r?\n/).filter((l) => l.trim().startsWith('{'));
+        for (const line of lines) {
+          try {
+            const record = JSON.parse(line);
+            if (record?.url) {
+              const parsed = this.parseArchiveUrl(record.url, domain);
+              if (parsed) {
+                parsed.source = 'commoncrawl';
+                parsed.timestamp = record.timestamp;
+                parsed.statusCode = record.status ? parseInt(String(record.status), 10) : undefined;
+                parsed.mimeType = record.mime;
+                results.push(parsed);
+                if (results.length >= limit) break;
+              }
+            }
+          } catch {}
+        }
+        if (results.length > 0) break;
+      } catch (err) {
+        console.warn('GAU: Common Crawl fetch failed or throttled:', err);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * 5. Legacy API Version Extrapolation
+   * When `/api/v2/users` or `/v3/orders` is discovered, automatically generates older sibling API versions
+   * (`/api/v1/users`, `/api/v0/users`, `/api/beta/users`, `/api/internal/users`) which often lack modern auth/rate-limiting.
+   */
+  public extrapolateLegacyApiVersions(discovered: GauDiscoveredUrl[]): GauDiscoveredUrl[] {
+    const extrapolated: GauDiscoveredUrl[] = [];
+    const seen = new Set<string>(discovered.map((d) => `${d.host}${d.path}`));
+    const versionRegex = /\/(v([2-9]|\d{2,}))(\/|$)/i;
+
+    for (const item of discovered) {
+      const match = versionRegex.exec(item.path);
+      if (!match) continue;
+
+      const currentVerToken = match[1]; // e.g., "v3"
+      const currentVerNum = parseInt(match[2], 10);
+      const candidateVersions: string[] = [];
+
+      for (let v = 1; v < currentVerNum; v++) {
+        candidateVersions.push(`v${v}`);
+      }
+      candidateVersions.push('v0', 'beta', 'internal', 'legacy');
+
+      for (const candVer of candidateVersions) {
+        const legacyPath = item.path.replace(`/${currentVerToken}`, `/${candVer}`);
+        const key = `${item.host}${legacyPath}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          extrapolated.push({
+            url: `https://${item.host}${legacyPath}`,
+            host: item.host,
+            path: legacyPath,
+            params: item.params,
+            source: 'legacy_extrapolation',
+          });
+        }
+      }
+    }
+
+    return extrapolated;
+  }
+
+  /**
+   * Main Execution: Queries all 4 archive engines (Wayback, Common Crawl, AlienVault OTX, URLScan)
+   * concurrently, extrapolates legacy API versions, and streams discovered endpoints.
    */
   public async runGauMining(config: GauMiningConfig): Promise<SiteMapRequest[]> {
     this.isAborted = false;
@@ -224,10 +323,22 @@ export class GauArchiveService {
     const discoveredMap = new Map<string, SiteMapRequest>();
     let totalCount = 0;
 
+    const sourceLabelMap: Record<GauDiscoveredUrl['source'], string> = {
+      wayback: 'Wayback Machine',
+      commoncrawl: 'Common Crawl Index',
+      alienvault: 'AlienVault OTX',
+      urlscan: 'URLScan.io',
+      legacy_extrapolation: 'Legacy API Extrapolator',
+    };
+
     const pushItem = (item: GauDiscoveredUrl) => {
       const key = `GET:${item.host}${item.path}`;
       if (!discoveredMap.has(key)) {
-        const sourceLabel = item.source === 'wayback' ? 'Wayback Machine' : item.source === 'alienvault' ? 'AlienVault OTX' : 'URLScan.io';
+        const sourceLabel = sourceLabelMap[item.source] || 'Web Archive';
+        const snapshotNote =
+          item.source === 'wayback' && item.timestamp
+            ? ` | Raw Snapshot: https://web.archive.org/web/${item.timestamp}id_/${item.url}`
+            : '';
         const sitemapItem: SiteMapRequest = {
           id: `gau-${item.source}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           host: item.host,
@@ -235,13 +346,13 @@ export class GauArchiveService {
           url: item.path,
           path: item.path,
           params: item.params,
-          status: 0,
+          status: item.statusCode || 0,
           length: 0,
           mime: item.path.includes('.json') ? 'JSON' : item.path.includes('.js') ? 'script' : 'HTML',
           title: item.path,
-          notes: `Historical Archive URL from ${sourceLabel} (Unverified on live server)`,
+          notes: `Historical Archive URL from ${sourceLabel} (Unverified on live server)${snapshotNote}`,
           requestRaw: `GET ${item.path} HTTP/1.1\r\nHost: ${item.host}\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sentinel/6.0 GAU-Miner\r\nAccept: */*\r\n\r\n`,
-          responseRaw: `HTTP/1.1 (Historical Archive Record)\r\nX-Archive-Source: ${sourceLabel}\r\n\r\nHistorical record from ${sourceLabel}. Click 'Request this item' to test if this endpoint is still live on the server.`,
+          responseRaw: `HTTP/1.1 (Historical Archive Record)\r\nX-Archive-Source: ${sourceLabel}\r\n\r\nHistorical record from ${sourceLabel}.${snapshotNote} Click 'Request this item' to test if this endpoint is still live on the server.`,
           reqAttributes: { Method: 'GET', Path: item.path, Source: sourceLabel },
           reqHeaders: { Host: item.host },
           resAttributes: { Status: 'Archived', Source: sourceLabel },
@@ -257,16 +368,20 @@ export class GauArchiveService {
       }
     };
 
-    if (onProgress) onProgress(0, 'Querying Web Archives...');
+    if (onProgress) onProgress(0, 'Querying Web Archives (Wayback, Common Crawl, OTX, URLScan)...');
 
-    // Concurrently fetch from Wayback, AlienVault OTX, and URLScan
-    const [waybackResults, alienvaultResults, urlscanResults] = await Promise.all([
+    // Concurrently fetch from Wayback, Common Crawl, AlienVault OTX, and URLScan
+    const [waybackResults, commonCrawlResults, alienvaultResults, urlscanResults] = await Promise.all([
       this.fetchWaybackUrls(cleanDomain, includeSubdomains, limit),
+      this.fetchCommonCrawlUrls(cleanDomain, includeSubdomains, Math.min(limit, 250)),
       this.fetchAlienVaultUrls(cleanDomain, limit),
       this.fetchUrlScanUrls(cleanDomain),
     ]);
 
-    for (const item of [...waybackResults, ...alienvaultResults, ...urlscanResults]) {
+    const combined = [...waybackResults, ...commonCrawlResults, ...alienvaultResults, ...urlscanResults];
+    const legacySiblings = this.extrapolateLegacyApiVersions(combined);
+
+    for (const item of [...combined, ...legacySiblings]) {
       if (this.isAborted) break;
       pushItem(item);
     }

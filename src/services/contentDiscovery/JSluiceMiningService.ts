@@ -109,6 +109,15 @@ const SECRET_SIGNATURES: Array<{ type: string; regex: RegExp }> = [
   { type: 'Mailgun API Key', regex: /\b(key-[a-zA-Z0-9]{32})\b/g },
   { type: 'Firebase Config', regex: /(?:apiKey|authDomain|databaseURL|projectId|storageBucket|messagingSenderId)\s*[:=]\s*["']([^"']+)["']/gi },
   { type: 'Azure Storage Key', regex: /(?:AccountKey|SharedAccessSignature)\s*=\s*([A-Za-z0-9\/+=]{44,})/g },
+  { type: 'OpenAI API Key', regex: /\b(sk-(?:proj|svcacct)-[A-Za-z0-9_\-]{32,})\b/g },
+  { type: 'Anthropic API Key', regex: /\b(sk-ant-api03-[A-Za-z0-9_\-]{40,})\b/g },
+  { type: 'Groq API Key', regex: /\b(gsk_[A-Za-z0-9]{48,})\b/g },
+  { type: 'Supabase Access Token', regex: /\b(sbp_[a-f0-9]{40})\b/g },
+  { type: 'Shopify Access Token', regex: /\b(shp(?:at|ca|ss|pa)_[a-fA-F0-9]{32})\b/g },
+  { type: 'HuggingFace Token', regex: /\b(hf_[a-zA-Z0-9]{34})\b/g },
+  { type: 'Postman API Key', regex: /\b(PMAK-[a-f0-9]{24}-[a-f0-9]{34})\b/g },
+  { type: 'Mapbox Secret Token', regex: /\b(sk\.eyJ[a-zA-Z0-9_\-]+\.[a-zA-Z0-9_\-]+)\b/g },
+  { type: 'Linear API Key', regex: /\b(lin_api_[a-zA-Z0-9]{40})\b/g },
   { type: 'Hardcoded Password', regex: /(?:password|passwd|secret|token|api_key|apikey|api_secret)\s*[:=]\s*["']([^"'\s]{8,})["']/gi },
 ];
 
@@ -117,6 +126,25 @@ export class JSluiceMiningService {
 
   public abort(): void {
     this.isAborted = true;
+  }
+
+  /**
+   * Computes Shannon Entropy H(X) in bits/char to filter low-entropy placeholder strings
+   */
+  public static calculateShannonEntropy(str: string): number {
+    if (!str || str.length === 0) return 0;
+    const freq = new Map<string, number>();
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      freq.set(ch, (freq.get(ch) || 0) + 1);
+    }
+    let entropy = 0;
+    const len = str.length;
+    for (const count of freq.values()) {
+      const p = count / len;
+      entropy -= p * Math.log2(p);
+    }
+    return Number(entropy.toFixed(3));
   }
 
   /**
@@ -229,8 +257,9 @@ export class JSluiceMiningService {
 
       const constants = new Map<string, string>();
       const objectProperties = new Map<string, Record<string, string>>();
+      const clientBaseUrls = new Map<string, string>();
 
-      // Pass 1: Extract constants and object property mappings
+      // Pass 1: Extract constants, object property mappings, TypeScript enum assignments, and axios.create({ baseURL }) instances
       const visitPass1 = (node: ts.Node) => {
         if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
           const varName = node.name.text;
@@ -247,13 +276,55 @@ export class JSluiceMiningService {
               }
             }
             objectProperties.set(varName, props);
+          } else if (ts.isCallExpression(node.initializer)) {
+            // Detect const api = axios.create({ baseURL: '/api/v2' }) or ky.create({ prefixUrl: '/api' })
+            const initCall = node.initializer.expression.getText(sourceFile);
+            if ((initCall.includes('.create') || initCall.includes('createClient')) && node.initializer.arguments.length > 0) {
+              const firstArg = node.initializer.arguments[0];
+              if (ts.isObjectLiteralExpression(firstArg)) {
+                for (const prop of firstArg.properties) {
+                  if (ts.isPropertyAssignment(prop)) {
+                    const key = prop.name.getText(sourceFile).replace(/['"]/g, '');
+                    if (['baseURL', 'baseUrl', 'prefixUrl', 'endpoint'].includes(key)) {
+                      if (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer)) {
+                        clientBaseUrls.set(varName, prop.initializer.text);
+                      } else if (ts.isIdentifier(prop.initializer) && constants.has(prop.initializer.text)) {
+                        clientBaseUrls.set(varName, constants.get(prop.initializer.text)!);
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
+
+        // Handle TypeScript transpiled enum assignments: Routes["ADMIN"] = "/api/admin" or Routes.ADMIN = "/api/admin"
+        if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          if (ts.isStringLiteral(node.right) || ts.isNoSubstitutionTemplateLiteral(node.right)) {
+            if (ts.isElementAccessExpression(node.left) && ts.isIdentifier(node.left.expression)) {
+              const enumName = node.left.expression.text;
+              const arg = node.left.argumentExpression;
+              if (ts.isStringLiteral(arg)) {
+                const existing = objectProperties.get(enumName) || {};
+                existing[arg.text] = node.right.text;
+                objectProperties.set(enumName, existing);
+              }
+            } else if (ts.isPropertyAccessExpression(node.left) && ts.isIdentifier(node.left.expression)) {
+              const enumName = node.left.expression.text;
+              const propKey = node.left.name.text;
+              const existing = objectProperties.get(enumName) || {};
+              existing[propKey] = node.right.text;
+              objectProperties.set(enumName, existing);
+            }
+          }
+        }
+
         ts.forEachChild(node, visitPass1);
       };
       ts.forEachChild(sourceFile, visitPass1);
 
-      // Helper to evaluate an AST expression into a resolved path
+      // Helper to evaluate an AST expression into a resolved path (Constant-Folding + Array.join + Object/Enum Lookup)
       const resolveExpressionPath = (expr: ts.Expression): string | null => {
         if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
           return expr.text;
@@ -267,6 +338,36 @@ export class JSluiceMiningService {
           if (objectProperties.has(objName) && objectProperties.get(objName)![propName]) {
             return objectProperties.get(objName)![propName];
           }
+        }
+        if (ts.isElementAccessExpression(expr) && ts.isStringLiteral(expr.argumentExpression)) {
+          const objName = expr.expression.getText(sourceFile);
+          const propName = expr.argumentExpression.text;
+          if (objectProperties.has(objName) && objectProperties.get(objName)![propName]) {
+            return objectProperties.get(objName)![propName];
+          }
+        }
+        // Evaluate ['api', 'v2', 'users'].join('/')
+        if (
+          ts.isCallExpression(expr) &&
+          ts.isPropertyAccessExpression(expr.expression) &&
+          expr.expression.name.text === 'join' &&
+          ts.isArrayLiteralExpression(expr.expression.expression)
+        ) {
+          const sep =
+            expr.arguments.length > 0 && ts.isStringLiteral(expr.arguments[0])
+              ? expr.arguments[0].text
+              : ',';
+          const parts: string[] = [];
+          for (const el of expr.expression.expression.elements) {
+            const val = resolveExpressionPath(el);
+            if (val !== null) {
+              parts.push(val);
+            } else {
+              parts.push('{param}');
+            }
+          }
+          const joined = parts.join(sep);
+          return joined.startsWith('/') ? joined : '/' + joined;
         }
         if (ts.isTemplateExpression(expr)) {
           let resolved = expr.head.text;
@@ -296,11 +397,15 @@ export class JSluiceMiningService {
         if (ts.isCallExpression(node)) {
           const callText = node.expression.getText(sourceFile);
 
-          // Next.js Server Actions: createServerReference("40-char-sha1")
-          if (callText.includes('createServerReference') || callText.includes('$ACTION_ID_')) {
-            if (node.arguments.length > 0 && ts.isStringLiteral(node.arguments[0])) {
-              const actionHash = node.arguments[0].text;
-              if (actionHash && actionHash.length >= 20) {
+          // Next.js Server Actions: createServerReference("40-char-sha1") or registerServerReference(fn, "40-char-sha1", "name")
+          if (
+            callText.includes('createServerReference') ||
+            callText.includes('registerServerReference') ||
+            callText.includes('$ACTION_ID_')
+          ) {
+            for (const arg of node.arguments) {
+              if (ts.isStringLiteral(arg) && /^[a-f0-9]{32,64}$/i.test(arg.text)) {
+                const actionHash = arg.text;
                 const actionPath = `/_next/action/${actionHash}`;
                 discoveredEndpoints.push({
                   url: `https://${host}${actionPath}`,
@@ -311,17 +416,28 @@ export class JSluiceMiningService {
                   category: 'API',
                   rawSnippet: `Next.js Server Action [${actionHash}]`,
                 });
+                break;
               }
             }
           }
 
-          // HTTP Client Calls (fetch, axios, $.ajax, $.get, $.post, request)
+          // HTTP Client Calls (fetch, axios, custom axios instances, $.ajax, $.get, $.post, request)
           const isFetch = callText === 'fetch' || callText === 'window.fetch';
           const isAxios = callText.startsWith('axios') || callText.includes('.get') || callText.includes('.post') || callText.includes('.put') || callText.includes('.delete') || callText.includes('.patch');
           const isJQuery = callText.startsWith('$.') || callText.startsWith('jQuery.');
 
           if ((isFetch || isAxios || isJQuery) && node.arguments.length > 0) {
-            const pathCandidate = resolveExpressionPath(node.arguments[0]);
+            let pathCandidate = resolveExpressionPath(node.arguments[0]);
+            // Prepend axios.create({ baseURL }) prefix if invoked on a tracked client instance (e.g., apiClient.post('/users'))
+            if (pathCandidate && ts.isPropertyAccessExpression(node.expression)) {
+              const instanceName = node.expression.expression.getText(sourceFile);
+              if (clientBaseUrls.has(instanceName) && !pathCandidate.startsWith('http')) {
+                const basePrefix = clientBaseUrls.get(instanceName)!.replace(/\/$/, '');
+                const subPath = pathCandidate.startsWith('/') ? pathCandidate : `/${pathCandidate}`;
+                pathCandidate = `${basePrefix}${subPath}`;
+              }
+            }
+
             if (pathCandidate && (pathCandidate.startsWith('/') || pathCandidate.startsWith('http://') || pathCandidate.startsWith('https://'))) {
               const normalized = this.normalizeEndpoint(pathCandidate, host);
               if (normalized && !seenPaths.has(normalized.cleanPath)) {

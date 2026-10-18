@@ -15,6 +15,8 @@
  */
 
 import { DashboardStealthCdpDriver } from './DashboardStealthCdpDriver';
+import { useReconStore } from '../../stores/reconStore';
+import { sourceMapRouteMiner } from '../contentDiscovery/SourceMapRouteMiner';
 
 export interface DashboardEndpointItem {
   id: string;
@@ -639,6 +641,63 @@ export class DashboardCrawlerEngine {
       };
 
       onEndpointDiscovered(item);
+
+      // Sync into Recon Store for Attack Surface Knowledge Base
+      try {
+        useReconStore.getState().addCrawlerDiscoveredItem({
+          id: item.id,
+          host: baseHost,
+          method: item.method,
+          url: item.url,
+          path: item.path,
+          params: item.path.includes('?'),
+          status: item.status || 200,
+          length: 0,
+          mime: 'text/html',
+          title: item.path,
+          notes: `[Dashboard Crawler] ${item.source}`,
+          requestRaw: `${item.method} ${item.path} HTTP/1.1\r\nHost: ${baseHost}\r\n\r\n`,
+          responseRaw: `HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n`,
+          reqAttributes: {},
+          reqHeaders: { Host: baseHost },
+          resAttributes: {},
+          resHeaders: {},
+          isDiscovered: true,
+        });
+      } catch {}
+
+      // Passive inspection for OpenAPI / Swagger specs / Well-Known manifests
+      const lowerPath = path.toLowerCase();
+      if (
+        lowerPath.includes('swagger') ||
+        lowerPath.includes('openapi') ||
+        lowerPath.includes('.well-known') ||
+        lowerPath.endsWith('.map') ||
+        lowerPath.endsWith('manifest.json')
+      ) {
+        fetch(resolvedUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+          },
+          signal: AbortSignal.timeout(4000),
+        })
+          .then((res) => res.text())
+          .then((text) => {
+            const spec = sourceMapRouteMiner.parseApiSpecificationOrManifest(resolvedUrl, text, baseHost);
+            for (const ep of spec.endpoints) {
+              this.processFoundUrl({
+                rawUrl: ep.url,
+                baseUrl,
+                baseHost,
+                method: ep.method,
+                source: 'JavaScript Route',
+                isExcluded,
+                onEndpointDiscovered,
+              });
+            }
+          })
+          .catch(() => {});
+      }
 
       if (method === 'GET' && !this.visitedUrls.has(resolvedUrl)) {
         this.crawlQueue.push(resolvedUrl);

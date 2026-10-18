@@ -16,6 +16,7 @@ import { KatanaCrawlerService } from '../../KatanaCrawlerService';
 import { JSluiceMiningService } from '../../JSluiceMiningService';
 import { UnifiedReconOrchestrator } from '../../UnifiedReconOrchestrator';
 import { useTrafficStore } from '../../../../stores/trafficStore';
+import { TrafficSummary } from '../../../../types/traffic';
 import { decodeAndDecompressResponseBody } from '../../../../utils/decompressionUtils';
 import { jaccardTokenSimilarity, normalizedStringSimilarity } from '../../AdaptiveElementLocator';
 
@@ -936,7 +937,7 @@ describe('Tier 2: Boundary & Corner Cases E2E Suite (28 Features, >=5 tests per 
           inScope: true,
         });
       }
-      useTrafficStore.getState().ingestBatch(txs);
+      useTrafficStore.getState().ingestBatch(txs as unknown as TrafficSummary[]);
       expect(useTrafficStore.getState().transactions.length).toBeGreaterThanOrEqual(500);
     });
 
@@ -973,16 +974,16 @@ describe('Tier 2: Boundary & Corner Cases E2E Suite (28 Features, >=5 tests per 
       useTrafficStore.getState().addTransaction({
         id: 'tx-zero-dur', method: 'GET', host: 'test.com', path: '/fast',
         status: 200, length: 10, duration: 0, timestamp: Date.now(), inScope: true
-      });
+      } as unknown as TrafficSummary);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'tx-zero-dur');
-      expect(tx?.duration).toBe(0);
+      expect((tx as unknown as { duration: number })?.duration).toBe(0);
     });
 
     it('24.2: streams transaction with negative or unusual status codes (e.g. 0, 599)', () => {
       useTrafficStore.getState().addTransaction({
         id: 'tx-status-0', method: 'GET', host: 'test.com', path: '/err',
         status: 0, length: 0, duration: 100, timestamp: Date.now(), inScope: true
-      });
+      } as unknown as TrafficSummary);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'tx-status-0');
       expect(tx?.status).toBe(0);
     });
@@ -992,7 +993,7 @@ describe('Tier 2: Boundary & Corner Cases E2E Suite (28 Features, >=5 tests per 
       useTrafficStore.getState().addTransaction({
         id: 'tx-long-path', method: 'GET', host: 'test.com', path: longPath,
         status: 414, length: 0, duration: 10, timestamp: Date.now(), inScope: true
-      });
+      } as unknown as TrafficSummary);
       const tx = useTrafficStore.getState().transactions.find(t => t.id === 'tx-long-path');
       expect(tx?.path.length).toBeGreaterThan(50000);
     });
@@ -1003,7 +1004,7 @@ describe('Tier 2: Boundary & Corner Cases E2E Suite (28 Features, >=5 tests per 
         useTrafficStore.getState().addTransaction({
           id: `tx-method-${idx}`, method: m, host: 'test.com', path: `/m/${m}`,
           status: 200, length: 10, duration: 5, timestamp: Date.now(), inScope: true
-        });
+        } as unknown as TrafficSummary);
         const tx = useTrafficStore.getState().transactions.find(t => t.id === `tx-method-${idx}`);
         expect(tx?.method).toBe(m);
       });
@@ -1013,11 +1014,11 @@ describe('Tier 2: Boundary & Corner Cases E2E Suite (28 Features, >=5 tests per 
       useTrafficStore.getState().addTransaction({
         id: 'dup-id-1', method: 'GET', host: 'test.com', path: '/v1',
         status: 200, length: 10, duration: 5, timestamp: Date.now(), inScope: true
-      });
+      } as unknown as TrafficSummary);
       useTrafficStore.getState().addTransaction({
         id: 'dup-id-1', method: 'GET', host: 'test.com', path: '/v2',
         status: 200, length: 20, duration: 10, timestamp: Date.now(), inScope: true
-      });
+      } as unknown as TrafficSummary);
       expect(useTrafficStore.getState().transactions.some(t => t.id === 'dup-id-1')).toBe(true);
     });
   });

@@ -22,10 +22,14 @@ import {
 } from 'lucide-react';
 import { ipcClient } from '../ipc/client';
 import { useScannerStore } from '../stores/scannerStore';
+import { useReconStore } from '../stores/reconStore';
 import { dashboardCrawlerEngine, DashboardEndpointItem } from '../services/dashboardScanner/DashboardCrawlerEngine';
+import { WebsiteKnowledgeBaseModal } from '../components/recon/WebsiteKnowledgeBaseModal';
 
 export const ScannerWorkspaceView: React.FC = () => {
   const { addToast } = useToastStore();
+  const { latestKnowledgeBase } = useReconStore();
+  const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeSubTab, setActiveSubTab] = useState<'setup' | 'findings'>('setup');
 
@@ -432,8 +436,24 @@ export const ScannerWorkspaceView: React.FC = () => {
                   )}
                 </div>
 
-                {/* Filter Search Input */}
+                {/* Actions & Filter Search Input */}
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-400" />}
+                    onClick={() => setIsKnowledgeBaseModalOpen(true)}
+                    className="bg-[#1e222b] hover:bg-[#282d3a] text-amber-300 border border-amber-500/40 font-mono font-bold cursor-pointer shadow-sm"
+                    title="Open 4-Pillar Attack Surface Knowledge Base (Origin Candidates, Server Actions, OpenAPI Specs, Secrets)"
+                  >
+                    🧠 Attack Surface KB
+                    {latestKnowledgeBase && (
+                      <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px]">
+                        {latestKnowledgeBase.allDiscoveredRequests.length}
+                      </span>
+                    )}
+                  </Button>
+
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#64748b]" />
                     <input
@@ -1022,6 +1042,13 @@ export const ScannerWorkspaceView: React.FC = () => {
 
       </main>
       )}
+
+      {/* Sovereign Ω Attack Surface & Website Knowledge Base Modal */}
+      <WebsiteKnowledgeBaseModal
+        isOpen={isKnowledgeBaseModalOpen}
+        onClose={() => setIsKnowledgeBaseModalOpen(false)}
+        targetHost={targetUrl}
+      />
     </div>
   );
 };

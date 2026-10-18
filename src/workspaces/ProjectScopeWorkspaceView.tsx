@@ -54,6 +54,7 @@ import { BurpSearchBar, countSearchMatches } from '../components/common/BurpSear
 import { SplitPane } from '../design-system/SplitPane';
 import { BurpInspectorPanel } from '../components/traffic/BurpInspectorPanel';
 import { generateRenderablePreviewHtml } from '../utils/repeaterUtils';
+import { WebsiteKnowledgeBaseModal } from '../components/recon/WebsiteKnowledgeBaseModal';
 import {
   HttpHistoryFilterModal,
   HttpHistoryFilterConfig,
@@ -315,6 +316,7 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
     reconProgress,
     stealthSpeed,
     crawlerDiscoveredItems,
+    latestKnowledgeBase,
     setIsCrawling,
     setCrawlerTarget,
     setDiscoveredEndpointsCount,
@@ -329,6 +331,7 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
   const [isTargetDropdownOpen, setIsTargetDropdownOpen] = useState(false);
   const [openChromeTabs, setOpenChromeTabs] = useState<CdpTargetPage[]>([]);
   const [isBenchmarkModalOpen, setIsBenchmarkModalOpen] = useState(false);
+  const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
 
   const STEALTH_SPEED_CONFIG: Record<'turbo' | 'fast' | 'normal' | 'human' | 'deep', { label: string; delayMs: number; icon: string; title: string }> = {
     turbo: { label: '🚀 Turbo', delayMs: 20, icon: '🚀', title: 'Turbo: Instant switching as fast as pages load, 0 artificial delay' },
@@ -1734,7 +1737,7 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
   return (
     <div className="flex flex-col w-full h-full bg-[#1e1f22] text-[#dfdfdf] font-sans select-none overflow-hidden text-xs">
       {/* Target Recon & Content Discovery Toolbar */}
-      <div className="h-8 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-3 flex-shrink-0">
+      <div className="min-h-[36px] py-1 bg-[#2b2d30] border-b border-[#1e1f22] flex items-center justify-between px-3 flex-shrink-0 flex-wrap gap-y-1">
         {/* Left: Active Target Host Input & Live Tab Selector */}
         <div className="flex items-center gap-2">
           <div className="relative flex items-center">
@@ -1866,6 +1869,19 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-200 animate-pulse" />
                 <span>🥷 Stealth Mode</span>
+              </button>
+
+              {/* 🧠 Sovereign Knowledge Base */}
+              <button
+                onClick={() => setIsKnowledgeBaseModalOpen(true)}
+                className="px-2.5 py-1 rounded flex items-center gap-1.5 text-[11px] font-mono font-bold bg-[#1e222b] hover:bg-[#282d3a] text-amber-300 border border-amber-500/40 transition-all cursor-pointer shadow-sm"
+                title="Inspect 4-Pillar Website Knowledge Base: Origin De-cloaking, Favicon mmh3, CT subdomains, Cloud buckets, Next.js Server Actions, Client Schemas, and AI Agent tools"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>🧠 Knowledge Base</span>
+                {latestKnowledgeBase && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                )}
               </button>
 
               {/* Stealth Speed Control Button */}
@@ -2679,6 +2695,13 @@ export const ProjectScopeWorkspaceView: React.FC = () => {
           />
         </div>
       </Modal>
+
+      {/* 🧠 Sovereign Website Knowledge Base Modal */}
+      <WebsiteKnowledgeBaseModal
+        isOpen={isKnowledgeBaseModalOpen}
+        onClose={() => setIsKnowledgeBaseModalOpen(false)}
+        targetHost={selectedTargetHost || undefined}
+      />
     </div>
   );
 };

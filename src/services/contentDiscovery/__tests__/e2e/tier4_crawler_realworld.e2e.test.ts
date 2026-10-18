@@ -23,7 +23,6 @@ import { UnifiedReconOrchestrator } from '../../UnifiedReconOrchestrator';
 import { StealthCdpBrowserDriver } from '../../StealthCdpBrowserDriver';
 import { WorkerDredgingEngine, TypeScriptAstEndpointMiner } from '../../MultiSourceEndpointMiner';
 import { useTrafficStore } from '../../../../stores/trafficStore';
-import { HttpRequestResponse } from '../../../../types';
 
 describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)', () => {
 
@@ -135,25 +134,29 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
       const clearanceToken = '0.abcdef1234567890abcdef.token_clearance';
       expect(clearanceToken.length).toBeGreaterThan(20);
 
-      const clearanceTx: HttpRequestResponse = {
+      const clearanceTx: any = {
         id: 'tx-cf-turnstile-clearance',
+        seqNumber: 1,
+        timestamp: new Date().toISOString(),
+        timestampMs: Date.now(),
         url: 'https://protected.target.io/api/v1/auth/cf-verify',
+        host: 'protected.target.io',
+        path: '/api/v1/auth/cf-verify',
         method: 'POST',
         status: 200,
-        requestHeaders: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        requestBody: `cf-turnstile-response=${clearanceToken}`,
-        responseHeaders: { 'Set-Cookie': 'cf_clearance=cf_clearance_token_xyz; Path=/; HttpOnly; Secure' },
-        responseBody: '{"success":true,"action":"clearance_granted"}',
-        timestamp: Date.now(),
-        duration: 215,
-        type: 'xhr'
+        durationMs: 215,
+        sizeBytes: 45,
+        inScope: true,
+        mimeType: 'application/json',
+        tags: ['xhr'],
+        resHeaders: [{ name: 'Set-Cookie', value: 'cf_clearance=cf_clearance_token_xyz; Path=/; HttpOnly; Secure' }],
       };
 
       useTrafficStore.getState().addTransaction(clearanceTx);
       const stored = useTrafficStore.getState().transactions.find(t => t.id === 'tx-cf-turnstile-clearance');
       expect(stored).toBeDefined();
       expect(stored?.status).toBe(200);
-      expect(stored?.responseHeaders['Set-Cookie']).toContain('cf_clearance');
+      expect(stored?.resHeaders?.find(h => h.name === 'Set-Cookie')?.value).toContain('cf_clearance');
     });
   });
 
@@ -209,7 +212,7 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
 
       // 2. Form analysis with multiple deception types
       const agent = new CognitiveFlowAgent();
-      const sessionContext: SessionContext = {
+      const sessionContext: any = {
         keywords: ['tech', 'electronics'],
         identifiers: ['USR-1029'],
         authCredentials: {}
@@ -223,7 +226,7 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
         isHoneypot: false
       };
 
-      const synthesized = agent.synthesizeFieldValue(legitField, sessionContext);
+      const synthesized = agent.synthesizeFieldValue(legitField as any, sessionContext);
       expect(synthesized).toContain('@');
 
       // 3. In-browser detector script contains full suite of trap heuristics
@@ -287,7 +290,7 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
   describe('Scenario 6: Academic / Enterprise Portal with Cascading Dropdowns & Semantic Identification', () => {
     it('synthesizes appropriate values across cascading fields and registers subsequent discovered paths', () => {
       const agent = new CognitiveFlowAgent();
-      const context: SessionContext = {
+      const context: any = {
         keywords: ['engineering', 'computer', 'science'],
         identifiers: ['CS-101'],
         authCredentials: {}
@@ -317,9 +320,9 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
         isHoneypot: false
       };
 
-      const valFaculty = agent.synthesizeFieldValue(facultyField, context);
-      const valDept = agent.synthesizeFieldValue(departmentField, context);
-      const valSearch = agent.synthesizeFieldValue(courseSearchField, context);
+      const valFaculty = agent.synthesizeFieldValue(facultyField as any, context);
+      const valDept = agent.synthesizeFieldValue(departmentField as any, context);
+      const valSearch = agent.synthesizeFieldValue(courseSearchField as any, context);
 
       expect(valFaculty).toBeDefined();
       expect(valDept).toBeDefined();
@@ -354,16 +357,19 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
       // Ingest discovery into traffic store
       useTrafficStore.getState().addTransaction({
         id: 'tx-pipeline-1',
+        seqNumber: 1,
+        timestamp: new Date().toISOString(),
+        timestampMs: Date.now(),
         url: fakeDiscoveredItem.url,
+        host: fakeDiscoveredItem.host,
+        path: fakeDiscoveredItem.path,
         method: 'GET',
         status: 200,
-        requestHeaders: { Host: fakeDiscoveredItem.host },
-        requestBody: '',
-        responseHeaders: { 'Content-Type': 'application/json' },
-        responseBody: '[]',
-        timestamp: Date.now(),
-        duration: 35,
-        type: 'xhr'
+        durationMs: 35,
+        sizeBytes: 2,
+        inScope: true,
+        mimeType: 'application/json',
+        tags: ['xhr'],
       });
 
       expect(useTrafficStore.getState().transactions.length).toBe(1);
@@ -452,7 +458,7 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
       expect(normalized[1]!.pathname).toBe('/users/49120/profile');
       expect(normalized[1]!.routeTemplate).toBe('/users/{id}/profile');
       expect(normalized[2]!.pathname).toBe('/settings/security');
-      expect(normalized[2]!.queryParams['tab']).toBe('2fa');
+      expect(normalized[2]!.queryParams?.['tab']).toBe('2fa');
     });
   });
 
@@ -510,16 +516,19 @@ describe('Tier 4: Real-World Application Scenarios E2E Suite (12 Deep Scenarios)
       astEndpoints.forEach((ep, idx) => {
         useTrafficStore.getState().addTransaction({
           id: `tx-worker-ast-${idx}`,
+          seqNumber: idx + 1,
+          timestamp: new Date().toISOString(),
+          timestampMs: Date.now(),
           url: `https://app.target.local${ep.url}`,
-          method: ep.method,
+          host: 'app.target.local',
+          path: ep.url,
+          method: ep.method || 'GET',
           status: 200,
-          requestHeaders: {},
-          requestBody: '',
-          responseHeaders: { 'Content-Type': 'application/json' },
-          responseBody: '{}',
-          timestamp: Date.now(),
-          duration: 10,
-          type: 'script'
+          durationMs: 10,
+          sizeBytes: 2,
+          inScope: true,
+          mimeType: 'application/json',
+          tags: ['script'],
         });
       });
 
